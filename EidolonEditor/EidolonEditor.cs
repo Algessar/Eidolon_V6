@@ -1,7 +1,7 @@
 ﻿
 namespace Eidolon.Editor;
 
-public class Editor
+public class EidolonEditor
 {
     public static void Main()
     {

@@ -1,9 +1,11 @@
-﻿namespace Eidolon.Vulkan;
+﻿
+namespace Eidolon.Vulkan;
 
-public class VulkanRenderer
+internal class VulkanBackend
 {
+	VulkanManager vulkanManager;
 	public static void Main()
 	{
-		VulkanManager vulkanManager;
+		Debug.Log("VulkanRenderer called");
 	}
 }
