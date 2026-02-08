@@ -23,12 +23,9 @@ internal unsafe class DescriptorFactory: IDisposable
         
         Debug.Log("DescriptorFactory created!", VALIDATION_LAYERS.SUCCESS);
     }
-
-
+    
     public DescriptorSet CreateDescriptorSet()
     {
-
-
         var layouts = new DescriptorSetLayout[Constants.MAX_FRAMES_IN_FLIGHT];
         Array.Fill(layouts, _descriptorSetLayout);
         fixed (DescriptorSetLayout* layoutsPtr = layouts)

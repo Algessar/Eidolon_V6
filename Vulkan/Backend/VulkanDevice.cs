@@ -189,7 +189,7 @@ internal unsafe class VulkanDevice : IDisposable
 		}
 
 
-		private QueueFamilyIndices FindQueueFamilies(PhysicalDevice device)
+		public QueueFamilyIndices FindQueueFamilies(PhysicalDevice device)
 		{
 			var indices = new QueueFamilyIndices();
 

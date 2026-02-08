@@ -87,7 +87,7 @@ internal class RenderGraphBuilder
     private List<HashSet<int>> BuildDependencies()
     {
         var dependencies = Enumerable.Range(0, _passes.Count)
-            .Select(i => new HashSet<int>()).ToList();
+            .Select(_ => new HashSet<int>()).ToList();
         
         var lastWriter = new Dictionary<uint, int>();
         var lastReaders = new Dictionary<uint, HashSet<int>>();

@@ -13,6 +13,10 @@ internal class VulkanMaster
     public Vk Vk;
     
     private IWindow _window;
+    
+    //NOTE: Possibly temp
+    public IWindow GetWindow => _window;
+    
     public VulkanInstance VulkanInstance { get; set; }
     public VulkanDevice VulkanDevice { get; set; }
     public Surfaces Surfaces { get; set; }
@@ -42,7 +46,7 @@ internal class VulkanMaster
         {
             Debug.Log("Window is null.", VALIDATION_LAYERS.ERROR);
         }
-
+        
         _window.Load += () =>
         {
             VulkanInstance = new VulkanInstance(this, _window);
