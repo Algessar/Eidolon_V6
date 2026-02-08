@@ -21,12 +21,14 @@ internal sealed class GraphResourceImportMap
         _importKinds[handle.Handle] = kind;
     }
 
-    public bool TryResolve(in CompiledResource resource,
+public bool TryResolve(
+        in CompiledResource resource,
         in SwapchainHandler swapchain,
         uint swapchainImageIndex,
         out ImageData imageData)
     {
         imageData = default;
+
         if (!resource.Imported)
         {
             return false;
@@ -43,6 +45,7 @@ internal sealed class GraphResourceImportMap
             ImportedResourceKind.SceneDepth => swapchain.GetDepthImageData(),
             _ => throw new ArgumentOutOfRangeException()
         };
+
         return true;
     }
     

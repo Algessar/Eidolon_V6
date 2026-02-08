@@ -64,6 +64,8 @@ public sealed class RenderGraphBuilder
 
     public CompiledRenderGraph Compile(in FrameDescription frame)
     {
+        ValidatePassRecords();
+
         var deps = BuildDependencies();
         var executionOrder = TopologicalSort(deps);
 
@@ -72,15 +74,19 @@ public sealed class RenderGraphBuilder
         {
             executionIndexByOriginal[executionOrder[i]] = i;
         }
-        
+
         var compiledPasses = new List<CompiledPass>(_passes.Count);
         foreach (var originalIndex in executionOrder)
         {
             var pass = _passes[originalIndex];
-            var depIndices = deps[originalIndex].Select(depOriginal => executionIndexByOriginal[depOriginal]).Order()
+            var depIndices = deps[originalIndex]
+                .Select(depOriginal => executionIndexByOriginal[depOriginal])
+                .Order()
                 .ToArray();
-            
-            compiledPasses.Add(new CompiledPass(ExecutionIndex: executionIndexByOriginal[originalIndex], OriginalIndex: pass.Index,
+
+            compiledPasses.Add(new CompiledPass(
+                ExecutionIndex: executionIndexByOriginal[originalIndex],
+                OriginalIndex: pass.Index,
                 Name: pass.Name,
                 Type: pass.Type,
                 Reads: pass.Reads.ToArray(),
@@ -89,34 +95,40 @@ public sealed class RenderGraphBuilder
         }
 
         var compiledResources = BuildResourceLifetimes(executionIndexByOriginal);
-        
+
         return new CompiledRenderGraph(frame, compiledResources, compiledPasses);
     }
     
     private List<HashSet<int>> BuildDependencies()
     {
         var dependencies = Enumerable.Range(0, _passes.Count)
-            .Select(_ => new HashSet<int>()).ToList();
-        
+            .Select(_ => new HashSet<int>())
+            .ToList();
+
         var lastWriter = new Dictionary<uint, int>();
         var lastReaders = new Dictionary<uint, HashSet<int>>();
 
         for (var passIndex = 0; passIndex < _passes.Count; passIndex++)
         {
             var pass = _passes[passIndex];
+            if (pass is null)
+            {
+                throw new InvalidOperationException($"Pass at index {passIndex} is null. Ensure AddPass is used for all pass creation.");
+            }
 
             foreach (var read in pass.Reads)
             {
-                if(lastWriter.TryGetValue(read.Handle, out var writer))
+                if (lastWriter.TryGetValue(read.Handle, out var writer))
                 {
-                    dependencies[writer].Add(writer);
-                    
+                    dependencies[passIndex].Add(writer);
                 }
 
                 if (!lastReaders.TryGetValue(read.Handle, out var readers))
                 {
+                    readers = new HashSet<int>();
                     lastReaders.Add(read.Handle, readers);
                 }
+
                 readers.Add(passIndex);
             }
 
@@ -124,7 +136,7 @@ public sealed class RenderGraphBuilder
             {
                 if (lastWriter.TryGetValue(write.Handle, out var writer))
                 {
-                    dependencies[writer].Add(writer);
+                    dependencies[passIndex].Add(writer);
                 }
 
                 if (lastReaders.TryGetValue(write.Handle, out var readers))
@@ -133,12 +145,14 @@ public sealed class RenderGraphBuilder
                     {
                         dependencies[passIndex].Add(reader);
                     }
+
                     readers.Clear();
                 }
-                
+
                 lastWriter[write.Handle] = passIndex;
             }
         }
+
         return dependencies;
     }
 
@@ -242,6 +256,22 @@ public sealed class RenderGraphBuilder
             throw new InvalidOperationException($"Unknown resource handle: {handle.Handle}");
         }
     }
+    private void ValidatePassRecords()
+    {
+        for (var i = 0; i < _passes.Count; i++)
+        {
+            var pass = _passes[i];
+            if (pass is null)
+            {
+                throw new InvalidOperationException($"Pass at index {i} is null.");
+            }
+
+            if (pass.Reads is null || pass.Writes is null)
+            {
+                throw new InvalidOperationException($"Pass '{pass.Name}' has uninitialized read/write collections.");
+            }
+        }
+    }
 
     private sealed record ResourceRecord(
         ResourceHandle Handle,
@@ -254,14 +284,16 @@ public sealed class RenderGraphBuilder
         public int Index { get; }
         public string Name { get; }
         public RenderPassType Type { get; }
-        public List<ResourceHandle> Reads { get; } = new();
-        public List<ResourceHandle> Writes { get; } = new();
+        public List<ResourceHandle> Reads { get; }
+        public List<ResourceHandle> Writes { get; }
 
         public PassRecord(int index, string name, RenderPassType type)
         {
             Index = index;
             Name = name;
             Type = type;
+            Reads = new List<ResourceHandle>();
+            Writes = new List<ResourceHandle>();
         }
     }
 
