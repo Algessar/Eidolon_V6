@@ -1,7 +1,7 @@
 using Silk.NET.Vulkan;
 using Buffer = System.Buffer;
 
-namespace Eidolon.Vulkan;
+namespace Eidolon.Vulkan.Rendering;
 
 internal unsafe class ShaderManager(VulkanMaster master)
 {

@@ -1,7 +1,7 @@
 ﻿
 namespace Eidolon.Vulkan;
 
-internal class VulkanBackend
+internal class VulkanApplication
 {
 	static VulkanMaster _vulkanMaster;
 	public static void Main()

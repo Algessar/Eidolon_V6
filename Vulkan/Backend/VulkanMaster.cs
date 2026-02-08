@@ -1,4 +1,5 @@
-﻿using Silk.NET.Maths;
+﻿using Eidolon.Vulkan.Rendering;
+using Silk.NET.Maths;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.KHR;
 using Silk.NET.Windowing;

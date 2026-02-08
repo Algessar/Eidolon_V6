@@ -1,6 +1,6 @@
 using Silk.NET.Vulkan;
 
-namespace Eidolon.Vulkan;
+namespace Eidolon.Vulkan.Rendering;
 
 internal unsafe class DescriptorFactory: IDisposable
 {

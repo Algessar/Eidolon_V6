@@ -1,4 +1,4 @@
-namespace Eidolon.Vulkan;
+namespace Eidolon.Vulkan.Rendering;
 
 internal unsafe class RenderPassFactory(VulkanMaster vulkanMaster)
 {

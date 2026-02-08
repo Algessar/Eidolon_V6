@@ -19,8 +19,4 @@
       <ProjectReference Include="..\EidolonCore\EidolonCore.csproj" />
     </ItemGroup>
 
-    <ItemGroup>
-      <Folder Include="Rendering\RenderGraph\" />
-    </ItemGroup>
-
 </Project>
