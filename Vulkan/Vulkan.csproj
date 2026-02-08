@@ -15,4 +15,12 @@
       <PackageReference Include="Silk.NET.Vulkan.Extensions.EXT" Version="2.23.0" />
     </ItemGroup>
 
+    <ItemGroup>
+      <ProjectReference Include="..\EidolonCore\EidolonCore.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Folder Include="Rendering\RenderGraph\" />
+    </ItemGroup>
+
 </Project>

@@ -1,5 +1,5 @@
 ﻿using System.Numerics;
-using EidolonCore.Resources;
+using EidolonCore.ECS;
 
 namespace EidolonCore.Rendering;
 

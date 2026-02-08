@@ -1,8 +1,10 @@
 namespace Eidolon.Vulkan.Rendering;
 
-internal interface IRenderContext
+internal interface IFrameContext
 {
 
+    VulkanMaster _master { get; } 
+    
     #region Resources
     bool _framebufferResized  { get; set; }
 
@@ -12,18 +14,17 @@ internal interface IRenderContext
     
     void Initialize();
 
-    //NOTE: THIS STRUCTURE MAY CHANGE
-    void Draw(in IDrawData data);
+    void Draw(in DrawData data);
         
-    void BeginFrame(in IDrawData data);
+    void BeginFrame(in DrawData data);
         
-    void EndFrame(in IDrawData data);
+    void EndFrame(in DrawData data);
 
 
     #endregion
 
     #region ResourceCreation
-    void CreateResources(); //Calls from managers!
+    void CreateResources();
         
 
     #endregion

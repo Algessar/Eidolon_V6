@@ -3,9 +3,11 @@ namespace Eidolon.Vulkan;
 
 internal class VulkanBackend
 {
-	VulkanManager vulkanManager;
+	static VulkanMaster _vulkanMaster;
 	public static void Main()
 	{
 		Debug.Log("VulkanRenderer called");
+
+		_vulkanMaster = new VulkanMaster();
 	}
 }

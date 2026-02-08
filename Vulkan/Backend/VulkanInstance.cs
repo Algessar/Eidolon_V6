@@ -11,35 +11,35 @@ namespace Eidolon.Vulkan;
 internal unsafe class VulkanInstance
 {
     [Group("References")]
-    private VulkanManager _master;
+    private VulkanMaster _master;
     private IWindow _window;
     private Instance _instance;
     public Instance Instance => _instance;
     
 
     [Group("Resource")]
-    public Surfaces Surfaces { get; set; }
+    public Surfaces Surfaces { get; private set; }
     private KhrSurface _khrSurface;
     private SurfaceKHR _surfaceKhr;
+    public KhrSurface KhrSurface => _khrSurface;
+    public SurfaceKHR SurfaceKhr => _surfaceKhr;
 
     
     [Group("Debug")] 
     private ExtDebugUtils DebugUtils;
     private DebugUtilsMessengerEXT DebugMessenger;
-    public VulkanInstance(VulkanManager master, IWindow window)
+    public VulkanInstance(VulkanMaster master, IWindow window)
     {
+        Debug.Log("Creating Vulkan Instance", VALIDATION_LAYERS.WARNING);
+        
         _master = master;
         _window = window;
 
-        CreateInstance(window);
-        CreateSurface(window);
+        CreateInstance(_window);
+        CreateSurface(_window);
         SetupDebugMessenger();
         
-        Surfaces = new Surfaces
-        {
-            KhrSurface = _khrSurface,
-            SurfaceKhr = _surfaceKhr,
-        };
+        Debug.Log("Vulkan Instance created!", VALIDATION_LAYERS.SUCCESS);
     }
     
     private void CreateInstance(IWindow window)
@@ -227,6 +227,29 @@ internal unsafe class VulkanInstance
                                  DebugUtilsMessageTypeFlagsEXT.ValidationBitExt |
                                  DebugUtilsMessageTypeFlagsEXT.PerformanceBitExt;
         createInfo.PfnUserCallback = (DebugUtilsMessengerCallbackFunctionEXT)DebugCallback;
+    }
+    
+    public void Dispose()
+    {
+        Debug.Log($"Disposing InstanceManager");
+    
+        if (DebugMessenger.Handle != 0  && _instance.Handle != 0)
+        {
+            DebugUtils.DestroyDebugUtilsMessenger(_instance, DebugMessenger, null);
+        }
+
+        // Add null check for _khrSurface
+        if (_surfaceKhr.Handle != 0 && _instance.Handle != 0)
+        {
+            _khrSurface.DestroySurface(_instance, _surfaceKhr, null);
+        }
+
+        if (_instance.Handle != 0)
+        {
+            _master.Vk.DestroyInstance(_instance, null);
+        }
+    
+        Debug.Log("InstanceManager disposed");
     }
 
 

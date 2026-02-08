@@ -1,4 +1,4 @@
-﻿namespace EidolonCore.Rendering;
+﻿namespace EidolonCore.ECS;
 
 public record struct BoundingBox
 {
