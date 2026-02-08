@@ -7,7 +7,7 @@ using Semaphore = Silk.NET.Vulkan.Semaphore;
 
 namespace Eidolon.Vulkan.Rendering;
 
-internal unsafe class FrameHandler
+internal unsafe class FrameHandler : IFrameContext
 {
     public VulkanMaster _master { get; }
     private SwapchainHandler _swapchainHandler;

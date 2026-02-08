@@ -16,7 +16,7 @@ internal unsafe class CommandManager : IDisposable
 
     public CommandManager(VulkanMaster master)
     {
-        Debug.Log("Creating CommandManager" , VALIDATION_LAYERS.WARNING);
+        Debug.Log("Creating CommandManager" , VALIDATION_LAYERS.INFO);
         _master = master;
         Debug.Log("CommandManager Created.", VALIDATION_LAYERS.SUCCESS);
     }

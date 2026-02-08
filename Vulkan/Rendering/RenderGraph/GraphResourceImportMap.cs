@@ -1,8 +1,4 @@
-﻿using Eidolon.Vulkan.Rendering;
-
-namespace Eidolon.Vulkan;
-
-
+﻿namespace Eidolon.Vulkan;
 using EidolonCore.Rendering;
 
 internal enum ImportedResourceKind

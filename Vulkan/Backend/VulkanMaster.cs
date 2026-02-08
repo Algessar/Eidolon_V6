@@ -1,4 +1,5 @@
 ﻿using Eidolon.Vulkan.Rendering;
+using EidolonCore.Rendering;
 using Silk.NET.Maths;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.KHR;
@@ -6,7 +7,7 @@ using Silk.NET.Windowing;
 
 namespace Eidolon.Vulkan;
 
-internal class VulkanMaster
+internal class VulkanMaster : IRenderer
 {
     #region Vulkan Core
 
@@ -24,7 +25,6 @@ internal class VulkanMaster
     public SurfaceKHR SurfaceKhr { get; set; }
 
     #endregion
-
 
     #region Managers
 
@@ -64,6 +64,7 @@ internal class VulkanMaster
             VulkanDevice = new VulkanDevice(this);
             
             InitializeManagers();
+            SetupFrameChain();
         };
 
         _window.Render += (double delta) =>
@@ -107,8 +108,16 @@ internal class VulkanMaster
         };
         
         _window = Window.Create(opts);
+        
+        
     }
 
 
-
+    public void Dispose()
+    {
+        Vk.Dispose();
+        VulkanDevice.Dispose();
+        DescriptorFactory.Dispose();
+        CommandManager.Dispose();
+    }
 }

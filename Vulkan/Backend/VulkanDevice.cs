@@ -31,7 +31,7 @@ internal unsafe class VulkanDevice : IDisposable
     {
 	    _master = master;
 	    
-	    Debug.Log("Creating Vulkan Device", VALIDATION_LAYERS.WARNING);
+	    Debug.Log("Creating Vulkan Device", VALIDATION_LAYERS.INFO);
 	    
 	    PickPhysicalDevice();
 	    CreateLogicalDevice();

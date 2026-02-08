@@ -30,7 +30,7 @@ internal unsafe class VulkanInstance
     private DebugUtilsMessengerEXT DebugMessenger;
     public VulkanInstance(VulkanMaster master, IWindow window)
     {
-        Debug.Log("Creating Vulkan Instance", VALIDATION_LAYERS.WARNING);
+        Debug.Log("Creating Vulkan Instance", VALIDATION_LAYERS.INFO);
         
         _master = master;
         _window = window;

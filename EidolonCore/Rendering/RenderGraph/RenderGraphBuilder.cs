@@ -1,4 +1,6 @@
-﻿namespace EidolonCore.Rendering;
+﻿using System.Diagnostics;
+
+namespace EidolonCore.Rendering;
 
 internal class RenderGraphBuilder
 {
@@ -6,6 +8,13 @@ internal class RenderGraphBuilder
     private readonly Dictionary<uint, ResourceRecord> _resources = new();
 
     private uint _nextHandle = 1;
+
+    public RenderGraphBuilder()
+    {
+        Console.WriteLine("Creating RenderGraphBuilder");
+        
+        Console.WriteLine("RenderGraphBuilder created!");
+    }
 
     public ResourceHandle ImportImage(string name, in GraphImageDescription description)
     {

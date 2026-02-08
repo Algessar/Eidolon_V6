@@ -10,6 +10,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\EidolonCore\EidolonCore.csproj" />
+      <ProjectReference Include="..\Vulkan\Vulkan.csproj" />
     </ItemGroup>
 
 </Project>

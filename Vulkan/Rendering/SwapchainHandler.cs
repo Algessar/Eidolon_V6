@@ -3,7 +3,7 @@ using Silk.NET.Vulkan.Extensions.KHR;
 using Silk.NET.Windowing;
 using Semaphore = Silk.NET.Vulkan.Semaphore;
 
-namespace Eidolon.Vulkan.Rendering;
+namespace Eidolon.Vulkan;
 
 internal unsafe class SwapchainHandler
 {

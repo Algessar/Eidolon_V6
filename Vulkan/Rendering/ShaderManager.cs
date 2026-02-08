@@ -3,11 +3,19 @@ using Buffer = System.Buffer;
 
 namespace Eidolon.Vulkan.Rendering;
 
-internal unsafe class ShaderManager(VulkanMaster master)
+internal unsafe class ShaderManager
 {
-    VulkanMaster _master = master;
+    VulkanMaster _master;
     
     private Dictionary<string, ShaderModule> _cache = new();
+
+    public ShaderManager(VulkanMaster master)
+    {
+        Debug.Log("Creating ShaderManager", VALIDATION_LAYERS.INFO);
+        _master = master;
+        
+        Debug.Log("ShaderManager created!", VALIDATION_LAYERS.SUCCESS);
+    }
 
     public ShaderModule Load(string fileName)
     {
