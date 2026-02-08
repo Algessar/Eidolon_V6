@@ -14,6 +14,8 @@ internal class VulkanMaster : IRenderer
 
     public Vk Vk;
     
+    public static VulkanMaster Instance { get; private set; }
+    
     private IWindow _window;
     
     //NOTE: Possibly temp
@@ -36,9 +38,13 @@ internal class VulkanMaster : IRenderer
     public CommandManager CommandManager { get; set; }
 
     #endregion
+    
+    public FrameHandler FrameHandler { get; private set; }
 
-    public VulkanMaster()
+    private readonly CompiledRenderGraph? _initialGraph;
+    public VulkanMaster(CompiledRenderGraph? initialGraph = null)
     {
+        _initialGraph = initialGraph;
         Debug.Log("::: Initializing Vulkan resources :::", VALIDATION_LAYERS.WARNING);
         Vk = Vk.GetApi();
         
@@ -68,12 +74,13 @@ internal class VulkanMaster : IRenderer
             
             InitializeManagers();
             SetupFrameChain();
-            
         };
+        
+        var drawData = new DrawData();
 
         _window.Render += (double delta) =>
         {
-            
+            FrameHandler.Draw(drawData);
         };
         
         _window.Run();
@@ -96,9 +103,15 @@ internal class VulkanMaster : IRenderer
         var id = ImGui.CreateContext(); //NOTE: Had missed completely that CreateContext() returns an ID.
         var swapchain = new SwapchainHandler(this, SurfaceKhr, KhrSurface);
         
-        var frameHandler = new FrameHandler(this, swapchain);
+        FrameHandler = new FrameHandler(this, swapchain);
         
-        frameHandler.Initialize();
+        FrameHandler.Initialize();
+        
+        if (_initialGraph is not null)
+        {
+            FrameHandler.SetCompiledGraph(_initialGraph);
+        }
+
     }
 
     private void CreateOSWindow()
@@ -113,11 +126,9 @@ internal class VulkanMaster : IRenderer
         };
         
         _window = Window.Create(opts);
-        
-        
     }
-
-
+    
+    
     public void Dispose()
     {
         Vk.Dispose();

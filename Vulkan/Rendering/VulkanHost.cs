@@ -1,9 +1,11 @@
-﻿namespace Eidolon.Vulkan;
+﻿using EidolonCore.Rendering;
+
+namespace Eidolon.Vulkan;
 
 public static class VulkanHost
 {
-    public static void Run()
+    public static void Run(CompiledRenderGraph? initialGraph = null)
     {
-        _ = new VulkanMaster();
+        _ = new VulkanMaster(initialGraph);
     }
 }

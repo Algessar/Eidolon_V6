@@ -2,7 +2,7 @@
 
 namespace EidolonCore.Rendering;
 
-internal class RenderGraphBuilder
+public sealed class RenderGraphBuilder
 {
     private readonly List<PassRecord> _passes = new();
     private readonly Dictionary<uint, ResourceRecord> _resources = new();

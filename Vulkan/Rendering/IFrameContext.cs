@@ -24,7 +24,6 @@ internal interface IFrameContext
         
     void EndFrame(in DrawData data);
 
-
     #endregion
 
     #region ResourceCreation
