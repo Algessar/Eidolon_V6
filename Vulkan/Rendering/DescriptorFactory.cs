@@ -135,6 +135,10 @@ internal unsafe class DescriptorFactory: IDisposable
 
     public void Dispose()
     {
+        foreach (var buffer in _uniformGpuBuffers)
+        {
+            buffer.Dispose();
+        }
         _uniformGpuBuffers = Array.Empty<GpuBuffer>();
     }
 }

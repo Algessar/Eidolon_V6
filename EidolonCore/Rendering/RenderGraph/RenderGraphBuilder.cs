@@ -221,8 +221,6 @@ internal class RenderGraphBuilder
         return result;
     }
 
-
-
     private void ValidatePassAndResource(int passIndex, ResourceHandle handle)
     {
         if (passIndex < 0 || passIndex >= _passes.Count)

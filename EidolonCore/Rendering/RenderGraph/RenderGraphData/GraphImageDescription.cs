@@ -23,27 +23,3 @@ public struct GraphImageDescription
         };
     }
 }
-
-[Flags]
-public enum FlagImageUsage : uint
-{
-    None = 0,
-    ColorAttachment = 1 << 0,
-    DepthStencilAttachment = 1 << 1,
-    Sampled = 1 << 2,
-    Storage = 1 << 3,
-    TransferSource = 1 << 4,
-    TransferDestination = 1 << 5,
-    Present = 1 << 6
-}
-
-public enum ImageFormat
-{
-    Unknown = 0,
-    Rgba8Unorm,
-    Bgra8Unorm,
-    Rgba16Float,
-    D24UnormS8Uint,
-    D32Float,
-}
-

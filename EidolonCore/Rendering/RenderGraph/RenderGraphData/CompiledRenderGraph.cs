@@ -14,22 +14,3 @@ public sealed class CompiledRenderGraph
         Passes = passes;
     }
 }
-
-
-public sealed record CompiledPass(
-    int ExecutionIndex,
-    int OriginalIndex, 
-    string Name,
-    RenderPassType Type, 
-    IReadOnlyList<ResourceHandle> Reads,
-    IReadOnlyList<ResourceHandle> Writes, 
-    IReadOnlyList<int> Dependencies);
-    
-public sealed record CompiledResource(
-    ResourceHandle Handle,
-    string Name,
-    GraphImageDescription Description,
-    bool Imported,
-    int FirstUsePass,
-    int LastUsePass
-);
