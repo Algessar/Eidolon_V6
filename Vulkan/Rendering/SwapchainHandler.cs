@@ -28,6 +28,7 @@ internal unsafe class SwapchainHandler
     
     public SwapchainHandler(VulkanMaster master, SurfaceKHR surfaceKhr, KhrSurface khrSurface)
     {
+        Debug.Log("Creating SwapchainHandler", VALIDATION_LAYERS.INFO);
         _master = master;
         _window = master.GetWindow;
         _surfaceKhr = surfaceKhr;
@@ -36,6 +37,8 @@ internal unsafe class SwapchainHandler
         CreateSwapchain();
         CreateImageViews();
         CreateDepthResources();
+        
+        Debug.Log("SwapchainHandler created!", VALIDATION_LAYERS.SUCCESS);
     }
 
     public ImageData GetSwapchainColorImageData(uint imageIndex)

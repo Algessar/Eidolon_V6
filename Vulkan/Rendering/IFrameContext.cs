@@ -2,42 +2,39 @@
 
 namespace Eidolon.Vulkan;
 
-public interface IFrameContext
+internal interface IFrameContext
 {
-    internal interface IFrameContext
-    {
 
-        VulkanMaster _master { get; } 
+    VulkanMaster _master { get; } 
     
-        #region Resources
-        bool _framebufferResized  { get; set; }
+    #region Resources
+    bool _framebufferResized  { get; set; }
 
-        #endregion
+    #endregion
 
-        #region DrawRegion
+    #region DrawRegion
     
-        void Initialize();
+    void Initialize();
 
-        void SetCompiledGraph(CompiledRenderGraph graph);
+    void SetCompiledGraph(CompiledRenderGraph graph);
 
-        void Draw(in DrawData data);
+    void Draw(in DrawData data);
         
-        void BeginFrame(in DrawData data);
+    void BeginFrame(in DrawData data);
         
-        void EndFrame(in DrawData data);
+    void EndFrame(in DrawData data);
 
 
-        #endregion
+    #endregion
 
-        #region ResourceCreation
-        void CreateResources();
+    #region ResourceCreation
+    void CreateResources();
         
 
-        #endregion
-    }
+    #endregion
+}
 
-    public interface IDrawData
-    {
+public interface IDrawData
+{
     
-    }
 }

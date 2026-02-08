@@ -1,5 +1,6 @@
 ﻿using Eidolon.Vulkan.Rendering;
 using EidolonCore.Rendering;
+using ImGuiNET;
 using Silk.NET.Maths;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.KHR;
@@ -40,6 +41,8 @@ internal class VulkanMaster : IRenderer
     {
         Debug.Log("::: Initializing Vulkan resources :::", VALIDATION_LAYERS.WARNING);
         Vk = Vk.GetApi();
+        
+        //NOTE: Window creation should probably not be done here in the end?
         CreateOSWindow();
 
         if (_window == null)
@@ -65,6 +68,7 @@ internal class VulkanMaster : IRenderer
             
             InitializeManagers();
             SetupFrameChain();
+            
         };
 
         _window.Render += (double delta) =>
@@ -89,6 +93,7 @@ internal class VulkanMaster : IRenderer
 
     private void SetupFrameChain()
     {
+        var id = ImGui.CreateContext(); //NOTE: Had missed completely that CreateContext() returns an ID.
         var swapchain = new SwapchainHandler(this, SurfaceKhr, KhrSurface);
         
         var frameHandler = new FrameHandler(this, swapchain);

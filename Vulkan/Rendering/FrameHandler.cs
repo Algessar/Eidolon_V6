@@ -53,6 +53,7 @@ internal unsafe class FrameHandler : IFrameContext
         Debug.Log("Creating FrameHandler", VALIDATION_LAYERS.INFO);
         _master = master;
         _swapchainHandler = swapchainHandler;
+        _imageCount = swapchainHandler.ImageCount;
         
         _commandBuffer = _master.CommandManager.AllocateCommandBuffers(_imageCount);
         _imageCount = _swapchainHandler.ImageCount;
@@ -67,6 +68,7 @@ internal unsafe class FrameHandler : IFrameContext
 
     private void OnWindowResize(Vector2D<int> newSize)
     {
+        // var id = ImGui.CreateContext();
         if (newSize.X == 0 || newSize.Y == 0)
             return;
 
@@ -116,16 +118,11 @@ internal unsafe class FrameHandler : IFrameContext
             }
         }
 
-        // TODO: transition pass.Reads to shader-read / attachment-read layout
-        // TODO: transition pass.Writes to color/depth attachment layout
-        // TODO: begin render pass scope for this graph pass
-        // TODO: bind pipeline (you already do CmdBindPipeline today)
-        // _master.Vk.CmdBindPipeline(cmd, PipelineBindPoint.Graphics, );
-        
-        // TODO: bind descriptors, vertex/index buffers, push constants
-        // TODO: issue draw calls for this pass
-        // TODO: end render pass scope
-        throw new NotImplementedException();
+
+        // TODO: Begin recording pass command scopes.
+        // TODO: Resolve resources for each pass (imported + transient).
+        // TODO: Bind pipeline/descriptors and issue draw calls.
+
     }
 
     public void BeginFrame(in DrawData data)
@@ -146,6 +143,11 @@ internal unsafe class FrameHandler : IFrameContext
         {
             Debug.Log($"EndFrame complete.");
         }
+    }
+
+    public void CreateResources()
+    {
+        throw new NotImplementedException();
     }
 
     private void EnsureGraphResources(CompiledRenderGraph graph)

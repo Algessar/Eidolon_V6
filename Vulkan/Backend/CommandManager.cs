@@ -1,15 +1,13 @@
+using System.Numerics;
 using Silk.NET.Vulkan;
 
 namespace Eidolon.Vulkan;
 
 internal unsafe class CommandManager : IDisposable
 {
-    // Central handling for all buffers: the only place where buffers of any kind are disposed?
-
     [Group("References")] private VulkanMaster _master;
 
     [Group("Resources")]
-    public CommandPool CommandPool { get; set; }
     private CommandPool _graphicsCommandPool;
     private CommandPool _transientCommandPool;
 
@@ -18,7 +16,74 @@ internal unsafe class CommandManager : IDisposable
     {
         Debug.Log("Creating CommandManager" , VALIDATION_LAYERS.INFO);
         _master = master;
+        
+       _graphicsCommandPool = CreateGraphicsCommandPool();
+       _transientCommandPool = CreateTransientCommandPool();
         Debug.Log("CommandManager Created.", VALIDATION_LAYERS.SUCCESS);
+    }
+    
+    public void RecordCommandBuffer(
+        CommandBuffer cmd,
+        Framebuffer framebuffer,
+        RenderPass renderPass,
+        Extent2D extent,
+        Vector4 clearColor,
+        bool hasDepth)
+    {
+        // 1. BEGIN COMMAND BUFFER
+        var beginInfo = new CommandBufferBeginInfo
+        {
+            SType = StructureType.CommandBufferBeginInfo,
+            Flags = CommandBufferUsageFlags.OneTimeSubmitBit
+        };
+
+        if (_master.Vk.BeginCommandBuffer(cmd, &beginInfo) != Result.Success)
+            throw new Exception("Failed to begin command buffer!");
+
+        // 2. SETUP CLEAR VALUES
+        // Allocate array (no stackalloc in loops issue here since it's not in a loop)
+        ClearValue[] clearValuesArray = hasDepth ? new ClearValue[2] : new ClearValue[1];
+        
+        // Color clear value
+        clearValuesArray[0] = new ClearValue
+        {
+            Color = new ClearColorValue(clearColor.X, clearColor.Y, clearColor.Z, clearColor.W)
+        };
+        
+        // Depth clear value if needed
+        if (hasDepth)
+        {
+            clearValuesArray[1] = new ClearValue
+            {
+                DepthStencil = new ClearDepthStencilValue(1.0f, 0) // 1.0f, NOT 0!
+            };
+        }
+
+        // 3. BEGIN RENDER PASS
+        fixed (ClearValue* clearValuesPtr = clearValuesArray)
+        {
+            var renderPassInfo = new RenderPassBeginInfo
+            {
+                SType = StructureType.RenderPassBeginInfo,
+                RenderPass = renderPass,
+                Framebuffer = framebuffer,
+                RenderArea = new Rect2D(new Offset2D(0, 0), extent),
+                ClearValueCount = (uint)clearValuesArray.Length,
+                PClearValues = clearValuesPtr
+            };
+
+            _master.Vk.CmdBeginRenderPass(cmd, &renderPassInfo, SubpassContents.Inline);
+        }
+
+
+        // 5. Debug logging
+        Debug.Log($"Recorded command buffer:");
+        Debug.Log($"  Framebuffer: {framebuffer.Handle:X}");
+        Debug.Log($"  RenderPass: {renderPass.Handle:X}");
+        Debug.Log($"  Extent: {extent.Width}x{extent.Height}");
+        Debug.Log($"  HasDepth: {hasDepth}");
+        Debug.Log($"  Clear values: {clearValuesArray.Length}");
+
     }
     
     
@@ -41,7 +106,23 @@ internal unsafe class CommandManager : IDisposable
 
         return buffers;
     }
+    private CommandPool CreateGraphicsCommandPool()
+    {
+        var indices = _master.VulkanDevice.FindQueueFamilies(_master.VulkanDevice.PhysicalDevice);
 
+        var poolInfo = new CommandPoolCreateInfo
+        {
+            SType = StructureType.CommandPoolCreateInfo,
+            QueueFamilyIndex = indices.GraphicsFamily!.Value,
+            Flags = CommandPoolCreateFlags.ResetCommandBufferBit,
+        };
+        if (_master.Vk.CreateCommandPool(_master.VulkanDevice.Device, in poolInfo, null, out var commandPool) != Result.Success)
+        {
+            throw new Exception("Failed to create command pool!");
+        }
+
+        return commandPool;
+    }
     
     public CommandBuffer AllocateTransientCommandBuffer()
     {
