@@ -9,8 +9,11 @@ internal struct DrawData
     //NOTE: This definitely stays. 
     
     public PipelineData PipelineData;
-    // public IRenderTarget? RenderTarget;
+    public IRenderTarget? RenderTarget;
     
+    public DescriptorSet DescriptorSet;
+    
+    //NOTE: Do I want to keep this?
     // public DescriptorBinding DescriptorBinding;
     
     public GpuBuffer VertexBuffer;
@@ -29,6 +32,10 @@ internal struct DrawData
         VertexBuffer.Dispose();
         IndexBuffer.Dispose();
     }
+}
+
+internal interface IRenderTarget
+{
 }
 
 public struct DrawCommand

@@ -15,6 +15,7 @@ internal unsafe class SwapchainHandler
     private KhrSwapchain _khrSwapchain;
     private KhrSurface _khrSurface;
     private Format _swapchainImageFormat;
+    public Format SwapchainImageFormat => _swapchainImageFormat;
     
     public uint ImageCount;
     private ImageView[] _imageViews;
@@ -25,7 +26,8 @@ internal unsafe class SwapchainHandler
     public Extent2D Extent { get; private set; }
     public Framebuffer[] Framebuffers { get; set; }
     private Image[] SwapchainImages { get; set; }
-    
+
+
     public SwapchainHandler(VulkanMaster master, SurfaceKHR surfaceKhr, KhrSurface khrSurface)
     {
         Debug.Log("Creating SwapchainHandler", VALIDATION_LAYERS.INFO);
@@ -465,6 +467,12 @@ internal unsafe class SwapchainHandler
                 }
             }
         }
+    }
+
+    public void RecreateSwapchain(object renderPass)
+    {
+        
+        
     }
 }
 

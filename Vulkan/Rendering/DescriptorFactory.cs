@@ -45,7 +45,7 @@ internal unsafe class DescriptorFactory: IDisposable
         return new DescriptorSet();
     }
     
-    private void CreateDescriptorSetLayout()
+    public DescriptorSetLayout CreateDescriptorSetLayout()
     {
         var uboLayoutBinding = new DescriptorSetLayoutBinding
         {
@@ -65,6 +65,8 @@ internal unsafe class DescriptorFactory: IDisposable
 
         if (_master.Vk.CreateDescriptorSetLayout(_master.VulkanDevice.Device, &layoutInfo, null, out _descriptorSetLayout) != Result.Success)
             throw new Exception("Failed to create descriptor set layout!");
+
+        return _descriptorSetLayout;
     }
     
     public void CreateDescriptorPool()

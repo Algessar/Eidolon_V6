@@ -2,8 +2,8 @@
 
 public sealed record CompiledResource(
     ResourceHandle Handle,
-    string Name,
     GraphImageDescription Description,
+    string Name,
     bool Imported,
     int FirstUsePass,
     int LastUsePass

@@ -1,4 +1,5 @@
-﻿using Eidolon.Vulkan.Rendering;
+﻿using System.Runtime.InteropServices;
+using Eidolon.Vulkan.Rendering;
 using EidolonCore.Rendering;
 using ImGuiNET;
 using Silk.NET.Maths;
@@ -74,9 +75,13 @@ internal class VulkanMaster : IRenderer
             
             InitializeManagers();
             SetupFrameChain();
+
         };
-        
-        var drawData = new DrawData();
+
+        var drawData = new DrawData
+        {
+
+        };
 
         _window.Render += (double delta) =>
         {
@@ -106,12 +111,12 @@ internal class VulkanMaster : IRenderer
         FrameHandler = new FrameHandler(this, swapchain);
         
         FrameHandler.Initialize();
+        BuildDrawData(swapchain);
         
         if (_initialGraph is not null)
         {
             FrameHandler.SetCompiledGraph(_initialGraph);
         }
-
     }
 
     private void CreateOSWindow()
@@ -126,6 +131,64 @@ internal class VulkanMaster : IRenderer
         };
         
         _window = Window.Create(opts);
+    }
+
+    //NOTE: TEMP
+    private DrawData BuildDrawData(SwapchainHandler swapchain)
+    {
+        //Descriptor
+        
+        var descriptorSet = DescriptorFactory.CreateDescriptorSet();
+        
+        //RenderPass
+        
+        var renderPassKey = new RenderPassKey
+        {
+            ColorFormat = swapchain.SwapchainImageFormat,
+            DepthFormat = Format.D32Sfloat,
+            HasDepth = false,
+            HasAlpha = true,
+            LoadOp = AttachmentLoadOp.Clear,
+            StoreOp = AttachmentStoreOp.Store,
+            InitialLayout = ImageLayout.Undefined,
+            FinalLayout = ImageLayout.PresentSrcKhr,
+            InitialDepthLayout = ImageLayout.Undefined,
+            FinalDepthLayout =  ImageLayout.DepthStencilAttachmentOptimal,
+        };
+        
+        var renderPass = RenderPassFactory.CreateRenderPass(renderPassKey);
+        
+        //Pipeline
+        
+        var pipelineKey = new PipelineKey
+        {
+            VertexShaderPath = "imgui.vert.spv",
+            FragmentShaderPath = "imgui.frag.spv",
+            RenderPass = renderPass,
+            Layout = DescriptorFactory.CreateDescriptorSetLayout(),
+            VertexFormat = new VertexFormat
+            {
+                Stride = (uint)Marshal.SizeOf<Vertex>(),
+                Attributes =
+                [
+                    new VertexAttribute(0, Format.R32G32B32Sfloat, 0),  // Position
+                    new VertexAttribute(1, Format.R32G32B32Sfloat, 12), // Normal
+                    new VertexAttribute(2, Format.R32G32Sfloat, 24)     // UV
+                ]
+            },
+            Topology = PrimitiveTopology.TriangleList,
+            CullMode = CullModeBits.Back,  // Backface culling for 3D
+            FrontFace = FrontFace.CounterClockwise,  // Standard for right-handed coords
+            HasDepth = true,
+            DepthTestEnable = true,   // ✅ Enable depth testing
+            DepthWriteEnable = true,  // ✅ Write to depth buffer
+            EnableBlending = false,   // Usually no blending for opaque geometry
+            BlendState = BlendState.NoBlending,
+        };
+        return new DrawData
+        {
+            
+        };
     }
     
     
