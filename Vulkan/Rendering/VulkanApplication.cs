@@ -1,4 +1,7 @@
 ﻿
+using ImGuiNET;
+using Silk.NET.Input.Glfw;
+
 namespace Eidolon.Vulkan;
 
 internal class VulkanApplication
@@ -7,6 +10,7 @@ internal class VulkanApplication
 	public static void Main()
 	{
 		Debug.Log("VulkanRenderer called");
+		GlfwInput.RegisterPlatform();
 
 		_vulkanMaster = new VulkanMaster();
 	}

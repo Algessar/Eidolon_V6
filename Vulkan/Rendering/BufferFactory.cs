@@ -17,8 +17,6 @@ internal unsafe class BufferFactory
         
         _uniformBuffers = CreateUniformGpuBuffers(Constants.MAX_FRAMES_IN_FLIGHT);
     }
-    
-
 
     public GpuBuffer[] CreateUniformGpuBuffers(uint count)
     {
@@ -83,7 +81,6 @@ internal unsafe class BufferFactory
     //SET FLAGS ETC
     public Framebuffer CreateFramebuffer()
     {
-        
         return new Framebuffer();
     }
     

@@ -72,7 +72,6 @@ internal class VulkanMaster
         };
         
         _window.Run();
-
         
         Debug.Log("Vulkan resources initialized.", VALIDATION_LAYERS.SUCCESS);
     }
@@ -87,7 +86,16 @@ internal class VulkanMaster
         
     }
 
-    public void CreateOSWindow()
+    private void SetupFrameChain()
+    {
+        var swapchain = new SwapchainHandler(this, SurfaceKhr, KhrSurface);
+        
+        var frameHandler = new FrameHandler(this, swapchain);
+        
+        frameHandler.Initialize();
+    }
+
+    private void CreateOSWindow()
     {
         var opts = WindowOptions.DefaultVulkan with
         {
@@ -100,6 +108,7 @@ internal class VulkanMaster
         
         _window = Window.Create(opts);
     }
+
 
 
 }

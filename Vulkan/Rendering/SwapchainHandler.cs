@@ -38,6 +38,44 @@ internal unsafe class SwapchainHandler
         CreateDepthResources();
     }
 
+    public ImageData GetSwapchainColorImageData(uint imageIndex)
+    {
+        if (SwapchainImages is null || _imageViews is null)
+        {
+            throw new Exception("Swapchain images not initialized!");
+        }
+
+        if (imageIndex >= SwapchainImages.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(imageIndex));
+        }
+
+        return new ImageData
+        {
+            Image = SwapchainImages[imageIndex],
+            View = _imageViews[imageIndex],
+            Format = default,
+            Extent = Extent,
+            Memory = default
+        };
+    }
+    
+    public ImageData GetDepthImageData()
+    {
+        
+        if (_depthImage.Handle == 0 || _depthImageView.Handle == 0)
+        {
+            throw new InvalidOperationException("Depth image is not initialized.");
+        }
+
+        return new ImageData
+        {
+            Image = _depthImage,
+            View = _depthImageView,
+            Format = _depthFormat,
+        };
+    }
+
 
     private void CreateImageViews()
     {
@@ -174,8 +212,6 @@ internal unsafe class SwapchainHandler
             _khrSurface.GetPhysicalDeviceSurfacePresentModes(_master.VulkanDevice.PhysicalDevice, _surfaceKhr,
                 ref presentModeCount, pPresentModes);
         }
-        
- 
         
         var surfaceFormat = ChooseSwapSurfaceFormat(surfaceFormats);
         var presentMode = ChooseSwapPresentMode(presentModes);

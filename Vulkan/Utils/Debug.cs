@@ -40,7 +40,6 @@ public static class Debug
         {
             Console.ForegroundColor = ConsoleColor.Yellow;
             Console.WriteLine($"{file}({line})[{member}]: {message}");
-            throw new WarningException("Something went wrong, but it's not fatal.");
         }
 
         if (validation == VALIDATION_LAYERS.ERROR)

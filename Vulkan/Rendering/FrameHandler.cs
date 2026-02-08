@@ -56,7 +56,9 @@ internal unsafe class FrameHandler
         
         _commandBuffer = _master.CommandManager.AllocateCommandBuffers(_imageCount);
         _imageCount = _swapchainHandler.ImageCount;
-        CreateSyncObjects();
+        
+        //NOTE: may be temp?
+        Initialize();
         
         _master.GetWindow.FramebufferResize += OnWindowResize;
         Debug.Log("FrameHandler created.", VALIDATION_LAYERS.SUCCESS);
@@ -113,8 +115,6 @@ internal unsafe class FrameHandler
                 Debug.Log($"[RG]   Deps:   {string.Join(", ", pass.Dependencies)}");
             }
         }
-        
-        
 
         // TODO: transition pass.Reads to shader-read / attachment-read layout
         // TODO: transition pass.Writes to color/depth attachment layout
@@ -130,7 +130,7 @@ internal unsafe class FrameHandler
 
     public void BeginFrame(in DrawData data)
     {
-
+        
     }
 
     public void EndFrame(in DrawData data)
