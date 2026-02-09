@@ -10,7 +10,12 @@ internal unsafe class PipelineFactory
     private static readonly byte[] _mainNameArray = "main\0"u8.ToArray();
     //PipelineKey in, PipelineData out
     private Dictionary<PipelineKey, PipelineData> _cache = new();
-
+    
+    public PipelineFactory(VulkanMaster master)
+    {
+        _master = master;
+    }
+    
 
     //PipelineData is former EidolonPipeline. ShaderData is 
     public PipelineData GetOrCreate(PipelineKey key)
@@ -249,15 +254,15 @@ internal unsafe class PipelineFactory
     }
 }
 
-internal record struct PipelineData
-{
-    public RenderPass RenderPass { get; set; }
-    public Pipeline VkPipeline { get; set; }
-    public PipelineLayout VkLayout { get; set; }
-    public DescriptorSetLayout DescriptorSetLayout { get; set; }
-    
-    public bool HasDepth;
-    
-    public bool IsValid => RenderPass.Handle != 0 && VkPipeline.Handle != 0 && VkLayout.Handle != 0;
-
-}
+// internal record struct PipelineData
+// {
+//     public RenderPass RenderPass { get; set; }
+//     public Pipeline VkPipeline { get; set; }
+//     public PipelineLayout VkLayout { get; set; }
+//     public DescriptorSetLayout DescriptorSetLayout { get; set; }
+//     
+//     public bool HasDepth;
+//     
+//     public bool IsValid => RenderPass.Handle != 0 && VkPipeline.Handle != 0 && VkLayout.Handle != 0;
+//
+// }

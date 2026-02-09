@@ -7,6 +7,8 @@ public class EidolonEditor
 {
     public static void Main()
     {
+        ShaderCompiler.CompileShaders(@"G:\Coding\Eidolon_V6\Vulkan\Rendering\Shaders");
+
         Debug.Log("Starting from EidolonEditor", VALIDATION_LAYERS.INFO);
         var initialGraph = BuildInitialGraph(1920, 1080);
         VulkanHost.Run(initialGraph);

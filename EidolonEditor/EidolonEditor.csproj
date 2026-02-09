@@ -13,4 +13,15 @@
       <ProjectReference Include="..\Vulkan\Vulkan.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <None Include="bin\Debug\net10.0\Rendering\Shaders\basic.frag" />
+      <None Include="bin\Debug\net10.0\Rendering\Shaders\basic.frag.spv" />
+      <None Include="bin\Debug\net10.0\Rendering\Shaders\basic.vert" />
+      <None Include="bin\Debug\net10.0\Rendering\Shaders\basic.vert.spv" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Folder Include="bin\Debug\net10.0\" />
+    </ItemGroup>
+
 </Project>

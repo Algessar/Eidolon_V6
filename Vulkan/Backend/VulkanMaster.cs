@@ -111,11 +111,7 @@ internal class VulkanMaster : IRenderer
         RenderPassFactory = new RenderPassFactory(this);
         CommandManager = new CommandManager(this);
         FrameHandler = new FrameHandler(this);
-
-        if (_initialGraph is not null)
-        {
-            FrameHandler.SetCompiledGraph(_initialGraph);
-        }
+        PipelineFactory = new PipelineFactory(this);
 
         FrameHandler.Initialize();
         
@@ -124,10 +120,7 @@ internal class VulkanMaster : IRenderer
     private void SetupFrameChain()
     {
         var id = ImGui.CreateContext(); //NOTE: Had missed completely that CreateContext() returns an ID.
-        
-        FrameHandler = new FrameHandler(this);
-        
-        FrameHandler.Initialize();
+
         _drawData = BuildDrawData(SwapchainHandler);
         
         if (_initialGraph is not null)
@@ -179,8 +172,8 @@ internal class VulkanMaster : IRenderer
         
         var pipelineKey = new PipelineKey
         {
-            VertexShaderPath = "imgui.vert.spv",
-            FragmentShaderPath = "imgui.frag.spv",
+            VertexShaderPath = "basic.vert.spv",
+            FragmentShaderPath = "basic.frag.spv",
             RenderPass = renderPass,
             Layout = DescriptorFactory.CreateDescriptorSetLayout(),
             VertexFormat = new VertexFormat

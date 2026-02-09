@@ -20,4 +20,8 @@
       <ProjectReference Include="..\EidolonCore\EidolonCore.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+        <None Include="Rendering\Shaders\**\*.*" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+
 </Project>

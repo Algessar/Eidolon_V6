@@ -32,7 +32,7 @@ internal unsafe class ShaderManager
         string shaderDir = Path.Combine(
             AppContext.BaseDirectory,
             "Rendering",
-            "_Shaders");
+            "Shaders");
 
         string shaderPath = Path.Combine(shaderDir, fileName);
 
