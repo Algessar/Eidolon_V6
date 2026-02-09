@@ -7,19 +7,18 @@ using Semaphore = Silk.NET.Vulkan.Semaphore;
 
 namespace Eidolon.Vulkan.Rendering;
 
-internal unsafe class FrameHandler : IFrameContext
+internal unsafe class FrameHandler : IFrameContext, IDisposable
 {
     public VulkanMaster _master { get; }
     private SwapchainHandler _swapchainHandler;
-    private GraphResourceImportMap _resourceImportMap;
-    
     [Header("Resources")]
     private CommandBuffer[] _commandBuffer;
     private Framebuffer[] _framebuffers;
 
-    private CompiledRenderGraph _compiledGraph;
+    private CompiledRenderGraph? _compiledGraph;
+    private readonly GraphResourceImportMap _importMap = new();    
     private readonly Dictionary<uint, GraphImageRuntime> _graphImages = new();
-
+    private readonly Dictionary<uint, CompiledResource> _resourceLookup  = new();
     
     private struct GraphImageRuntime
     {
@@ -34,37 +33,39 @@ internal unsafe class FrameHandler : IFrameContext
 
     [Header("Sync Objects")]
     private uint _imageCount;
-    private Semaphore[] _waitSemaphore;
-    private Semaphore[] _signalSemaphore;
-    private Fence[] _inFlightFences;
+    private Semaphore[] _waitSemaphore = Array.Empty<Semaphore>();
+    private Semaphore[] _signalSemaphore = Array.Empty<Semaphore>();
+    private Fence[] _inFlightFences = Array.Empty<Fence>();
     private Fence[] _imagesInFlight;
+    
+    private uint _currentFrame;
+    private bool _frameActive;
     private uint _currentImageIndex;
+    private bool _useSwapchainForFrame;
     
     private Dictionary<ulong, string> _semaphoreNames = new();
     private Dictionary<ulong, string> _fenceNames = new();
 
     
-    private uint _currentFrame;
     
     public bool _framebufferResized { get; set; }
 
     bool LOG_RENDER_GRAPH = true;
-    
-    //NOTE: TEMP
+
 
     
-    public FrameHandler(VulkanMaster master, SwapchainHandler swapchainHandler)
+    public FrameHandler(VulkanMaster master)
     {
         Debug.Log("Creating FrameHandler", VALIDATION_LAYERS.INFO);
         _master = master;
-        _swapchainHandler = swapchainHandler;
+        _swapchainHandler = master.SwapchainHandler;
         _imageCount = _swapchainHandler.ImageCount;
         
         _commandBuffer = _master.CommandManager.AllocateCommandBuffers(_imageCount);
 
         Initialize();
 
-        _resourceImportMap = new GraphResourceImportMap();
+        _importMap = new GraphResourceImportMap();
         
         _master.GetWindow.FramebufferResize += OnWindowResize;
         Debug.Log("FrameHandler created.", VALIDATION_LAYERS.SUCCESS);
@@ -86,23 +87,61 @@ internal unsafe class FrameHandler : IFrameContext
 
     public void Initialize()
     {
-        // TODO: create per-frame command buffers (_commandBuffer)
-        
-        // TODO: create sync objects (_waitSemaphore, _signalSemaphore, fences if needed)
-        CreateSyncObjects();
-        // TODO: cache image count / framebuffers from swapchain path
-        // TODO: hook resize events if needed (_framebufferResized)
-
-        if (LOG_RENDER_GRAPH)
-        {
-            Debug.Log("FrameHandler.Initialize completed (scaffold).");
-        }
+        // CreateSyncObjects();
+        CreateResources();
+        _currentFrame = 0;
+        _currentImageIndex = 0;
+        Debug.Log("FrameHandler initialized.", VALIDATION_LAYERS.SUCCESS);
     }
 
     public void SetCompiledGraph(CompiledRenderGraph graph)
     {
         _compiledGraph = graph ?? throw new ArgumentNullException(nameof(graph));
+        _resourceLookup.Clear();
+
+        foreach (var resource in graph.Resources)
+        {
+            _resourceLookup[resource.Handle.Handle] = resource;
+            
+            if(!resource.Imported)
+                continue;
+
+            if ((resource.Description.Usage & FlagImageUsage.Present) != 0)
+            {
+                _importMap.Register(resource.Handle, ImportedResourceKind.SwapchainColor);
+            }
+            else if ((resource.Description.Usage & FlagImageUsage.DepthStencilAttachment) != 0)
+            {            
+                _importMap.Register(resource.Handle, ImportedResourceKind.SceneDepth);
+            }
+            
+        }
+        
+        // ConfigureImportedResourceMappings(graph);
     }
+
+    private void ConfigureImportedResourceMappings(CompiledRenderGraph graph)
+    {
+        foreach (var resource in graph.Resources)
+        {
+            if (!resource.Imported)
+            {
+                continue;
+            }
+
+            if ((resource.Description.Usage & FlagImageUsage.Present) != 0)
+            {
+                _importMap.Register(resource.Handle, ImportedResourceKind.SwapchainColor);
+                continue;
+            }
+
+            if ((resource.Description.Usage & FlagImageUsage.DepthStencilAttachment) != 0)
+            {
+                _importMap.Register(resource.Handle, ImportedResourceKind.SceneDepth);
+            }
+        }
+    }
+
     public void Draw(in DrawData data)
     {
         if (_compiledGraph is null)
@@ -110,8 +149,19 @@ internal unsafe class FrameHandler : IFrameContext
             throw new Exception("Draw called without compiled graph.");
         }
         
-        var cmd = _commandBuffer[_currentFrame];
+        BeginFrame(data);
 
+        if (!_frameActive)
+        {
+            return;
+        }
+        
+        EnsureGraphResources(_compiledGraph);
+        
+        var cmd = _commandBuffer[_currentImageIndex];
+       
+        
+        
         foreach (var pass in _compiledGraph.Passes)
         {
             if (LOG_RENDER_GRAPH)
@@ -122,18 +172,39 @@ internal unsafe class FrameHandler : IFrameContext
                 Debug.Log($"[RG]   Deps:   {string.Join(", ", pass.Dependencies)}");
             }
 
-            // _resourceImportMap.TryResolve(_compiledGraph, _swapchainHandler, pass.ExecutionIndex, out var resources);
+            foreach (var writeHandle in pass.Writes)
+            {
+                var resource = _compiledGraph.Resources.FirstOrDefault(r => r.Handle.Handle == writeHandle.Handle);
+                if (resource is null)
+                {
+                    continue;
+                }
+
+                if (_swapchainHandler is null)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    if (_importMap.TryResolve(resource, _swapchainHandler, _currentImageIndex, out var imported))
+                    {
+                        Debug.Log(
+                            $"[RG]   Imported resolved -> {resource.Name}, Image={imported.Image.Handle}, View={imported.View.Handle}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.Log($"[RG]   Imported resolve pending for {resource.Name}: {ex.Message}", VALIDATION_LAYERS.WARNING);
+                }
+                // Example draw path retained for future pass-execute callback usage.
+                if (data.PipelineData.IsValid)
+                {
+                    _master.Vk.CmdBindPipeline(cmd, PipelineBindPoint.Graphics, data.PipelineData.VkPipeline);
+                }
+            }
         }
 
-
-        // TODO: Begin recording pass command scopes.
-        
-        
-        // TODO: Resolve resources for each pass (imported + transient).
-        
-        
-        // TODO: Bind pipeline/descriptors and issue draw calls.
-        
         _master.Vk.CmdBindPipeline(
             cmd,
             PipelineBindPoint.Graphics,
@@ -156,11 +227,20 @@ internal unsafe class FrameHandler : IFrameContext
             1, 
             0, 
             0);
+        
+        EndFrame(data);
     }
 
     public void BeginFrame(in DrawData data)
     {
-        var cmd = _commandBuffer[_currentFrame];
+        _frameActive = false;
+
+        if (!data.PipelineData.IsValid)
+        {
+            throw new InvalidOperationException("BeginFrame called with invalid pipeline data.");
+        }
+
+        var cmd = _commandBuffer[_currentImageIndex];
         
         _master.Vk.WaitForFences(
             _master.VulkanDevice.Device, 
@@ -175,15 +255,10 @@ internal unsafe class FrameHandler : IFrameContext
             default, 
             out var imageIndex);
         
-        if (_imagesInFlight[imageIndex].Handle != 0)
+        fixed (Fence* currentFence = &_inFlightFences[_currentFrame])
         {
-            _master.Vk.WaitForFences(
-                _master.VulkanDevice.Device,
-                1,
-                in _imagesInFlight[imageIndex],
-                true,
-                ulong.MaxValue
-            );
+            _master.Vk.ResetFences(_master.VulkanDevice.Device, 1, currentFence);
+            
         }
         
         _imagesInFlight[imageIndex] = _inFlightFences[_currentFrame];
@@ -200,7 +275,18 @@ internal unsafe class FrameHandler : IFrameContext
         
         var clearColor = new Vector4(0.0f, 0.2f, 0.4f, 1.0f);
         
-        _master.Vk.ResetCommandBuffer(cmd, 0);
+        _master.Vk.ResetCommandBuffer(_commandBuffer[_currentFrame], 0);
+
+        var beginInfo = new CommandBufferBeginInfo
+        {
+            SType = StructureType.CommandBufferBeginInfo,
+            Flags = CommandBufferUsageFlags.OneTimeSubmitBit,
+        };
+
+        if (_master.Vk.BeginCommandBuffer(_commandBuffer[_currentFrame], in beginInfo) != Result.Success)
+        {
+            throw new Exception("Failed to begin command buffer recording.");
+        }
 
         _master.CommandManager.RecordCommandBuffer(
             cmd,
@@ -217,58 +303,52 @@ internal unsafe class FrameHandler : IFrameContext
         var scissor = new Rect2D(new Offset2D(0, 0), _swapchainHandler.Extent);
         _master.Vk.CmdSetScissor(cmd, 0, 1, &scissor);
         Debug.Log($"Current frame end of BeginFrame: {_currentFrame}");
-        // Debug.Log($"Image in flight status end of BeginFrame: {status}");
+        
         if (_currentImageIndex == 0)
         {
             Debug.Log($"CurrentImage: {_currentImageIndex}", VALIDATION_LAYERS.WARNING);
 
         }
+        _frameActive = true;
     }
 
     public void EndFrame(in DrawData data)
     {
-        // TODO: end command buffer recording
-        // TODO: queue submit with wait/signal semaphores
-        // present swapchain image
-        // TODO: handle out-of-date/suboptimage + resize path
-		if (_currentImageIndex > _currentFrame)
-		{
-			Debug.Log($"CurrentImage: {_currentImageIndex}, CurrentFrame: {_currentFrame}", VALIDATION_LAYERS.ERROR);
-
-		}
-        var cmd = _commandBuffer[_currentFrame];
+        
+        if (!_frameActive)
+        {
+            return;
+        }
+        
+        var cmd = _commandBuffer[_currentImageIndex];
         
         _master.Vk.CmdEndRenderPass(cmd);
 
-        if (_master.Vk.EndCommandBuffer(cmd) != Result.Success)
+        if (_master.Vk.EndCommandBuffer(_commandBuffer[_currentFrame]) != Result.Success)
         {
-            throw new Exception("Failed to end command buffer.");
+            throw new Exception("Failed to end command buffer recording.");
         }
 
-		if (data.PipelineData.RenderPass.Handle == 0)
-			throw new Exception("RenderPass not initialized.");
+        if (_useSwapchainForFrame && _master.SwapchainHandler is not null)
+        {
+            _master.SwapchainHandler.QueueSubmit(
+                _commandBuffer[_currentFrame],
+                _waitSemaphore[_currentFrame],
+                _signalSemaphore[_currentFrame],
+                _inFlightFences[_currentFrame]);
 
-        _swapchainHandler.QueueSubmit(cmd,
-            _waitSemaphore[_currentFrame],
-            _signalSemaphore[_currentFrame],
-            _inFlightFences[_currentFrame]
-        );
+            var presentResult = _master.SwapchainHandler.Present(
+                _master.VulkanDevice.PresentQueue,
+                _signalSemaphore[_currentFrame],
+                _currentImageIndex);
 
-		var result = _swapchainHandler.Present(
-			_master.VulkanDevice.GraphicsQueue,  
-			_signalSemaphore[_currentFrame],
-			_currentImageIndex
-		);
-		
-		if (result == Result.ErrorOutOfDateKhr || result == Result.SuboptimalKhr ||
-		    _framebufferResized)
-		{
-			Debug.Log("End of BeginFrame, recreating Swapchain");
-			_framebufferResized = false;
-            //WARNING: Recreate not implemented
-			_swapchainHandler.RecreateSwapchain(data.PipelineData.RenderPass);
-		}
-		_currentFrame = (_currentFrame + 1) % _maxFramesInFlight;
+            if (presentResult != Result.Success && presentResult != Result.SuboptimalKhr)
+            {
+                throw new Exception($"Present failed: {presentResult}");
+            }
+        }
+
+        _currentFrame = (_currentFrame + 1) % _maxFramesInFlight;
         
         if(LOG_RENDER_GRAPH)
         {
@@ -278,7 +358,61 @@ internal unsafe class FrameHandler : IFrameContext
 
     public void CreateResources()
     {
-        throw new NotImplementedException();
+        
+        if (_compiledGraph is null)
+            return;
+
+        EnsureGraphResources(_compiledGraph);
+        
+        _commandBuffer = new CommandBuffer[_maxFramesInFlight];
+        _waitSemaphore = new Semaphore[_maxFramesInFlight];
+        _signalSemaphore = new Semaphore[_maxFramesInFlight];
+        _inFlightFences = new Fence[_maxFramesInFlight];
+
+        fixed (CommandBuffer* commandBufferPtr = _commandBuffer)
+        {
+            var allocInfo = new CommandBufferAllocateInfo
+            {
+                SType = StructureType.CommandBufferAllocateInfo,
+                CommandPool = _master.VulkanDevice.TransientCommandPool,
+                Level = CommandBufferLevel.Primary,
+                CommandBufferCount = _maxFramesInFlight,
+            };
+
+            if (_master.Vk.AllocateCommandBuffers(_master.VulkanDevice.Device, in allocInfo, commandBufferPtr) != Result.Success)
+            {
+                throw new Exception("Failed to allocate frame command buffers.");
+            }
+        }
+        
+        for (var i = 0; i < _maxFramesInFlight; i++)
+        {
+            var semaphoreInfo = new SemaphoreCreateInfo
+            {
+                SType = StructureType.SemaphoreCreateInfo,
+            };
+
+            var fenceInfo = new FenceCreateInfo
+            {
+                SType = StructureType.FenceCreateInfo,
+                Flags = FenceCreateFlags.SignaledBit,
+            };
+
+            if (_master.Vk.CreateSemaphore(_master.VulkanDevice.Device, in semaphoreInfo, null, out _waitSemaphore[i]) != Result.Success)
+            {
+                throw new Exception($"Failed to create wait semaphore {i}.");
+            }
+
+            if (_master.Vk.CreateSemaphore(_master.VulkanDevice.Device, in semaphoreInfo, null, out _signalSemaphore[i]) != Result.Success)
+            {
+                throw new Exception($"Failed to create signal semaphore {i}.");
+            }
+
+            if (_master.Vk.CreateFence(_master.VulkanDevice.Device, in fenceInfo, null, out _inFlightFences[i]) != Result.Success)
+            {
+                throw new Exception($"Failed to create in-flight fence {i}.");
+            }
+        }
     }
 
     private void EnsureGraphResources(CompiledRenderGraph graph)
@@ -305,7 +439,7 @@ internal unsafe class FrameHandler : IFrameContext
                 continue;
             }
             
-            //TODO: allocate vk image + memory + image view based on resource.Description + frame size
+            //TODO: allocate _master.Vk image + memory + image view based on resource.Description + frame size
             _graphImages[resource.Handle.Handle] = new GraphImageRuntime
             {
                 Imported = false
@@ -384,5 +518,11 @@ internal unsafe class FrameHandler : IFrameContext
         }
         
         _graphImages.Clear();
+    }
+
+
+    public void Dispose()
+    {
+
     }
 }

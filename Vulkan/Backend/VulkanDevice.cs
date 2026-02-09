@@ -24,8 +24,10 @@ internal unsafe class VulkanDevice : IDisposable
     public Queue PresentQueue  => _presentQueue;
     
     private CommandPool _transientCommandPool;
+    public CommandPool TransientCommandPool => _transientCommandPool;
     
     public uint GraphicsQueueFamily { get; set; }
+    private PhysicalDeviceMemoryProperties  _memoryProperties;
 
     public VulkanDevice(VulkanMaster master)
     {
@@ -35,6 +37,8 @@ internal unsafe class VulkanDevice : IDisposable
 	    
 	    PickPhysicalDevice();
 	    CreateLogicalDevice();
+	    _master.Vk.GetPhysicalDeviceMemoryProperties(PhysicalDevice, out  _memoryProperties);
+
 		CreateTransientCommandPool(GraphicsQueueFamily);
 	    
 	    Debug.Log("Device successfully created!", VALIDATION_LAYERS.SUCCESS);
@@ -104,7 +108,7 @@ internal unsafe class VulkanDevice : IDisposable
 	    // Check if any queue family supports presentation to our surface
 	    for (uint i = 0; i < queueFamilies.Length; i++)
 	    {
-		    if (_master.Surfaces.KhrSurface.GetPhysicalDeviceSurfaceSupport(device, i, _master.SurfaceKhr, out var supported) == Result.Success && supported)
+		    if (_master.KhrSurface.GetPhysicalDeviceSurfaceSupport(device, i, _master.SurfaceKhr, out var supported) == Result.Success && supported)
 		    {
 			    return true;
 		    }
@@ -234,6 +238,7 @@ internal unsafe class VulkanDevice : IDisposable
 				if (supported && hasFlags)
 					return i;
 			}
+			_memoryProperties = memoryProperties;
 
 			throw new Exception("Failed to find suitable memory type.");
 		}
