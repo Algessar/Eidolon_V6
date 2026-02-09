@@ -41,7 +41,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     private uint _currentFrame;
     private bool _frameActive;
     private uint _currentImageIndex;
-    private bool _useSwapchainForFrame;
+    private bool _useSwapchainForFrame = true;
     
     private Dictionary<ulong, string> _semaphoreNames = new();
     private Dictionary<ulong, string> _fenceNames = new();
@@ -62,10 +62,10 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         _imageCount = _swapchainHandler.ImageCount;
         
         _commandBuffer = _master.CommandManager.AllocateCommandBuffers(_imageCount);
-
         Initialize();
 
         _importMap = new GraphResourceImportMap();
+
         
         _master.GetWindow.FramebufferResize += OnWindowResize;
         Debug.Log("FrameHandler created.", VALIDATION_LAYERS.SUCCESS);
@@ -87,11 +87,11 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
     public void Initialize()
     {
-        // CreateSyncObjects();
-        CreateResources();
+        CreateSyncObjects();
+        // CreateResources();
         _currentFrame = 0;
         _currentImageIndex = 0;
-        Debug.Log("FrameHandler initialized.", VALIDATION_LAYERS.SUCCESS);
+
     }
 
     public void SetCompiledGraph(CompiledRenderGraph graph)
@@ -255,6 +255,19 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             default, 
             out var imageIndex);
         
+        
+        if (result is Result.ErrorOutOfDateKhr or Result.SuboptimalKhr)
+        {
+            Debug.Log($"RecreateSwapchain called, Error out of Date/Suboptimal: {result}");
+            return;
+        }
+        
+        if (imageIndex >= _imagesInFlight.Length)
+        {
+            throw new IndexOutOfRangeException(
+                $"AcquireNextImage returned image index {imageIndex}, but images-in-flight size is {_imagesInFlight.Length}.");
+        }
+        
         fixed (Fence* currentFence = &_inFlightFences[_currentFrame])
         {
             _master.Vk.ResetFences(_master.VulkanDevice.Device, 1, currentFence);
@@ -264,12 +277,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         _imagesInFlight[imageIndex] = _inFlightFences[_currentFrame];
         
         _master.Vk.ResetFences(_master.VulkanDevice.Device, 1, _inFlightFences);
-        
-        if (result is Result.ErrorOutOfDateKhr or Result.SuboptimalKhr)
-        {
-            Debug.Log($"RecreateSwapchain called, Error out of Date/Suboptimal: {result}");
-            return;
-        }
+
         
         _currentImageIndex = imageIndex;
         
@@ -282,12 +290,11 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             SType = StructureType.CommandBufferBeginInfo,
             Flags = CommandBufferUsageFlags.OneTimeSubmitBit,
         };
+        
+        _master.Vk.EndCommandBuffer(_commandBuffer[_currentFrame]);
 
-        if (_master.Vk.BeginCommandBuffer(_commandBuffer[_currentFrame], in beginInfo) != Result.Success)
-        {
-            throw new Exception("Failed to begin command buffer recording.");
-        }
-
+        
+        //NOTE: RecordCommandBuffer calls Vk.BeginCommandBuffer
         _master.CommandManager.RecordCommandBuffer(
             cmd,
             _swapchainHandler.Framebuffers[_currentImageIndex],
@@ -320,16 +327,23 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             return;
         }
         
+        
+        
         var cmd = _commandBuffer[_currentImageIndex];
         
+        // END RENDER PASS
         _master.Vk.CmdEndRenderPass(cmd);
 
+        
+        //END COMMAND BUFFER
         if (_master.Vk.EndCommandBuffer(_commandBuffer[_currentFrame]) != Result.Success)
         {
             throw new Exception("Failed to end command buffer recording.");
         }
 
-        if (_useSwapchainForFrame && _master.SwapchainHandler is not null)
+        
+        //QUEUE SUBMIT
+        if (_useSwapchainForFrame)
         {
             _master.SwapchainHandler.QueueSubmit(
                 _commandBuffer[_currentFrame],
@@ -450,12 +464,12 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     private void CreateSyncObjects()
     {
         _inFlightFences = new Fence[_maxFramesInFlight];
-        _imagesInFlight = new Fence[_imageCount];
+        _imagesInFlight = new Fence[_maxFramesInFlight];
 
-        _waitSemaphore = new Semaphore[_imageCount]; //NOTE: waitSemaphore
-        _signalSemaphore = new Semaphore[_imageCount]; //NOTE: SignalSemaphore
+        _waitSemaphore = new Semaphore[_maxFramesInFlight]; //NOTE: waitSemaphore
+        _signalSemaphore = new Semaphore[_maxFramesInFlight]; //NOTE: SignalSemaphore
 
-        for (int i = 0; i < _imageCount; i++)
+        for (int i = 0; i < _maxFramesInFlight; i++)
         {
             _waitSemaphore[i] = CreateSemaphore($"WaitSemaphore {i}");
             _signalSemaphore[i] = CreateSemaphore($"SignalSemaphore {i}");

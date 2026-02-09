@@ -55,23 +55,9 @@ internal class VulkanMaster : IRenderer
         
         //NOTE: Window creation should probably not be done here in the end?
         CreateOSWindow();
-
-        if (_window == null)
-        {
-            Debug.Log("Window is null.", VALIDATION_LAYERS.ERROR);
-        }
         
         _window.Load += () =>
         {
-            VulkanInstance = new VulkanInstance(this, _window);
-            
-            KhrSurface = VulkanInstance.KhrSurface;
-            SurfaceKhr = VulkanInstance.SurfaceKhr;
-
-            VulkanDevice = new VulkanDevice(this);
-            
-            SwapchainHandler = new SwapchainHandler(this, SurfaceKhr, KhrSurface);
-            
             InitializeManagers();
             SetupFrameChain();
 
@@ -85,17 +71,11 @@ internal class VulkanMaster : IRenderer
                 return;
             }
 
-            try
-            {
-                // var drawData = default(DrawData);
-                FrameHandler.BeginFrame(in _drawData);
-                FrameHandler.Draw(in _drawData);
-                FrameHandler.EndFrame(in _drawData);
-            }
-            catch (Exception ex)
-            {
-                Debug.Log($"Frame loop error: {ex.Message}", VALIDATION_LAYERS.ERROR);
-            }
+            FrameHandler.BeginFrame(in _drawData);
+            FrameHandler.Draw(in _drawData);
+            FrameHandler.EndFrame(in _drawData);
+            
+
         };
         
         _window.Run();
@@ -105,6 +85,15 @@ internal class VulkanMaster : IRenderer
 
     public void InitializeManagers()
     {
+        VulkanInstance = new VulkanInstance(this, _window);
+            
+        KhrSurface = VulkanInstance.KhrSurface;
+        SurfaceKhr = VulkanInstance.SurfaceKhr;
+
+        VulkanDevice = new VulkanDevice(this);
+            
+        SwapchainHandler = new SwapchainHandler(this, SurfaceKhr, KhrSurface);
+        
         ShaderManager = new ShaderManager(this);
         BufferFactory = new BufferFactory(this);
         DescriptorFactory = new DescriptorFactory(this);
@@ -189,22 +178,20 @@ internal class VulkanMaster : IRenderer
             Topology = PrimitiveTopology.TriangleList,
             CullMode = CullModeBits.Back,  // Backface culling for 3D
             FrontFace = FrontFace.CounterClockwise,  // Standard for right-handed coords
-            HasDepth = true,
-            DepthTestEnable = true,   // ✅ Enable depth testing
-            DepthWriteEnable = true,  // ✅ Write to depth buffer
+            HasDepth = false,
+            DepthTestEnable = false,
+            DepthWriteEnable = false,
             EnableBlending = false,   // Usually no blending for opaque geometry
             BlendState = BlendState.NoBlending,
         };
-        
         var pipelineData = PipelineFactory.GetOrCreate(pipelineKey);
+        swapchain.CreateFramebuffers(pipelineData.RenderPass, pipelineData.HasDepth);
         
         return new DrawData
         {
             PipelineData = pipelineData,
             DescriptorSet = descriptorSet,
             ModelMatrix = Matrix4x4.Identity,
-            
-            
         };
     }
     
@@ -214,6 +201,7 @@ internal class VulkanMaster : IRenderer
         Vk.Dispose();
         VulkanDevice.Dispose();
         DescriptorFactory.Dispose();
+        PipelineFactory.Dispose();
         CommandManager.Dispose();
     }
 }
