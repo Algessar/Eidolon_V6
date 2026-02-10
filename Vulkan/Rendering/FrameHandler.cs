@@ -328,8 +328,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         // Acquire next image
         var acquireResult = _swapchainHandler.AcquireNextImage(
-            _waitSemaphore[_currentImageIndex],
-            default, 
+            _waitSemaphore[_currentFrame], 
+            default,
             out uint imageIndex);
 
         if (acquireResult != Result.Success && acquireResult != Result.SuboptimalKhr)
@@ -355,10 +355,16 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 ulong.MaxValue);
         }
         
-        _imagesInFlight[_currentImageIndex] = _inFlightFences[_currentFrame];
+        _imagesInFlight[imageIndex] = _inFlightFences[_currentFrame];
    
         _currentImageIndex = imageIndex;
         
+        
+        fixed (Fence* frameFence = &_inFlightFences[_currentFrame])
+        {
+            vk.ResetFences(device, 1, frameFence);
+        }
+
         var cmd = _commandBuffer[_currentFrame];
         var clearColor = new Vector4(0.0f, 0.2f, 0.4f, 1.0f);
         vk.ResetCommandBuffer(cmd, 0);
@@ -609,10 +615,10 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         for (int i = 0; i < _maxFramesInFlight; i++)
         {
             _inFlightFences[i] = CreateFence($"InFlightFence {i}");
-            _imagesInFlight[i] = CreateFence($"ImagesInFlightFence {i}");
+            // _imagesInFlight[i] = CreateFence($"ImagesInFlightFence {i}");
 
             Debug.Log($"In Flight Fences handles : {_inFlightFences[i].Handle}", VALIDATION_LAYERS.INFO);
-            Debug.Log($"Images In Flight Fences handles : {_imagesInFlight[i].Handle}", VALIDATION_LAYERS.INFO);
+            // Debug.Log($"Images In Flight Fences handles : {_imagesInFlight[i].Handle}", VALIDATION_LAYERS.INFO);
         }
         
         Debug.Log($"Created {_imageCount} semaphores and {_maxFramesInFlight} fences", VALIDATION_LAYERS.SUCCESS);
