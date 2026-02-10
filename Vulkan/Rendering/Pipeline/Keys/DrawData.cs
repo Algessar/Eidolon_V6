@@ -11,7 +11,7 @@ internal struct DrawData
     public PipelineData PipelineData;
     public IRenderTarget? RenderTarget;
     
-    public DescriptorSet DescriptorSet;
+    // public DescriptorSet DescriptorSet;
     
     //NOTE: Do I want to keep this?
     // public DescriptorBinding DescriptorBinding;

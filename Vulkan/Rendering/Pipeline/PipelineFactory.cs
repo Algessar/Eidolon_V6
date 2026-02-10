@@ -8,16 +8,13 @@ internal unsafe class PipelineFactory
     VulkanMaster _master;
     
     private static readonly byte[] _mainNameArray = "main\0"u8.ToArray();
-    //PipelineKey in, PipelineData out
-    private Dictionary<PipelineKey, PipelineData> _cache = new();
+    private readonly Dictionary<PipelineKey, PipelineData> _cache = new();
     
     public PipelineFactory(VulkanMaster master)
     {
         _master = master;
     }
-    
 
-    //PipelineData is former EidolonPipeline. ShaderData is 
     public PipelineData GetOrCreate(PipelineKey key)
     {
         if (_cache.TryGetValue(key, out var existing))
@@ -211,7 +208,7 @@ internal unsafe class PipelineFactory
             };
             
             if (_master.Vk.CreateGraphicsPipelines(_master.VulkanDevice.Device, default, 1, in pipelineInfo, null,
-                    out Silk.NET.Vulkan.Pipeline vkPipeline) != Result.Success)
+                    out Pipeline vkPipeline) != Result.Success)
                 throw new Exception("Failed to create graphics pipeline!");
 
             var result = new PipelineData

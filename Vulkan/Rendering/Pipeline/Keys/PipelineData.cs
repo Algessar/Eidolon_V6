@@ -9,7 +9,7 @@ namespace Eidolon.Vulkan;
 internal record struct PipelineData
 {
     public RenderPass RenderPass { get; set; }
-    public Silk.NET.Vulkan.Pipeline VkPipeline { get; set; }
+    public Pipeline VkPipeline { get; set; }
     public PipelineLayout VkLayout { get; set; }
     public DescriptorSetLayout DescriptorSetLayout { get; set; }
     

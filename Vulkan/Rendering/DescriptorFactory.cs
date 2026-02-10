@@ -11,6 +11,8 @@ internal unsafe class DescriptorFactory: IDisposable
     private GpuBuffer[]  _uniformGpuBuffers = Array.Empty<GpuBuffer>() ;
     private DescriptorSetLayout _descriptorSetLayout;
     DescriptorSet[] _descriptorSets = Array.Empty<DescriptorSet>();
+    
+    public DescriptorSetLayout Layout => _descriptorSetLayout; 
 
     public DescriptorFactory(VulkanMaster master)
     {
@@ -24,26 +26,31 @@ internal unsafe class DescriptorFactory: IDisposable
         Debug.Log("DescriptorFactory created!", VALIDATION_LAYERS.SUCCESS);
     }
     
-    public DescriptorSet CreateDescriptorSet()
+    public DescriptorSet GetDescriptorSet(uint frameIndex)
     {
-        var layouts = new DescriptorSetLayout[Constants.MAX_FRAMES_IN_FLIGHT];
-        Array.Fill(layouts, _descriptorSetLayout);
-        fixed (DescriptorSetLayout* layoutsPtr = layouts)
-        {
-            var allocInfo = new DescriptorSetAllocateInfo
-            {
-                SType = StructureType.DescriptorSetAllocateInfo,
-                DescriptorPool = _descriptorPool,
-                DescriptorSetCount = Constants.MAX_FRAMES_IN_FLIGHT,
-                PSetLayouts = layoutsPtr
-            };
-
-            _descriptorSets = new DescriptorSet[Constants.MAX_FRAMES_IN_FLIGHT];
-            if (_master.Vk.AllocateDescriptorSets(_master.VulkanDevice.Device, &allocInfo, _descriptorSets) != Result.Success)
-                throw new Exception("Failed to allocate descriptor sets!");
-        }
-        return new DescriptorSet();
+        return _descriptorSets[frameIndex];
     }
+    
+    // public DescriptorSet CreateDescriptorSet()
+    // {
+    //     var layouts = new DescriptorSetLayout[Constants.MAX_FRAMES_IN_FLIGHT];
+    //     Array.Fill(layouts, _descriptorSetLayout);
+    //     fixed (DescriptorSetLayout* layoutsPtr = layouts)
+    //     {
+    //         var allocInfo = new DescriptorSetAllocateInfo
+    //         {
+    //             SType = StructureType.DescriptorSetAllocateInfo,
+    //             DescriptorPool = _descriptorPool,
+    //             DescriptorSetCount = Constants.MAX_FRAMES_IN_FLIGHT,
+    //             PSetLayouts = layoutsPtr
+    //         };
+    //
+    //         _descriptorSets = new DescriptorSet[Constants.MAX_FRAMES_IN_FLIGHT];
+    //         if (_master.Vk.AllocateDescriptorSets(_master.VulkanDevice.Device, &allocInfo, _descriptorSets) != Result.Success)
+    //             throw new Exception("Failed to allocate descriptor sets!");
+    //     }
+    //     return new DescriptorSet();
+    // }
     
     public DescriptorSetLayout CreateDescriptorSetLayout()
     {
@@ -102,10 +109,9 @@ internal unsafe class DescriptorFactory: IDisposable
             throw new Exception("Failed to create descriptor pool!");
         }
     }
-    private void CreateDescriptorSets() //NOTE: Allocates to buffers
+    private void CreateDescriptorSets()
     {
-        // Create an array of layouts (same layout for all frames)
-        //NOTE: Why would GpuBuffers matter here?
+
         _uniformGpuBuffers = _master.BufferFactory.CreateUniformGpuBuffers(Constants.MAX_FRAMES_IN_FLIGHT);
         
         if ( _uniformGpuBuffers.Any(b => !b.IsValid))
@@ -129,7 +135,36 @@ internal unsafe class DescriptorFactory: IDisposable
             _descriptorSets = new DescriptorSet[Constants.MAX_FRAMES_IN_FLIGHT];
             if (_master.Vk.AllocateDescriptorSets(_master.VulkanDevice.Device, &allocInfo, _descriptorSets) != Result.Success)
                 throw new Exception("Failed to allocate descriptor sets!");
+            
+            for (int i = 0; i < Constants.MAX_FRAMES_IN_FLIGHT; i++)
+            {
+                var bufferInfo = new DescriptorBufferInfo
+                {
+                    Buffer = _uniformGpuBuffers[i].Buffer,
+                    Offset = 0,
+                    Range = _uniformGpuBuffers[i].Size
+                };
+
+                var write = new WriteDescriptorSet
+                {
+                    SType = StructureType.WriteDescriptorSet,
+                    DstSet = _descriptorSets[i],
+                    DstBinding = 0,
+                    DstArrayElement = 0,
+                    DescriptorType = DescriptorType.UniformBuffer,
+                    DescriptorCount = 1,
+                    PBufferInfo = &bufferInfo
+                };
+
+                _master.Vk.UpdateDescriptorSets(
+                    _master.VulkanDevice.Device,
+                    1,
+                    &write,
+                    0,
+                    null);
+            }
         }
+        
     }
 
     public void Dispose()

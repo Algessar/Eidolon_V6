@@ -71,9 +71,9 @@ internal class VulkanMaster : IRenderer
                 return;
             }
 
-            FrameHandler.BeginFrame(in _drawData);
+            // FrameHandler.BeginFrame(in _drawData);
             FrameHandler.Draw(in _drawData);
-            FrameHandler.EndFrame(in _drawData);
+            // FrameHandler.EndFrame(in _drawData);
             
 
         };
@@ -136,8 +136,8 @@ internal class VulkanMaster : IRenderer
     private DrawData BuildDrawData(SwapchainHandler swapchain)
     {
         //Descriptor
-        
-        var descriptorSet = DescriptorFactory.CreateDescriptorSet();
+
+        var layout = DescriptorFactory.Layout;
         
         //RenderPass
         
@@ -164,7 +164,7 @@ internal class VulkanMaster : IRenderer
             VertexShaderPath = "basic.vert.spv",
             FragmentShaderPath = "basic.frag.spv",
             RenderPass = renderPass,
-            Layout = DescriptorFactory.CreateDescriptorSetLayout(),
+            Layout = layout,
             VertexFormat = new VertexFormat
             {
                 Stride = (uint)Marshal.SizeOf<Vertex>(),
@@ -190,7 +190,6 @@ internal class VulkanMaster : IRenderer
         return new DrawData
         {
             PipelineData = pipelineData,
-            DescriptorSet = descriptorSet,
             ModelMatrix = Matrix4x4.Identity,
         };
     }

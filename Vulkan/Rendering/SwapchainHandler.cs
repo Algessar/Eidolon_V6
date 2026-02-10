@@ -387,7 +387,7 @@ internal unsafe class SwapchainHandler
             throw new Exception("Failed to submit command buffer.");
     }
 
-    public Result Present(Queue deviceManagerGraphicsQueue, Semaphore signalSemaphore, uint currentImageIndex)
+    public Result Present( Semaphore signalSemaphore, uint currentImageIndex)
     {
         var swap = _swapchainKhr;
 
@@ -401,7 +401,7 @@ internal unsafe class SwapchainHandler
             PImageIndices = &currentImageIndex
         };
 
-        return _khrSwapchain.QueuePresent(deviceManagerGraphicsQueue, &presentInfo);
+        return _khrSwapchain.QueuePresent(_master.VulkanDevice.PresentQueue, &presentInfo);
     
     }
 

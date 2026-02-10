@@ -22,7 +22,7 @@ internal unsafe class CommandManager : IDisposable
         Debug.Log("CommandManager Created.", VALIDATION_LAYERS.SUCCESS);
     }
     
-    public void RecordCommandBuffer(
+    public Result RecordCommandBuffer(
         CommandBuffer cmd,
         Framebuffer framebuffer,
         RenderPass renderPass,
@@ -36,12 +36,15 @@ internal unsafe class CommandManager : IDisposable
             SType = StructureType.CommandBufferBeginInfo,
             Flags = CommandBufferUsageFlags.OneTimeSubmitBit
         };
-
-        if (_master.Vk.BeginCommandBuffer(cmd, &beginInfo) != Result.Success)
-            throw new Exception("Failed to begin command buffer!");
+        
+        var result = _master.Vk.BeginCommandBuffer(cmd, &beginInfo);
+        if (result != Result.Success)
+        {
+            Debug.Log("Failed to begin command buffer!", VALIDATION_LAYERS.WARNING);
+            return result;
+        }
 
         // 2. SETUP CLEAR VALUES
-        // Allocate array (no stackalloc in loops issue here since it's not in a loop)
         ClearValue[] clearValuesArray = hasDepth ? new ClearValue[2] : new ClearValue[1];
         
         // Color clear value
@@ -55,7 +58,7 @@ internal unsafe class CommandManager : IDisposable
         {
             clearValuesArray[1] = new ClearValue
             {
-                DepthStencil = new ClearDepthStencilValue(1.0f, 0) // 1.0f, NOT 0!
+                DepthStencil = new ClearDepthStencilValue(1.0f, 0)
             };
         }
 
@@ -83,6 +86,7 @@ internal unsafe class CommandManager : IDisposable
         Debug.Log($"  Extent: {extent.Width}x{extent.Height}");
         Debug.Log($"  HasDepth: {hasDepth}");
         Debug.Log($"  Clear values: {clearValuesArray.Length}");
+        return result;
 
     }
     

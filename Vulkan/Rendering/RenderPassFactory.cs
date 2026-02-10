@@ -9,7 +9,7 @@ internal unsafe class RenderPassFactory(VulkanMaster master)
     private readonly Dictionary<RenderPassKey, RenderPass> _renderPassCache = new();
     
 
-public RenderPass CreateRenderPass(RenderPassKey key)
+    public RenderPass CreateRenderPass(RenderPassKey key)
     {
         if (_renderPassCache.TryGetValue(key, out var existing))
         {
