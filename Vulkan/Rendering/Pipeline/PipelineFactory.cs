@@ -59,12 +59,13 @@ internal unsafe class PipelineFactory
             //     Module = cs.Module,
             //     PName = pMain
             // };
-
-            var attributeDescriptions = stackalloc VertexInputAttributeDescription[ key.VertexFormat.Attributes.Length ];
-            for (int i = 0; i < key.VertexFormat.Attributes.Length; i++)
+            
+            var vertexAttributeCount = (uint)(key.VertexFormat.Attributes?.Length ?? 0);
+            var attributeScratchCount = vertexAttributeCount > 0 ? (int)vertexAttributeCount : 1;
+            var attributeDescriptions = stackalloc VertexInputAttributeDescription[attributeScratchCount];
+            for (var i = 0; i < vertexAttributeCount; i++)
             {
-                var attr =  key.VertexFormat.Attributes[i];
-
+                var attr = key.VertexFormat.Attributes[i];
                 attributeDescriptions[i] = new VertexInputAttributeDescription
                 {
                     Location = attr.Location,
@@ -73,6 +74,24 @@ internal unsafe class PipelineFactory
                     Offset = attr.Offset,
                 };
             }
+ 
+            // var attributeDescriptions = stackalloc VertexInputAttributeDescription[ key.VertexFormat.Attributes.Length ];
+            // for (int i = 0; i < key.VertexFormat.Attributes.Length; i++)
+            // {
+            //     var attr =  key.VertexFormat.Attributes[i];
+            //
+            //     attributeDescriptions[i] = new VertexInputAttributeDescription
+            //     {
+            //         Location = attr.Location,
+            //         Binding = 0,
+            //         Format = attr.Format,
+            //         Offset = attr.Offset,
+            //     };
+            // }
+            VertexInputAttributeDescription* attributeDescriptionsPtr = vertexAttributeCount > 0
+                ? attributeDescriptions
+                : null;
+
   
             var bindingDescription = new VertexInputBindingDescription
             {
@@ -81,13 +100,18 @@ internal unsafe class PipelineFactory
                 InputRate = VertexInputRate.Vertex
             };
             
+            VertexInputBindingDescription* bindingDescriptionPtr = vertexAttributeCount > 0
+                ? &bindingDescription
+                : null;
+
+            
             var vertexInputInfo = new PipelineVertexInputStateCreateInfo
             {
                 SType = StructureType.PipelineVertexInputStateCreateInfo,
-                VertexBindingDescriptionCount = 1,
-                PVertexBindingDescriptions = &bindingDescription,
-                VertexAttributeDescriptionCount = 3,
-                PVertexAttributeDescriptions = attributeDescriptions
+                VertexBindingDescriptionCount = vertexAttributeCount > 0 ? 1u : 0u,
+                PVertexBindingDescriptions = bindingDescriptionPtr,
+                VertexAttributeDescriptionCount = vertexAttributeCount,
+                PVertexAttributeDescriptions = attributeDescriptionsPtr
             };
 #endregion
             var rasterizer = new PipelineRasterizationStateCreateInfo

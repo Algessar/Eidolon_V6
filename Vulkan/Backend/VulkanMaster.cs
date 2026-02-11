@@ -167,13 +167,15 @@ internal class VulkanMaster : IRenderer
             Layout = layout,
             VertexFormat = new VertexFormat
             {
-                Stride = (uint)Marshal.SizeOf<Vertex>(),
-                Attributes =
-                [
-                    new VertexAttribute(0, Format.R32G32B32Sfloat, 0),  // Position
-                    new VertexAttribute(1, Format.R32G32B32Sfloat, 12), // Normal
-                    new VertexAttribute(2, Format.R32G32Sfloat, 24)     // UV
-                ]
+                Stride = 0,
+                Attributes = Array.Empty<VertexAttribute>()
+            //     Stride = (uint)Marshal.SizeOf<Vertex>(),
+            //     Attributes =
+            //     [
+            //         new VertexAttribute(0, Format.R32G32B32Sfloat, 0),  // Position
+            //         new VertexAttribute(1, Format.R32G32B32Sfloat, 12), // Normal
+            //         new VertexAttribute(2, Format.R32G32Sfloat, 24)     // UV
+            //     ]
             },
             Topology = PrimitiveTopology.TriangleList,
             CullMode = CullModeBits.Back,  // Backface culling for 3D
