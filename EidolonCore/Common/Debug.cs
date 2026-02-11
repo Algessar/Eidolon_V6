@@ -23,10 +23,13 @@ public static class Debug
     }
     
     public static void Log(string message, VALIDATION_LAYERS validation,
+        bool shouldLog = true,
         [CallerFilePath] string file = "",
         [CallerLineNumber] int line = 0,
-        [CallerMemberName] string member = ""  )
+        [CallerMemberName] string member = "" )
     {
+        if (!shouldLog) return;
+        
         if (validation == VALIDATION_LAYERS.SUCCESS)
         {
             Console.ForegroundColor = ConsoleColor.Green;

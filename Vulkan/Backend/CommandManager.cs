@@ -80,12 +80,12 @@ internal unsafe class CommandManager : IDisposable
 
 
         // 5. Debug logging
-        Debug.Log($"Recorded command buffer:");
-        Debug.Log($"  Framebuffer: {framebuffer.Handle:X}");
-        Debug.Log($"  RenderPass: {renderPass.Handle:X}");
-        Debug.Log($"  Extent: {extent.Width}x{extent.Height}");
-        Debug.Log($"  HasDepth: {hasDepth}");
-        Debug.Log($"  Clear values: {clearValuesArray.Length}");
+        Debug.Log($"Recorded command buffer:"
+                  + $"  Framebuffer: {framebuffer.Handle:X}" 
+                  + $"  RenderPass: {renderPass.Handle:X}"
+                  + $"  Extent: {extent.Width}x{extent.Height}"
+                  + $"  HasDepth: {hasDepth}"
+                  + $"  Clear values: {clearValuesArray.Length}", VALIDATION_LAYERS.INFO, false);
         return result;
 
     }

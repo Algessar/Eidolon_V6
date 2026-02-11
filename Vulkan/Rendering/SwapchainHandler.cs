@@ -425,7 +425,8 @@ internal unsafe class SwapchainHandler
 
         for (int i = 0; i < _imageViews.Length; i++)
         {
-            Debug.Log($"Image view handles: {_imageViews}");
+            Debug.Log($"Image view handle[{i}]: {_imageViews[i].Handle}");
+            
         }
 
         ImageView[] attachmentsArray;
@@ -469,10 +470,74 @@ internal unsafe class SwapchainHandler
         }
     }
 
-    public void RecreateSwapchain(object renderPass)
+    public void RecreateSwapchain(RenderPass renderPass, bool renderPassHasDepth)
     {
         
         
+        while (_window.FramebufferSize.X == 0 || _window.FramebufferSize.Y == 0)
+        {
+            Thread.Sleep(16);
+        }
+
+        _master.Vk.DeviceWaitIdle(_master.VulkanDevice.Device);
+
+        CleanupSwapchainResources();
+
+        CreateSwapchain();
+        CreateImageViews();
+        CreateDepthResources();
+        CreateFramebuffers(renderPass, renderPassHasDepth);
+    }
+
+    private void CleanupSwapchainResources()
+    {
+        if (Framebuffers is { Length: > 0 })
+        {
+            foreach (var framebuffer in Framebuffers)
+            {
+                if (framebuffer.Handle != 0)
+                {
+                    _master.Vk.DestroyFramebuffer(_master.VulkanDevice.Device, framebuffer, null);
+                }
+            }
+            Framebuffers = Array.Empty<Framebuffer>();
+        }
+
+        if (_imageViews is { Length: > 0 })
+        {
+            foreach (var imageView in _imageViews)
+            {
+                if (imageView.Handle != 0)
+                {
+                    _master.Vk.DestroyImageView(_master.VulkanDevice.Device, imageView, null);
+                }
+            }
+            _imageViews = Array.Empty<ImageView>();
+        }
+
+        if (_depthImageView.Handle != 0)
+        {
+            _master.Vk.DestroyImageView(_master.VulkanDevice.Device, _depthImageView, null);
+            _depthImageView = default;
+        }
+
+        if (_depthImage.Handle != 0)
+        {
+            _master.Vk.DestroyImage(_master.VulkanDevice.Device, _depthImage, null);
+            _depthImage = default;
+        }
+
+        if (_depthImageMemory.Handle != 0)
+        {
+            _master.Vk.FreeMemory(_master.VulkanDevice.Device, _depthImageMemory, null);
+            _depthImageMemory = default;
+        }
+
+        if (_swapchainKhr.Handle != 0)
+        {
+            _khrSwapchain.DestroySwapchain(_master.VulkanDevice.Device, _swapchainKhr, null);
+            _swapchainKhr = default;
+        }
     }
 }
 
