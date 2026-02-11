@@ -178,8 +178,9 @@ internal class VulkanMaster : IRenderer
             //     ]
             },
             Topology = PrimitiveTopology.TriangleList,
-            CullMode = CullModeBits.Back,  // Backface culling for 3D
-            FrontFace = FrontFace.CounterClockwise,  // Standard for right-handed coords
+            // Keep triangle visible regardless of clip-space winding during fallback path.
+            CullMode = CullModeBits.None,
+            FrontFace = FrontFace.CounterClockwise,
             HasDepth = false,
             DepthTestEnable = false,
             DepthWriteEnable = false,

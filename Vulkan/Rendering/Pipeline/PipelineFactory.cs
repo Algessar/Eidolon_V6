@@ -74,25 +74,11 @@ internal unsafe class PipelineFactory
                     Offset = attr.Offset,
                 };
             }
- 
-            // var attributeDescriptions = stackalloc VertexInputAttributeDescription[ key.VertexFormat.Attributes.Length ];
-            // for (int i = 0; i < key.VertexFormat.Attributes.Length; i++)
-            // {
-            //     var attr =  key.VertexFormat.Attributes[i];
-            //
-            //     attributeDescriptions[i] = new VertexInputAttributeDescription
-            //     {
-            //         Location = attr.Location,
-            //         Binding = 0,
-            //         Format = attr.Format,
-            //         Offset = attr.Offset,
-            //     };
-            // }
+
             VertexInputAttributeDescription* attributeDescriptionsPtr = vertexAttributeCount > 0
                 ? attributeDescriptions
                 : null;
-
-  
+            
             var bindingDescription = new VertexInputBindingDescription
             {
                 Binding = 0,
