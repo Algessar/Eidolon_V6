@@ -1,4 +1,5 @@
 ﻿using System.Numerics;
+using System.Reflection.Metadata;
 using EidolonCore.Rendering;
 using ImGuiNET;
 using Silk.NET.Maths;
@@ -26,6 +27,10 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         public ImageView View;
         public DeviceMemory Memory;
         public bool Imported;
+        public Format Format;
+        public Extent2D Extent;
+        public FlagImageUsage Usage;
+        public ImageLayout CurrentLayout;
     }
 
 
@@ -96,6 +101,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
     public void SetCompiledGraph(CompiledRenderGraph graph)
     {
+        DestroyGraphResources();
+        
         _compiledGraph = graph ?? throw new ArgumentNullException(nameof(graph));
         _resourceLookup.Clear();
 
@@ -486,6 +493,9 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         }
         
         var cmd = _commandBuffer[_currentFrame];
+        
+        _master.Vk.CmdEndRenderPass(cmd);
+       
         if (_master.Vk.EndCommandBuffer(cmd) != Result.Success)
             throw new Exception("Failed to end command buffer!");
         //End RenderPass here
@@ -493,7 +503,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         Semaphore waitSemaphore = _waitSemaphore[_currentFrame];
         Semaphore signalSemaphore = _signalSemaphore[_currentFrame];
         Fence frameFence = _inFlightFences[_currentFrame];
-
         
         _swapchainHandler.QueueSubmit(cmd, waitSemaphore, signalSemaphore, frameFence);
  
@@ -579,19 +588,20 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
             if (resource.Imported)
             {
-                // TODO: map imported resource to swapchain/depth/external target
+                // Imported resources are owned externally (swapchain/depth targets).
+                // We keep metadata for debugging/inspection but do not allocate/destroy Vulkan objects here.
                 _graphImages[resource.Handle.Handle] = new GraphImageRuntime
                 {
-                    Imported = true
+                    Imported = true,
+                    Usage = resource.Description.Usage,
+                    Format = ResolveVkFormat(resource.Description.Format),
+                    Extent = ResolveGraphExtent(resource.Description),
+                    CurrentLayout = ImageLayout.Undefined,
                 };
                 continue;
             }
-            
-            //TODO: allocate _master.Vk image + memory + image view based on resource.Description + frame size
-            _graphImages[resource.Handle.Handle] = new GraphImageRuntime
-            {
-                Imported = false
-            };
+            var runtime = CreateGraphImage(resource);
+            _graphImages[resource.Handle.Handle] = runtime;
         }
     }
 
@@ -615,10 +625,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         for (int i = 0; i < _maxFramesInFlight; i++)
         {
             _inFlightFences[i] = CreateFence($"InFlightFence {i}");
-            // _imagesInFlight[i] = CreateFence($"ImagesInFlightFence {i}");
 
             Debug.Log($"In Flight Fences handles : {_inFlightFences[i].Handle}", VALIDATION_LAYERS.INFO);
-            // Debug.Log($"Images In Flight Fences handles : {_imagesInFlight[i].Handle}", VALIDATION_LAYERS.INFO);
         }
         
         Debug.Log($"Created {_imageCount} semaphores and {_maxFramesInFlight} fences", VALIDATION_LAYERS.SUCCESS);
@@ -662,15 +670,169 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             if (rt.Imported)
                 continue;
             
-            //TODO: destroy view/image/memory
+            if (rt.View.Handle != 0)
+            {
+                _master.Vk.DestroyImageView(_master.VulkanDevice.Device, rt.View, null);
+            }
+
+            if (rt.Image.Handle != 0)
+            {
+                _master.Vk.DestroyImage(_master.VulkanDevice.Device, rt.Image, null);
+            }
+
+            if (rt.Memory.Handle != 0)
+            {
+                _master.Vk.FreeMemory(_master.VulkanDevice.Device, rt.Memory, null);
+            }
         }
         
         _graphImages.Clear();
     }
 
+    private GraphImageRuntime CreateGraphImage(in CompiledResource resource)
+    {
+        var format = ResolveVkFormat(resource.Description.Format);
+        var usage = ResolveImageUsage(resource.Description.Usage);
+        var extent = ResolveGraphExtent(resource.Description);
+
+        var imageInfo = new ImageCreateInfo
+        {
+            SType = StructureType.ImageCreateInfo,
+            ImageType = ImageType.Type2D,
+            Extent = new Extent3D(extent.Width, extent.Height, 1),
+            MipLevels = 1,
+            ArrayLayers = 1,
+            Format = format,
+            Tiling = ImageTiling.Optimal,
+            InitialLayout = ImageLayout.Undefined,
+            Usage = usage,
+            Samples = SampleCountFlags.Count1Bit,
+            SharingMode = SharingMode.Exclusive
+        };
+
+        if (_master.Vk.CreateImage(_master.VulkanDevice.Device, in imageInfo, null, out var image) != Result.Success)
+        {
+            throw new Exception($"Failed to create graph image for resource '{resource.Name}'.");
+        }
+
+        _master.Vk.GetImageMemoryRequirements(_master.VulkanDevice.Device, image, out var memRequirements);
+
+        var allocInfo = new MemoryAllocateInfo
+        {
+            SType = StructureType.MemoryAllocateInfo,
+            AllocationSize = memRequirements.Size,
+            MemoryTypeIndex = _master.VulkanDevice.FindMemoryType(memRequirements.MemoryTypeBits, MemoryPropertyFlags.DeviceLocalBit)
+        };
+
+        if (_master.Vk.AllocateMemory(_master.VulkanDevice.Device, in allocInfo, null, out var memory) != Result.Success)
+        {
+            _master.Vk.DestroyImage(_master.VulkanDevice.Device, image, null);
+            throw new Exception($"Failed to allocate graph image memory for resource '{resource.Name}'.");
+        }
+
+        if (_master.Vk.BindImageMemory(_master.VulkanDevice.Device, image, memory, 0) != Result.Success)
+        {
+            _master.Vk.FreeMemory(_master.VulkanDevice.Device, memory, null);
+            _master.Vk.DestroyImage(_master.VulkanDevice.Device, image, null);
+            throw new Exception($"Failed to bind graph image memory for resource '{resource.Name}'.");
+        }
+
+        var viewInfo = new ImageViewCreateInfo
+        {
+            SType = StructureType.ImageViewCreateInfo,
+            Image = image,
+            ViewType = ImageViewType.Type2D,
+            Format = format,
+            SubresourceRange = new ImageSubresourceRange
+            {
+                AspectMask = ResolveAspectFlags(resource.Description.Usage, resource.Description.Format),
+                BaseMipLevel = 0,
+                LevelCount = 1,
+                BaseArrayLayer = 0,
+                LayerCount = 1
+            }
+        };
+
+        if (_master.Vk.CreateImageView(_master.VulkanDevice.Device, in viewInfo, null, out var view) != Result.Success)
+        {
+            _master.Vk.FreeMemory(_master.VulkanDevice.Device, memory, null);
+            _master.Vk.DestroyImage(_master.VulkanDevice.Device, image, null);
+            throw new Exception($"Failed to create graph image view for resource '{resource.Name}'.");
+        }
+
+        Debug.Log($"[RG] Allocated runtime image '{resource.Name}' ({extent.Width}x{extent.Height}) format={format} usage={usage}");
+
+        return new GraphImageRuntime
+        {
+            Image = image,
+            View = view,
+            Memory = memory,
+            Imported = false,
+            Format = format,
+            Extent = extent,
+            Usage = resource.Description.Usage,
+            CurrentLayout = ImageLayout.Undefined,
+        };
+    
+    }
+    private Format ResolveVkFormat(ImageFormat format)
+    {
+        return format switch
+        {
+            ImageFormat.Bgra8Unorm => Format.B8G8R8A8Unorm,
+            ImageFormat.Rgba16Float => Format.R16G16B16A16Sfloat,
+            ImageFormat.D24UnormS8Uint => Format.D24UnormS8Uint,
+            ImageFormat.D32Float => Format.D32Sfloat,
+            _ => throw new ArgumentOutOfRangeException(nameof(format), format, "Unsupported render-graph image format."),
+        };
+        
+    }
+    private static ImageAspectFlags ResolveAspectFlags(FlagImageUsage usage, ImageFormat format)
+    {
+        if ((usage & FlagImageUsage.DepthStencilAttachment) != 0)
+        {
+            return format == ImageFormat.D24UnormS8Uint ? 
+                ImageAspectFlags.DepthBit 
+                | ImageAspectFlags.StencilBit
+                : ImageAspectFlags.DepthBit;
+        }
+        return ImageAspectFlags.ColorBit;
+    }
+
+    private Extent2D ResolveGraphExtent(GraphImageDescription description)
+    {
+        var width = Math.Max(1u, (uint)MathF.Round(_swapchainHandler.Extent.Width * description.ScaleX));
+        var height = Math.Max(1u, (uint)MathF.Round(_swapchainHandler.Extent.Height * description.ScaleY));
+        return new Extent2D(width, height);
+    }
+
+    private static ImageUsageFlags ResolveImageUsage(FlagImageUsage usage)
+    {
+        ImageUsageFlags result = 0;
+
+        if ((usage & FlagImageUsage.ColorAttachment) != 0)
+            result |= ImageUsageFlags.ColorAttachmentBit;
+        if ((usage & FlagImageUsage.DepthStencilAttachment) != 0)
+            result |= ImageUsageFlags.DepthStencilAttachmentBit;
+        if ((usage & FlagImageUsage.Sampled) != 0)
+            result |= ImageUsageFlags.SampledBit;
+        if ((usage & FlagImageUsage.Storage) != 0)
+            result |= ImageUsageFlags.StorageBit;
+        if ((usage & FlagImageUsage.TransferSource) != 0)
+            result |= ImageUsageFlags.TransferSrcBit;
+        if ((usage & FlagImageUsage.TransferDestination) != 0)
+            result |= ImageUsageFlags.TransferDstBit;
+
+        if (result == 0)
+            result = ImageUsageFlags.SampledBit;
+
+        return result;
+    }
+
+
 
     public void Dispose()
     {
-
+        DestroyGraphResources();
     }
 }
