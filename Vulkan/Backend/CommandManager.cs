@@ -183,4 +183,16 @@ internal unsafe class CommandManager : IDisposable
     {
         
     }
+
+    public void BeginCommandBuffer(CommandBuffer cmd, Vector4 clearColor)
+    {
+        
+        var beginInfo = new CommandBufferBeginInfo
+        {
+            SType = StructureType.CommandBufferBeginInfo,
+            Flags = CommandBufferUsageFlags.OneTimeSubmitBit
+        };
+        _master.Vk.BeginCommandBuffer(cmd, beginInfo);
+
+    }
 }

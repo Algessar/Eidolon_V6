@@ -77,6 +77,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         
     }
 
+    
+    
     private void OnWindowResize(Vector2D<int> newSize)
     {
         // var id = ImGui.CreateContext();
@@ -88,7 +90,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         var io = ImGui.GetIO();
         io.DisplaySize = new Vector2(newSize.X, newSize.Y);
     }
-
 
     public void Initialize()
     {
@@ -108,7 +109,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         
         ConfigureImportedResourceMappings(graph);
     }
-
 
     private void ConfigureImportedResourceMappings(CompiledRenderGraph graph)
     {
@@ -130,6 +130,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         }
     }
 
+    #region Drawing
+    
     public void Draw(in DrawData data)
     {
         if (_compiledGraph is null)
@@ -160,15 +162,39 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         // Execute passes (already in execution order)
         foreach (var pass in _compiledGraph.Passes)
         {
-            if (LOG_RENDER_GRAPH)
+            if(_currentFrame == 0)
             {
-                Debug.Log($"[RG] Pass {pass.ExecutionIndex}: {pass.Name} ({pass.Type})", VALIDATION_LAYERS.INFO, false);
-                Debug.Log($"[RG]   Reads:  {string.Join(", ", pass.Reads.Select(r => r.Handle))}", VALIDATION_LAYERS.INFO, false);
-                Debug.Log($"[RG]   Writes: {string.Join(", ", pass.Writes.Select(w => w.Handle))}", VALIDATION_LAYERS.INFO, false);
-                Debug.Log($"[RG]   Deps:   {string.Join(", ", pass.Dependencies)}", VALIDATION_LAYERS.INFO, false);
+                Debug.Log($"[RG] Pass {pass.ExecutionIndex}: {pass.Name} ({pass.Type})", VALIDATION_LAYERS.INFO,
+                    LOG_RENDER_GRAPH);
+                Debug.Log($"[RG]   Reads:  {string.Join(", ", pass.Reads.Select(r => r.Handle))}",
+                    VALIDATION_LAYERS.INFO, LOG_RENDER_GRAPH);
+                Debug.Log($"[RG]   Writes: {string.Join(", ", pass.Writes.Select(w => w.Handle))}",
+                    VALIDATION_LAYERS.INFO, LOG_RENDER_GRAPH);
+                Debug.Log($"[RG]   Deps:   {string.Join(", ", pass.Dependencies)}", VALIDATION_LAYERS.INFO,
+                    LOG_RENDER_GRAPH);
             }
             
-            PreparePassResourceLayouts(pass);
+            
+            var frameBuffer = _swapchainHandler.Framebuffers[_currentImageIndex];
+            
+            var beginInfo = new RenderPassBeginInfo
+            {
+                SType = StructureType.RenderPassBeginInfo,
+                RenderPass = data.PipelineData.RenderPass,
+                Framebuffer = frameBuffer,
+                RenderArea = new Rect2D(new Offset2D(0, 0), _swapchainHandler.Extent)
+            };
+
+            var clearColor = new ClearValue
+            {
+                Color = new ClearColorValue(0f, 0f, 0f, 1f)
+            };
+
+            beginInfo.ClearValueCount = 1;
+            beginInfo.PClearValues = &clearColor;
+            
+            TransitionLayouts(cmd, pass);
+            _master.Vk.CmdBeginRenderPass(cmd, in beginInfo, SubpassContents.Inline);
 
             var descriptorSet = _master.DescriptorFactory.GetDescriptorSet(_currentFrame);
 
@@ -200,9 +226,11 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 );
 
                 _master.Vk.CmdDraw(cmd, 3, 1, 0, 0);
+                
+                _master.Vk.CmdEndRenderPass(cmd);
             }
         }
-
+        
         EndFrame(data);
     }
 
@@ -275,18 +303,16 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             vk.ResetFences(device, 1, frameFence);
         }
 
-        var clearColor = new Vector4(0.0f, 0.0f, 0.0f, 1.0f);
+        // var clearColor = new Vector4(0.0f, 0.0f, 0.0f, 1.0f);
         vk.ResetCommandBuffer(cmd, 0);
+        
+        var beginInfo = new CommandBufferBeginInfo
+        {
+            SType = StructureType.CommandBufferBeginInfo
+        };
 
-        //NOTE: RecordCommandBuffer calls Vk.BeginCommandBuffer
-        _master.CommandManager.RecordCommandBuffer(
-            cmd,
-            _swapchainHandler.Framebuffers[_currentImageIndex],
-            data.PipelineData.RenderPass,
-            _swapchainHandler.Extent,
-            clearColor,
-            data.PipelineData.HasDepth
-        );
+        vk.BeginCommandBuffer(cmd, in beginInfo);
+
         _frameActive = true;
     }
 
@@ -299,7 +325,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         
         var cmd = _commandBuffer[_currentFrame];
         
-        _master.Vk.CmdEndRenderPass(cmd);
+        // _master.Vk.CmdEndRenderPass(cmd);
        
         if (_master.Vk.EndCommandBuffer(cmd) != Result.Success)
             throw new Exception("Failed to end command buffer!");
@@ -322,6 +348,9 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         _frameActive = false;
     }
 
+    #endregion Drawing
+    
+    #region Creation
     public void CreateResources()
     {
         
@@ -453,8 +482,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         return fence;
     }
 
-   
-
     private GraphImageRuntime CreateGraphImage(in CompiledResource resource)
     {
         var format = ResolveVkFormat(resource.Description.Format);
@@ -541,6 +568,201 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         };
     
     }
+    
+    #endregion Creation
+    
+    #region Transitions
+    
+    private void TransitionLayouts( CommandBuffer cmd, in CompiledPass pass)
+    {
+        // Reads first, then writes. This keeps intent explicit while we still use a single render pass.
+
+        foreach (var read in pass.Reads)
+        {
+            if (!_resourceLookup.TryGetValue(read.Handle, out var resource))
+                continue;
+
+            if (!_graphImages.TryGetValue(read.Handle, out var runtime))
+                continue;
+
+            if (runtime.Imported)
+                continue;
+
+            EmitShaderReadTransition(cmd, resource, ref runtime);
+
+            _graphImages[read.Handle] = runtime;
+        }
+        
+        foreach (var write in pass.Writes)
+        {
+            if (!_resourceLookup.TryGetValue(write.Handle, out var resource))
+                continue;
+
+            if (!_graphImages.TryGetValue(write.Handle, out var runtime))
+                continue;
+
+            if (runtime.Imported)
+            {
+                // Swapchain image
+                EmitPresentTransition(cmd, resource, ref runtime);
+            }
+
+            else
+            {
+                EmitColorAttachmentTransition(cmd, resource, ref runtime);
+            }
+            _graphImages[write.Handle] = runtime;
+        }
+    }
+    
+    private void EmitColorAttachmentTransition(CommandBuffer cmd, in CompiledResource resource, ref GraphImageRuntime runtime)
+    {
+        if (runtime.CurrentLayout != ImageLayout.Undefined)
+            return;
+
+        var newLayout = ImageLayout.ColorAttachmentOptimal;
+
+        var barrier = new ImageMemoryBarrier
+        {
+            SType = StructureType.ImageMemoryBarrier,
+            OldLayout = ImageLayout.Undefined,
+            NewLayout = newLayout,
+
+            SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
+            DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
+
+            SrcAccessMask = 0,
+            DstAccessMask = AccessFlags.ColorAttachmentWriteBit,
+
+            Image = runtime.Image,
+
+            SubresourceRange = new ImageSubresourceRange
+            {
+                AspectMask = ResolveAspectFlags(resource.Description.Usage, resource.Description.Format),
+                BaseMipLevel = 0,
+                LevelCount = 1,
+                BaseArrayLayer = 0,
+                LayerCount = 1
+            }
+        };
+
+        _master.Vk.CmdPipelineBarrier(
+            cmd,
+            PipelineStageFlags.TopOfPipeBit,
+            PipelineStageFlags.ColorAttachmentOutputBit,
+            0,
+            0, null,
+            0, null,
+            1, &barrier);
+
+        if (LOG_RENDER_GRAPH)
+        {
+            Debug.Log($"[RG] Barrier: {resource.Name} Undefined -> ColorAttachmentOptimal");
+        }
+
+        runtime.CurrentLayout = newLayout;
+    }
+    
+    private void EmitShaderReadTransition(CommandBuffer cmd, in CompiledResource resource, ref GraphImageRuntime runtime)
+    {
+        if (runtime.CurrentLayout != ImageLayout.ColorAttachmentOptimal)
+            return;
+
+        var newLayout = ImageLayout.ShaderReadOnlyOptimal;
+
+        var barrier = new ImageMemoryBarrier
+        {
+            SType = StructureType.ImageMemoryBarrier,
+            OldLayout = runtime.CurrentLayout,
+            NewLayout = newLayout,
+
+            SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
+            DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
+
+            SrcAccessMask = AccessFlags.ColorAttachmentWriteBit,
+            DstAccessMask = AccessFlags.ShaderReadBit,
+
+            Image = runtime.Image,
+
+            SubresourceRange = new ImageSubresourceRange
+            {
+                AspectMask = ResolveAspectFlags(resource.Description.Usage, resource.Description.Format),
+                BaseMipLevel = 0,
+                LevelCount = 1,
+                BaseArrayLayer = 0,
+                LayerCount = 1
+            }
+        };
+
+        _master.Vk.CmdPipelineBarrier(
+            cmd,
+            PipelineStageFlags.ColorAttachmentOutputBit,
+            PipelineStageFlags.FragmentShaderBit,
+            0,
+            0, null,
+            0, null,
+            1, &barrier);
+
+        if (LOG_RENDER_GRAPH)
+        {
+            Debug.Log($"[RG] Barrier: {resource.Name} ColorAttachmentOptimal -> ShaderReadOnlyOptimal");
+        }
+
+        runtime.CurrentLayout = newLayout;
+    }
+
+    private void EmitPresentTransition(CommandBuffer cmd, in CompiledResource resource, ref GraphImageRuntime runtime)
+    {
+        if (runtime.CurrentLayout != ImageLayout.ColorAttachmentOptimal)
+            return;
+
+        var newLayout = ImageLayout.PresentSrcKhr;
+
+        var barrier = new ImageMemoryBarrier
+        {
+            SType = StructureType.ImageMemoryBarrier,
+            OldLayout = runtime.CurrentLayout,
+            NewLayout = newLayout,
+
+            SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
+            DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
+
+            SrcAccessMask = AccessFlags.ColorAttachmentWriteBit,
+            DstAccessMask = 0,
+
+            Image = runtime.Image,
+
+            SubresourceRange = new ImageSubresourceRange
+            {
+                AspectMask = ImageAspectFlags.ColorBit,
+                BaseMipLevel = 0,
+                LevelCount = 1,
+                BaseArrayLayer = 0,
+                LayerCount = 1
+            }
+        };
+
+        _master.Vk.CmdPipelineBarrier(
+            cmd,
+            PipelineStageFlags.ColorAttachmentOutputBit,
+            PipelineStageFlags.BottomOfPipeBit,
+            0,
+            0, null,
+            0, null,
+            1, &barrier);
+
+        if (LOG_RENDER_GRAPH)
+        {
+            Debug.Log($"[RG] Barrier: {resource.Name} ColorAttachmentOptimal -> PresentSrcKHR");
+        }
+
+        runtime.CurrentLayout = newLayout;
+    }
+
+    
+    #endregion Transitions
+    
+
     private Format ResolveVkFormat(ImageFormat format)
     {
         return format switch
@@ -635,19 +857,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         }
     }
     
-    private void PreparePassResourceLayouts(in CompiledPass pass)
-    {
-        // Reads first, then writes. This keeps intent explicit while we still use a single render pass.
-        foreach (var read in pass.Reads)
-        {
-            TrackResourceLayout(read, isWrite: false);
-        }
 
-        foreach (var write in pass.Writes)
-        {
-            TrackResourceLayout(write, isWrite: true);
-        }
-    }
 
     private void TrackResourceLayout(in ResourceHandle handle, bool isWrite)
     {
@@ -708,7 +918,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         return ImageLayout.General;
     }
-
     
     private void DestroyGraphResources()
     {
