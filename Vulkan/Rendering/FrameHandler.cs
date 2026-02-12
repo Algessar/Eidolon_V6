@@ -98,36 +98,63 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         _currentImageIndex = 0;
 
     }
-
+    
     public void SetCompiledGraph(CompiledRenderGraph graph)
     {
         DestroyGraphResources();
-        
+
         _compiledGraph = graph ?? throw new ArgumentNullException(nameof(graph));
         _resourceLookup.Clear();
 
-        ConfigureImportedResourceMappings(graph);
+        foreach (var resource in graph.Resources)
+        {
+            _resourceLookup[resource.Handle.Handle] = resource;
+            
+            if(!resource.Imported)
+                continue;
+
+            if ((resource.Description.Usage & FlagImageUsage.Present) != 0)
+            {
+                _importMap.Register(resource.Handle, ImportedResourceKind.SwapchainColor);
+            }
+            else if ((resource.Description.Usage & FlagImageUsage.DepthStencilAttachment) != 0)
+            {            
+                _importMap.Register(resource.Handle, ImportedResourceKind.SceneDepth);
+            }
+            
+        }
+        
+        // ConfigureImportedResourceMappings(graph);
     }
+
+    // public void SetCompiledGraph(CompiledRenderGraph graph)
+    // {
+    //     DestroyGraphResources();
+    //     
+    //     _compiledGraph = graph ?? throw new ArgumentNullException(nameof(graph));
+    //     _resourceLookup.Clear();
+    //
+    //     ConfigureImportedResourceMappings(graph);
+    // }
 
     private void ConfigureImportedResourceMappings(CompiledRenderGraph graph)
     {
         foreach (var resource in graph.Resources)
         {
-            if (!resource.Imported)
-            {
+            _resourceLookup[resource.Handle.Handle] = resource;
+            
+            if(!resource.Imported)
                 continue;
-            }
 
             if ((resource.Description.Usage & FlagImageUsage.Present) != 0)
             {
                 _importMap.Register(resource.Handle, ImportedResourceKind.SwapchainColor);
-                continue;
             }
-
-            if ((resource.Description.Usage & FlagImageUsage.DepthStencilAttachment) != 0)
-            {
+            else if ((resource.Description.Usage & FlagImageUsage.DepthStencilAttachment) != 0)
+            {            
                 _importMap.Register(resource.Handle, ImportedResourceKind.SceneDepth);
             }
+            
         }
     }
 
@@ -226,7 +253,11 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         var device = _master.VulkanDevice.Device;
         var vk = _master.Vk;
        
+        var cmd = _commandBuffer[_currentFrame];
         
+        
+	   
+
         // Wait for this frame to finish
         fixed (Fence* frameFence = &_inFlightFences[_currentFrame])
         {
@@ -241,34 +272,32 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         }
 
         // Acquire next image
+        
         var acquireResult = _swapchainHandler.AcquireNextImage(
             _waitSemaphore[_currentFrame], 
             default,
             out uint imageIndex);
 
-        if (acquireResult == Result.ErrorOutOfDateKhr)
+        switch (acquireResult)
         {
-            RecreateSwapchain(data.PipelineData);
-            _frameActive = false;
-            return;
+            case Result.ErrorOutOfDateKhr:
+                RecreateSwapchain(data.PipelineData);
+                _frameActive = false;
+                return;
+            case Result.SuboptimalKhr:
+                _framebufferResized = true;
+                break;
+            default:
+            {
+                if (acquireResult != Result.Success)
+                {
+                    _frameActive = false;
+                    return;
+                }
+                break;
+            }
         }
 
-        if (acquireResult == Result.SuboptimalKhr)
-        {
-            _framebufferResized = true;
-        }
-        else if (acquireResult != Result.Success)
-        {
-            _frameActive = false;
-            return;
-        }
-        
-        // if (imageIndex >= _imagesInFlight.Length)
-        // {
-        //     throw new IndexOutOfRangeException(
-        //         $"AcquireNextImage returned image index {imageIndex}, but images-in-flight size is {_imagesInFlight.Length}.");
-        // }
-        
         var imageFence = _imagesInFlight[imageIndex];
         if (imageFence.Handle != 0)
         {
@@ -284,13 +313,11 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
    
         _currentImageIndex = imageIndex;
         
-        
         fixed (Fence* frameFence = &_inFlightFences[_currentFrame])
         {
             vk.ResetFences(device, 1, frameFence);
         }
 
-        var cmd = _commandBuffer[_currentFrame];
         var clearColor = new Vector4(0.0f, 0.0f, 0.0f, 1.0f);
         vk.ResetCommandBuffer(cmd, 0);
 
@@ -308,7 +335,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
     public void EndFrame(in DrawData data)
     {
-        
         if (!_frameActive)
         {
             return;
@@ -322,19 +348,17 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             throw new Exception("Failed to end command buffer!");
 
         Semaphore waitSemaphore = _waitSemaphore[_currentFrame];
-        Semaphore signalSemaphore = _signalSemaphore[_currentFrame];
+        Semaphore signalSemaphore = _signalSemaphore[_currentImageIndex];
         Fence frameFence = _inFlightFences[_currentFrame];
         
         _swapchainHandler.QueueSubmit(cmd, waitSemaphore, signalSemaphore, frameFence);
  
-        // _swapchainHandler.Present(signalSemaphore, _currentImageIndex);
 
         var presentResult = _swapchainHandler.Present(signalSemaphore, _currentImageIndex);
-        if (presentResult is Result.ErrorOutOfDateKhr or Result.SuboptimalKhr || _framebufferResized)
+        if (presentResult == Result.ErrorOutOfDateKhr || presentResult == Result.SuboptimalKhr || _framebufferResized)
         {
             RecreateSwapchain(data.PipelineData);
         }
-
         
         _currentFrame = (uint)((_currentFrame + 1) % _inFlightFences.Length);
 
@@ -444,17 +468,20 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         for (int i = 0; i < _maxFramesInFlight; i++)
         {
             _waitSemaphore[i] = CreateSemaphore($"WaitSemaphore {i}");
-            _signalSemaphore[i] = CreateSemaphore($"SignalSemaphore {i}");
             
             Debug.Log($"Semaphore handles : {_waitSemaphore[i].Handle}", VALIDATION_LAYERS.INFO);
-            Debug.Log($"Semaphore handles : {_signalSemaphore[i].Handle}", VALIDATION_LAYERS.INFO);
+            _inFlightFences[i] = CreateFence($"InFlightFence {i}");
+            Debug.Log($"In Flight Fences handles : {_inFlightFences[i].Handle}", VALIDATION_LAYERS.INFO);
+
+
         }
 
-        for (int i = 0; i < _maxFramesInFlight; i++)
+        for (int i = 0; i < _imageCount; i++)
         {
-            _inFlightFences[i] = CreateFence($"InFlightFence {i}");
+            _signalSemaphore[i] = CreateSemaphore($"SignalFinishedSemaphore {i}");
 
-            Debug.Log($"In Flight Fences handles : {_inFlightFences[i].Handle}", VALIDATION_LAYERS.INFO);
+            Debug.Log($"Semaphore handles : {_signalSemaphore[i].Handle}", VALIDATION_LAYERS.INFO);
+
         }
         
         Debug.Log($"Created {_imageCount} semaphores and {_maxFramesInFlight} fences", VALIDATION_LAYERS.SUCCESS);
