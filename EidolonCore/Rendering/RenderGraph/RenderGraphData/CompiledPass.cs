@@ -8,3 +8,4 @@ public sealed record CompiledPass(
     IReadOnlyList<ResourceHandle> Reads,
     IReadOnlyList<ResourceHandle> Writes, 
     IReadOnlyList<int> Dependencies);
+        
