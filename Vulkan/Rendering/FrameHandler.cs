@@ -1,4 +1,5 @@
-﻿using System.Numerics;
+﻿using System.Diagnostics.SymbolStore;
+using System.Numerics;
 using System.Reflection.Metadata;
 using EidolonCore.Rendering;
 using ImGuiNET;
@@ -52,13 +53,10 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     
     private Dictionary<ulong, string> _semaphoreNames = new();
     private Dictionary<ulong, string> _fenceNames = new();
-
-    
     
     public bool _framebufferResized { get; set; }
 
     bool LOG_RENDER_GRAPH = true;
-    
     public FrameHandler(VulkanMaster master)
     {
         Debug.Log("Creating FrameHandler", VALIDATION_LAYERS.INFO);
@@ -77,6 +75,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         
     }
 
+    #region Setup
+
     private void OnWindowResize(Vector2D<int> newSize)
     {
         // var id = ImGui.CreateContext();
@@ -88,7 +88,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         var io = ImGui.GetIO();
         io.DisplaySize = new Vector2(newSize.X, newSize.Y);
     }
-
 
     public void Initialize()
     {
@@ -108,7 +107,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         
         ConfigureImportedResourceMappings(graph);
     }
-
 
     private void ConfigureImportedResourceMappings(CompiledRenderGraph graph)
     {
@@ -130,7 +128,11 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         }
     }
 
-    public void Draw(in DrawData data)
+    #endregion Setup
+
+    #region Drawing
+
+        public void Draw(in DrawData data)
     {
         if (_compiledGraph is null)
             throw new Exception("Draw called without compiled graph.");
@@ -167,6 +169,10 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 Debug.Log($"[RG]   Writes: {string.Join(", ", pass.Writes.Select(w => w.Handle))}", VALIDATION_LAYERS.INFO, false);
                 Debug.Log($"[RG]   Deps:   {string.Join(", ", pass.Dependencies)}", VALIDATION_LAYERS.INFO, false);
             }
+
+            TransitionPassResources(pass, cmd);
+            
+            //NOTE: Codex wants BeginPassRenderPass here ... whatever that is ^^ 
             
             PreparePassResourceLayouts(pass);
 
@@ -205,7 +211,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         EndFrame(data);
     }
-
+    
     public void BeginFrame(in DrawData data)
     {
         if (_frameActive)
@@ -322,6 +328,49 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         _frameActive = false;
     }
 
+
+    #endregion
+
+    #region Creation
+    private bool RecreateSwapchain(in PipelineData pipelineData)
+    {
+        if (!_swapchainHandler.RecreateSwapchain(pipelineData.RenderPass, pipelineData.HasDepth))
+        {
+            _framebufferResized = true;
+            return false;
+        }
+
+        _framebufferResized = false;
+
+        _swapchainHandler = _master.SwapchainHandler;
+
+        _imageCount = _swapchainHandler.ImageCount;
+        _imagesInFlight = new Fence[_imageCount];
+
+        RecreateSignalSemaphores();
+
+        _currentImageIndex = 0;
+
+        DestroyGraphResources();
+        return true;
+    }
+    
+    private void RecreateSignalSemaphores()
+    {
+        foreach (var semaphore in _signalSemaphore)
+        {
+            if (semaphore.Handle != 0)
+            {
+                _master.Vk.DestroySemaphore(_master.VulkanDevice.Device, semaphore, null);
+            }
+        }
+
+        _signalSemaphore = new Semaphore[_imageCount];
+        for (var i = 0; i < _imageCount; i++)
+        {
+            _signalSemaphore[i] = CreateSemaphore($"SignalSemaphore {i}");
+        }
+    }
     public void CreateResources()
     {
         
@@ -348,40 +397,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             }
         }
     }
-
-    private void EnsureGraphResources(CompiledRenderGraph graph)
-    {
-        foreach (var resource in graph.Resources)
-        {
-            if(_graphImages.ContainsKey(resource.Handle.Handle))
-                continue;
-
-            if (LOG_RENDER_GRAPH)
-            {
-                Debug.Log($"Creating runtime resource {resource.Name}"
-                    + $"H:{resource.Handle.Handle}, Imported:{resource.Imported}" +
-                    $"Use:{resource.FirstUsePass} -> {resource.LastUsePass}");
-            }
-
-            if (resource.Imported)
-            {
-                // Imported resources are owned externally (swapchain/depth targets).
-                // We keep metadata for debugging/inspection but do not allocate/destroy Vulkan objects here.
-                _graphImages[resource.Handle.Handle] = new GraphImageRuntime
-                {
-                    Imported = true,
-                    Usage = resource.Description.Usage,
-                    Format = ResolveVkFormat(resource.Description.Format),
-                    Extent = ResolveGraphExtent(resource.Description),
-                    CurrentLayout = ImageLayout.Undefined,
-                };
-                continue;
-            }
-            var runtime = CreateGraphImage(resource);
-            _graphImages[resource.Handle.Handle] = runtime;
-        }
-    }
-
+    
     private void CreateSyncObjects()
     {
         //INFO: wait semaphores and in flight fences must be the same size as MaxFramesInFlight.
@@ -452,9 +468,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         return fence;
     }
-
-   
-
+    
     private GraphImageRuntime CreateGraphImage(in CompiledResource resource)
     {
         var format = ResolveVkFormat(resource.Description.Format);
@@ -541,6 +555,179 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         };
     
     }
+    private void EnsureGraphResources(CompiledRenderGraph graph)
+    {
+        foreach (var resource in graph.Resources)
+        {
+            if(_graphImages.ContainsKey(resource.Handle.Handle))
+                continue;
+
+            if (LOG_RENDER_GRAPH)
+            {
+                Debug.Log($"Creating runtime resource {resource.Name}"
+                          + $"H:{resource.Handle.Handle}, Imported:{resource.Imported}" +
+                          $"Use:{resource.FirstUsePass} -> {resource.LastUsePass}");
+            }
+
+            if (resource.Imported)
+            {
+                // Imported resources are owned externally (swapchain/depth targets).
+                // We keep metadata for debugging/inspection but do not allocate/destroy Vulkan objects here.
+                _graphImages[resource.Handle.Handle] = new GraphImageRuntime
+                {
+                    Imported = true,
+                    Usage = resource.Description.Usage,
+                    Format = ResolveVkFormat(resource.Description.Format),
+                    Extent = ResolveGraphExtent(resource.Description),
+                    CurrentLayout = ImageLayout.Undefined,
+                };
+                continue;
+            }
+            var runtime = CreateGraphImage(resource);
+            _graphImages[resource.Handle.Handle] = runtime;
+        }
+    }
+
+    private void PreparePassResourceLayouts(in CompiledPass pass)
+    {
+        // Reads first, then writes. This keeps intent explicit while we still use a single render pass.
+        foreach (var read in pass.Reads)
+        {
+            TrackResourceLayout(read, isWrite: false);
+        }
+
+        foreach (var write in pass.Writes)
+        {
+            TrackResourceLayout(write, isWrite: true);
+        }
+    }
+
+    #endregion Creation
+    
+    #region Transitions
+
+    private void TransitionPassResources(CompiledPass pass, CommandBuffer cmd)
+    {
+        foreach (var read in pass.Reads)
+        {
+            TransitionResource(read, isWrite: false, cmd);
+        }
+
+        foreach (var write in pass.Writes)
+        {
+            TransitionResource(write, isWrite: false, cmd);
+        }
+    }
+
+    private void TransitionResource(in ResourceHandle handle, bool isWrite, CommandBuffer cmd)
+    {
+        if (!_resourceLookup.TryGetValue(handle.Handle, out var resource))
+        {
+            Debug.Log($"Failed to find resource '{handle.Handle}' in compiled graph.", VALIDATION_LAYERS.WARNING);
+            return;
+        }
+
+        if (!_graphImages.TryGetValue(handle.Handle, out var runtime))
+        {
+            Debug.Log($"Failed to find runtime image for resource '{handle.Handle}' in compiled graph.", VALIDATION_LAYERS.WARNING);
+            return;
+        }
+
+        if (runtime.Imported)
+        {
+            return;
+        }
+        
+        var expectedLayout = ResolveExpectedLayout(resource.Description.Usage, isWrite);
+        if (runtime.CurrentLayout == expectedLayout)
+        {
+            return;
+        }
+
+        var srcStage = ResolvePipelineStage(runtime.CurrentLayout);
+        var dstStage = ResolvePipelineStage(expectedLayout);
+        var srcAccess = ResolveAccessMask(expectedLayout);
+        var dstAccess = ResolveAccessMask(runtime.CurrentLayout);
+
+        var barrier = new ImageMemoryBarrier
+        {
+            SType = StructureType.ImageMemoryBarrier,
+            SrcAccessMask = srcAccess,
+            DstAccessMask = dstAccess,
+            OldLayout = runtime.CurrentLayout,
+            NewLayout = expectedLayout,
+            SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
+            DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
+            Image = runtime.Image,
+            SubresourceRange = new ImageSubresourceRange
+            {
+                AspectMask = ResolveAspectFlags(resource.Description.Usage, resource.Description.Format),
+                BaseMipLevel = 0,
+                LevelCount = 1,
+                BaseArrayLayer = 0,
+                LayerCount = 1
+            }
+        };
+        
+        _master.Vk.CmdPipelineBarrier(
+            cmd, 
+            srcStage,
+            dstStage, 
+            0, 
+            0, 
+            null, 
+            0, 
+            null, 
+            1, 
+            &barrier
+        );
+
+        if (LOG_RENDER_GRAPH)
+        {
+            Debug.Log($"[RG] Barrier: {resource.Name} {runtime.CurrentLayout} -> {expectedLayout}");
+        }
+        
+        runtime.CurrentLayout = expectedLayout;
+        _graphImages[handle.Handle] = runtime;
+
+    }
+
+    #endregion Transitions
+ 
+    #region Resolve
+    private static AccessFlags ResolveAccessMask(ImageLayout layout)
+    {
+        return layout switch
+        {
+            ImageLayout.ColorAttachmentOptimal => AccessFlags.ColorAttachmentWriteBit | AccessFlags.ColorAttachmentReadBit,
+            ImageLayout.DepthStencilAttachmentOptimal => AccessFlags.DepthStencilAttachmentWriteBit | AccessFlags.DepthStencilAttachmentReadBit,
+            ImageLayout.ShaderReadOnlyOptimal => AccessFlags.ShaderReadBit,
+            ImageLayout.PresentSrcKhr => 0,
+            ImageLayout.Undefined => 0,
+            _ => AccessFlags.MemoryReadBit | AccessFlags.MemoryWriteBit,
+        };
+    }
+
+    private static PipelineStageFlags ResolvePipelineStage(ImageLayout layout)
+    {
+        return layout switch
+        {
+            ImageLayout.ColorAttachmentOptimal => PipelineStageFlags.ColorAttachmentOutputBit,
+            ImageLayout.DepthStencilAttachmentOptimal => PipelineStageFlags.EarlyFragmentTestsBit | PipelineStageFlags.LateFragmentTestsBit,
+            ImageLayout.ShaderReadOnlyOptimal => PipelineStageFlags.FragmentShaderBit,
+            ImageLayout.PresentSrcKhr => PipelineStageFlags.BottomOfPipeBit,
+            ImageLayout.Undefined => PipelineStageFlags.TopOfPipeBit,
+            _ => PipelineStageFlags.AllCommandsBit,
+        };
+    }
+    
+    private Extent2D ResolveGraphExtent(GraphImageDescription description)
+    {
+        var width = Math.Max(1u, (uint)MathF.Round(_swapchainHandler.Extent.Width * description.ScaleX));
+        var height = Math.Max(1u, (uint)MathF.Round(_swapchainHandler.Extent.Height * description.ScaleY));
+        return new Extent2D(width, height);
+    }
+    
     private Format ResolveVkFormat(ImageFormat format)
     {
         return format switch
@@ -553,6 +740,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         };
         
     }
+    
     private static ImageAspectFlags ResolveAspectFlags(FlagImageUsage usage, ImageFormat format)
     {
         if ((usage & FlagImageUsage.DepthStencilAttachment) != 0)
@@ -563,13 +751,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 : ImageAspectFlags.DepthBit;
         }
         return ImageAspectFlags.ColorBit;
-    }
-
-    private Extent2D ResolveGraphExtent(GraphImageDescription description)
-    {
-        var width = Math.Max(1u, (uint)MathF.Round(_swapchainHandler.Extent.Width * description.ScaleX));
-        var height = Math.Max(1u, (uint)MathF.Round(_swapchainHandler.Extent.Height * description.ScaleY));
-        return new Extent2D(width, height);
     }
 
     private static ImageUsageFlags ResolveImageUsage(FlagImageUsage usage)
@@ -594,61 +775,9 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         return result;
     }
-
-    private bool RecreateSwapchain(in PipelineData pipelineData)
-    {
-        if (!_swapchainHandler.RecreateSwapchain(pipelineData.RenderPass, pipelineData.HasDepth))
-        {
-            _framebufferResized = true;
-            return false;
-        }
-
-        _framebufferResized = false;
-
-        _swapchainHandler = _master.SwapchainHandler;
-
-        _imageCount = _swapchainHandler.ImageCount;
-        _imagesInFlight = new Fence[_imageCount];
-
-        RecreateSignalSemaphores();
-
-        _currentImageIndex = 0;
-
-        DestroyGraphResources();
-        return true;
-    }
     
-    private void RecreateSignalSemaphores()
-    {
-        foreach (var semaphore in _signalSemaphore)
-        {
-            if (semaphore.Handle != 0)
-            {
-                _master.Vk.DestroySemaphore(_master.VulkanDevice.Device, semaphore, null);
-            }
-        }
-
-        _signalSemaphore = new Semaphore[_imageCount];
-        for (var i = 0; i < _imageCount; i++)
-        {
-            _signalSemaphore[i] = CreateSemaphore($"SignalSemaphore {i}");
-        }
-    }
+    #endregion Resolve
     
-    private void PreparePassResourceLayouts(in CompiledPass pass)
-    {
-        // Reads first, then writes. This keeps intent explicit while we still use a single render pass.
-        foreach (var read in pass.Reads)
-        {
-            TrackResourceLayout(read, isWrite: false);
-        }
-
-        foreach (var write in pass.Writes)
-        {
-            TrackResourceLayout(write, isWrite: true);
-        }
-    }
-
     private void TrackResourceLayout(in ResourceHandle handle, bool isWrite)
     {
         if (!_resourceLookup.TryGetValue(handle.Handle, out var resource))
@@ -709,7 +838,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         return ImageLayout.General;
     }
 
-    
+    #region Disposal
+
     private void DestroyGraphResources()
     {
         foreach (var kv in _graphImages)
@@ -740,4 +870,5 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     {
         DestroyGraphResources();
     }
+    #endregion
 }
