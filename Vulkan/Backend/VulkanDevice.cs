@@ -93,6 +93,7 @@ internal unsafe class VulkanDevice : IDisposable
 
         return true;
     }
+    
     private bool CheckSurfaceSupport(PhysicalDevice device)
     {
 	    // Get the queue families
@@ -116,7 +117,6 @@ internal unsafe class VulkanDevice : IDisposable
 
 	    return false;
     }
-
     
     private void CreateLogicalDevice()
 		{
@@ -192,97 +192,96 @@ internal unsafe class VulkanDevice : IDisposable
 			}
 		}
 
+	public QueueFamilyIndices FindQueueFamilies(PhysicalDevice device)
+	{
+		var indices = new QueueFamilyIndices();
 
-		public QueueFamilyIndices FindQueueFamilies(PhysicalDevice device)
+		uint queueFamilyCount = 0;
+		_master.Vk.GetPhysicalDeviceQueueFamilyProperties(device, ref queueFamilyCount, null);
+
+		var queueFamilies = new QueueFamilyProperties[ queueFamilyCount ];
+		fixed (QueueFamilyProperties* queueFamiliesPtr = queueFamilies)
 		{
-			var indices = new QueueFamilyIndices();
+			_master.Vk.GetPhysicalDeviceQueueFamilyProperties(device, ref queueFamilyCount, queueFamiliesPtr);
+		}
 
-			uint queueFamilyCount = 0;
-			_master.Vk.GetPhysicalDeviceQueueFamilyProperties(device, ref queueFamilyCount, null);
-
-			var queueFamilies = new QueueFamilyProperties[ queueFamilyCount ];
-			fixed (QueueFamilyProperties* queueFamiliesPtr = queueFamilies)
+		// Find graphics queue family
+		for (uint i = 0; i < queueFamilies.Length; i++)
+		{
+			if (queueFamilies[ i ].QueueFlags.HasFlag(QueueFlags.GraphicsBit))
 			{
-				_master.Vk.GetPhysicalDeviceQueueFamilyProperties(device, ref queueFamilyCount, queueFamiliesPtr);
+				indices.GraphicsFamily = i;
 			}
 
-			// Find graphics queue family
-			for (uint i = 0; i < queueFamilies.Length; i++)
+			// Check for presentation support
+			if (_master.KhrSurface.GetPhysicalDeviceSurfaceSupport(device, i, _master.SurfaceKhr, out var supported) == Result.Success && supported)
 			{
-				if (queueFamilies[ i ].QueueFlags.HasFlag(QueueFlags.GraphicsBit))
-				{
-					indices.GraphicsFamily = i;
-				}
-
-				// Check for presentation support
-				if (_master.KhrSurface.GetPhysicalDeviceSurfaceSupport(device, i, _master.SurfaceKhr, out var supported) == Result.Success && supported)
-				{
-					indices.PresentFamily = i;
-				}
-
-				if (indices.IsComplete) break;
+				indices.PresentFamily = i;
 			}
 
-			return indices;
+			if (indices.IsComplete) break;
+		}
+
+		return indices;
+	}
+	
+	public uint FindMemoryType(uint typeFilter, MemoryPropertyFlags properties)
+	{
+		_master.Vk.GetPhysicalDeviceMemoryProperties(PhysicalDevice, out var memoryProperties);
+		
+		for (uint i = 0; i < memoryProperties.MemoryTypeCount; i++)
+		{
+			bool supported = (typeFilter & (1u << (int)i)) != 0;
+			bool hasFlags = (memoryProperties.MemoryTypes[ (int)i ].PropertyFlags & properties) == properties;
+
+			if (supported && hasFlags)
+				return i;
+		}
+		_memoryProperties = memoryProperties;
+
+		throw new Exception("Failed to find suitable memory type.");
+	}
+	
+	public struct QueueFamilyIndices
+	{
+		public uint? GraphicsFamily { get; set; }
+		public uint? PresentFamily { get; set; }
+
+		public bool HasGraphicsFamily => GraphicsFamily.HasValue;
+		public bool HasPresentFamily => PresentFamily.HasValue;
+		public bool IsComplete => HasGraphicsFamily && HasPresentFamily;
+	}
+	
+	public void CreateTransientCommandPool(uint queueFamilyIndex)
+	{
+		Console.WriteLine($"Creating transient command pool for queue family {queueFamilyIndex}");
+
+		var poolInfo = new CommandPoolCreateInfo
+		{
+			SType = StructureType.CommandPoolCreateInfo,
+			QueueFamilyIndex = queueFamilyIndex,
+			Flags = CommandPoolCreateFlags.TransientBit | CommandPoolCreateFlags.ResetCommandBufferBit
+		};
+
+		Result result = _master.Vk.CreateCommandPool(_device, in poolInfo, null, out _transientCommandPool);
+		if (result != Result.Success)
+		{
+			Console.WriteLine($"FAILED to create transient command pool: {result}");
+			throw new Exception($"Failed to create transient command pool: {result}");
+		}
+
+		Console.WriteLine($"Transient command pool created: handle = {_transientCommandPool.Handle}");
+	}
+
+	public void Dispose()
+	{
+		_master.Vk.DeviceWaitIdle(_device);
+		
+		if (_device.Handle != 0)
+		{
+			_master.Vk.DestroyDevice(_device, null);
 		}
 		
-		public uint FindMemoryType(uint typeFilter, MemoryPropertyFlags properties)
-		{
-			_master.Vk.GetPhysicalDeviceMemoryProperties(PhysicalDevice, out var memoryProperties);
-			
-			for (uint i = 0; i < memoryProperties.MemoryTypeCount; i++)
-			{
-				bool supported = (typeFilter & (1u << (int)i)) != 0;
-				bool hasFlags = (memoryProperties.MemoryTypes[ (int)i ].PropertyFlags & properties) == properties;
-
-				if (supported && hasFlags)
-					return i;
-			}
-			_memoryProperties = memoryProperties;
-
-			throw new Exception("Failed to find suitable memory type.");
-		}
 		
-		public struct QueueFamilyIndices
-		{
-			public uint? GraphicsFamily { get; set; }
-			public uint? PresentFamily { get; set; }
-
-			public bool HasGraphicsFamily => GraphicsFamily.HasValue;
-			public bool HasPresentFamily => PresentFamily.HasValue;
-			public bool IsComplete => HasGraphicsFamily && HasPresentFamily;
-		}
-		
-		public void CreateTransientCommandPool(uint queueFamilyIndex)
-		{
-			Console.WriteLine($"Creating transient command pool for queue family {queueFamilyIndex}");
-
-			var poolInfo = new CommandPoolCreateInfo
-			{
-				SType = StructureType.CommandPoolCreateInfo,
-				QueueFamilyIndex = queueFamilyIndex,
-				Flags = CommandPoolCreateFlags.TransientBit | CommandPoolCreateFlags.ResetCommandBufferBit
-			};
-
-			Result result = _master.Vk.CreateCommandPool(_device, in poolInfo, null, out _transientCommandPool);
-			if (result != Result.Success)
-			{
-				Console.WriteLine($"FAILED to create transient command pool: {result}");
-				throw new Exception($"Failed to create transient command pool: {result}");
-			}
-
-			Console.WriteLine($"Transient command pool created: handle = {_transientCommandPool.Handle}");
-		}
-
-		public void Dispose()
-		{
-			_master.Vk.DeviceWaitIdle(_device);
-			
-			if (_device.Handle != 0)
-			{
-				_master.Vk.DestroyDevice(_device, null);
-			}
-			
-			
-		}
+	}
 }

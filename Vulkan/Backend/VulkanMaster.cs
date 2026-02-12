@@ -53,34 +53,25 @@ internal class VulkanMaster : IRenderer
         Debug.Log("::: Initializing Vulkan resources :::", VALIDATION_LAYERS.WARNING);
         Vk = Vk.GetApi();
         
-        //NOTE: Window creation should probably not be done here in the end?
         CreateOSWindow();
         
         _window.Load += () =>
         {
             InitializeManagers();
             SetupFrameChain();
-
         };
 
         _window.Render += (double delta) =>
         {
-                        
             if (FrameHandler is null)
             {
                 return;
             }
 
-            // FrameHandler.BeginFrame(in _drawData);
             FrameHandler.Draw(in _drawData);
-            // FrameHandler.EndFrame(in _drawData);
-            
-
         };
         
         _window.Run();
-        
-        Debug.Log("Vulkan resources initialized.", VALIDATION_LAYERS.SUCCESS);
     }
 
     public void InitializeManagers()
@@ -101,8 +92,8 @@ internal class VulkanMaster : IRenderer
         CommandManager = new CommandManager(this);
         FrameHandler = new FrameHandler(this);
         PipelineFactory = new PipelineFactory(this);
-
-        FrameHandler.Initialize();
+        Debug.Log("Vulkan resources initialized.", VALIDATION_LAYERS.SUCCESS);
+        // FrameHandler.Initialize();
         
     }
 

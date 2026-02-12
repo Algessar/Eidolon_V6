@@ -16,8 +16,4 @@ internal class VulkanApplication
 		_vulkanMaster = new VulkanMaster();
 	}
 
-	public void Dispose()
-	{
-		// TODO release managed resources here
-	}
 }

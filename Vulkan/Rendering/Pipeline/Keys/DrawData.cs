@@ -6,11 +6,10 @@ namespace Eidolon.Vulkan;
 
 internal struct DrawData
 {
-    //NOTE: This definitely stays. 
-    
     public PipelineData PipelineData;
     public IRenderTarget? RenderTarget;
     
+    // I think this will be handled completely by DescriptorManager now.
     // public DescriptorSet DescriptorSet;
     
     //NOTE: Do I want to keep this?

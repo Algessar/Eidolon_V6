@@ -90,7 +90,6 @@ internal unsafe class CommandManager : IDisposable
 
     }
     
-    
     public CommandBuffer[] AllocateCommandBuffers(uint count, CommandBufferLevel level = CommandBufferLevel.Primary)
     {
         var allocInfo = new CommandBufferAllocateInfo
@@ -107,7 +106,7 @@ internal unsafe class CommandManager : IDisposable
             if (_master.Vk.AllocateCommandBuffers(_master.VulkanDevice.Device, in allocInfo, buffersPtr) != Result.Success)
                 throw new Exception("Failed to allocate command buffers.");
         }
-
+        
         return buffers;
     }
     private CommandPool CreateGraphicsCommandPool()

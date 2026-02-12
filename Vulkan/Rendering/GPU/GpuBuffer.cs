@@ -28,7 +28,6 @@ internal struct GpuBuffer : IDisposable
     
         Debug.Log($"Disposing GPU Buffer {Buffer.Handle}");
     
-        // Note: BufferManager should handle actual destruction
         // Just mark as invalid
         Buffer = default;
         Memory = default;
@@ -37,10 +36,4 @@ internal struct GpuBuffer : IDisposable
 
         Debug.Log($"Disposed GPU Buffer :: IsValid -> {IsValid}");
     }
-
-
-    // public void Dispose()
-    // {
-    //     // TODO release managed resources here
-    // }
 }

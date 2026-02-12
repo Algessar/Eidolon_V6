@@ -2,9 +2,6 @@
 using System.Timers;
 using Timer = System.Timers.Timer;
 
-
-//TODO: Move to Core
-
 public enum VALIDATION_LAYERS
 {
     SUCCESS,

@@ -45,7 +45,6 @@ public static class Mathf
 		return (float)MathF.Sin(f);
 	}
 	
-	//NOTE: Make a proper cos function -.^ I don't trust this cause I don't understand it (I should stop stealing from Unity :p)
 	public static double cos(double d) { throw null; }
 	public static float Cos(float f) => (float) cos((double) f);	    
 

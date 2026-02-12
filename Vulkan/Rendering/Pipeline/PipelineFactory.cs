@@ -165,8 +165,6 @@ internal unsafe class PipelineFactory
                 DynamicStateCount = 2,
                 PDynamicStates = dynamicStates
             };
-            
-            //NOTE: DescriptorSets are retrieved here.
 
             var descriptorSetLayout = key.Layout;
 

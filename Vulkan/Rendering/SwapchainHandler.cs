@@ -470,13 +470,11 @@ internal unsafe class SwapchainHandler
         }
     }
 
-    public void RecreateSwapchain(RenderPass renderPass, bool renderPassHasDepth)
+    public bool RecreateSwapchain(RenderPass renderPass, bool renderPassHasDepth)
     {
-        
-        
         while (_window.FramebufferSize.X == 0 || _window.FramebufferSize.Y == 0)
         {
-            Thread.Sleep(16);
+            return false;
         }
 
         _master.Vk.DeviceWaitIdle(_master.VulkanDevice.Device);
@@ -487,6 +485,7 @@ internal unsafe class SwapchainHandler
         CreateImageViews();
         CreateDepthResources();
         CreateFramebuffers(renderPass, renderPassHasDepth);
+        return true;
     }
 
     private void CleanupSwapchainResources()

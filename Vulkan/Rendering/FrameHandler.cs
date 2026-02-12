@@ -66,8 +66,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         _swapchainHandler = master.SwapchainHandler;
         _imageCount = _swapchainHandler.ImageCount;
         
-        _commandBuffer = _master.CommandManager.AllocateCommandBuffers(_maxFramesInFlight);
         Initialize();
+        _commandBuffer = _master.CommandManager.AllocateCommandBuffers(_maxFramesInFlight);
 
         _importMap = new GraphResourceImportMap();
 
@@ -92,8 +92,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
     public void Initialize()
     {
+        CreateResources();
         CreateSyncObjects();
-        // CreateResources();
         _currentFrame = 0;
         _currentImageIndex = 0;
 
@@ -105,37 +105,10 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         _compiledGraph = graph ?? throw new ArgumentNullException(nameof(graph));
         _resourceLookup.Clear();
-
-        foreach (var resource in graph.Resources)
-        {
-            _resourceLookup[resource.Handle.Handle] = resource;
-            
-            if(!resource.Imported)
-                continue;
-
-            if ((resource.Description.Usage & FlagImageUsage.Present) != 0)
-            {
-                _importMap.Register(resource.Handle, ImportedResourceKind.SwapchainColor);
-            }
-            else if ((resource.Description.Usage & FlagImageUsage.DepthStencilAttachment) != 0)
-            {            
-                _importMap.Register(resource.Handle, ImportedResourceKind.SceneDepth);
-            }
-            
-        }
         
-        // ConfigureImportedResourceMappings(graph);
+        ConfigureImportedResourceMappings(graph);
     }
 
-    // public void SetCompiledGraph(CompiledRenderGraph graph)
-    // {
-    //     DestroyGraphResources();
-    //     
-    //     _compiledGraph = graph ?? throw new ArgumentNullException(nameof(graph));
-    //     _resourceLookup.Clear();
-    //
-    //     ConfigureImportedResourceMappings(graph);
-    // }
 
     private void ConfigureImportedResourceMappings(CompiledRenderGraph graph)
     {
@@ -154,7 +127,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             {            
                 _importMap.Register(resource.Handle, ImportedResourceKind.SceneDepth);
             }
-            
         }
     }
 
@@ -195,6 +167,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 Debug.Log($"[RG]   Writes: {string.Join(", ", pass.Writes.Select(w => w.Handle))}", VALIDATION_LAYERS.INFO, false);
                 Debug.Log($"[RG]   Deps:   {string.Join(", ", pass.Dependencies)}", VALIDATION_LAYERS.INFO, false);
             }
+            
+            PreparePassResourceLayouts(pass);
 
             var descriptorSet = _master.DescriptorFactory.GetDescriptorSet(_currentFrame);
 
@@ -208,25 +182,12 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 0,
                 null);
 
-            // Your current system has no per-pass pipeline yet,
-            // so we keep the existing behavior.
             if (data.PipelineData.IsValid)
             {
                 _master.Vk.CmdBindPipeline(
                     cmd,
                     PipelineBindPoint.Graphics,
                     data.PipelineData.VkPipeline);
-
-                // _master.Vk.CmdBindDescriptorSets(
-                //     cmd,
-                //     PipelineBindPoint.Graphics,
-                //     data.PipelineData.VkLayout,
-                //     0,
-                //     1,
-                //     in data.DescriptorSet,
-                //     0,
-                //     null);
-                
                 
                 var modelMatrix = data.ModelMatrix ?? Matrix4x4.Identity;
                 _master.Vk.CmdPushConstants(
@@ -254,9 +215,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         var vk = _master.Vk;
        
         var cmd = _commandBuffer[_currentFrame];
-        
-        
-	   
 
         // Wait for this frame to finish
         fixed (Fence* frameFence = &_inFlightFences[_currentFrame])
@@ -264,9 +222,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             vk.WaitForFences(device, 1, frameFence, true, ulong.MaxValue);
         }
         
-        if (_framebufferResized)
+        if (_framebufferResized && !RecreateSwapchain(data.PipelineData))
         {
-            RecreateSwapchain(data.PipelineData);
             _frameActive = false;
             return;
         }
@@ -374,9 +331,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         EnsureGraphResources(_compiledGraph);
         
         _commandBuffer = new CommandBuffer[_maxFramesInFlight];
-        _waitSemaphore = new Semaphore[_maxFramesInFlight];
-        _signalSemaphore = new Semaphore[_maxFramesInFlight];
-        _inFlightFences = new Fence[_maxFramesInFlight];
 
         fixed (CommandBuffer* commandBufferPtr = _commandBuffer)
         {
@@ -391,35 +345,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             if (_master.Vk.AllocateCommandBuffers(_master.VulkanDevice.Device, in allocInfo, commandBufferPtr) != Result.Success)
             {
                 throw new Exception("Failed to allocate frame command buffers.");
-            }
-        }
-        
-        for (var i = 0; i < _maxFramesInFlight; i++)
-        {
-            var semaphoreInfo = new SemaphoreCreateInfo
-            {
-                SType = StructureType.SemaphoreCreateInfo,
-            };
-
-            var fenceInfo = new FenceCreateInfo
-            {
-                SType = StructureType.FenceCreateInfo,
-                Flags = FenceCreateFlags.SignaledBit,
-            };
-
-            if (_master.Vk.CreateSemaphore(_master.VulkanDevice.Device, in semaphoreInfo, null, out _waitSemaphore[i]) != Result.Success)
-            {
-                throw new Exception($"Failed to create wait semaphore {i}.");
-            }
-
-            if (_master.Vk.CreateSemaphore(_master.VulkanDevice.Device, in semaphoreInfo, null, out _signalSemaphore[i]) != Result.Success)
-            {
-                throw new Exception($"Failed to create signal semaphore {i}.");
-            }
-
-            if (_master.Vk.CreateFence(_master.VulkanDevice.Device, in fenceInfo, null, out _inFlightFences[i]) != Result.Success)
-            {
-                throw new Exception($"Failed to create in-flight fence {i}.");
             }
         }
     }
@@ -459,11 +384,14 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
     private void CreateSyncObjects()
     {
+        //INFO: wait semaphores and in flight fences must be the same size as MaxFramesInFlight.
         _inFlightFences = new Fence[_maxFramesInFlight];
-        _imagesInFlight = new Fence[_imageCount];
+        _waitSemaphore = new Semaphore[_maxFramesInFlight];
 
-        _waitSemaphore = new Semaphore[_maxFramesInFlight]; //NOTE: waitSemaphore
-        _signalSemaphore = new Semaphore[_imageCount]; //NOTE: SignalSemaphore
+        //INFO: Signal semaphores and images in flight must be the same size as swapchain images.
+        // 
+        _imagesInFlight = new Fence[_imageCount];
+        _signalSemaphore = new Semaphore[_imageCount];
 
         for (int i = 0; i < _maxFramesInFlight; i++)
         {
@@ -472,19 +400,27 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             Debug.Log($"Semaphore handles : {_waitSemaphore[i].Handle}", VALIDATION_LAYERS.INFO);
             _inFlightFences[i] = CreateFence($"InFlightFence {i}");
             Debug.Log($"In Flight Fences handles : {_inFlightFences[i].Handle}", VALIDATION_LAYERS.INFO);
-
-
         }
 
         for (int i = 0; i < _imageCount; i++)
         {
             _signalSemaphore[i] = CreateSemaphore($"SignalFinishedSemaphore {i}");
 
-            Debug.Log($"Semaphore handles : {_signalSemaphore[i].Handle}", VALIDATION_LAYERS.INFO);
+            Debug.Log($"Signal semaphore handles : {_signalSemaphore[i].Handle}", VALIDATION_LAYERS.INFO);
 
         }
+
+        if (_signalSemaphore.Length < _imageCount)
+        {
+            throw new Exception("Not enough signal semaphores for swapchain images.");
+        }
+
+        if (_inFlightFences.Length < _maxFramesInFlight)
+        {
+            throw new Exception("Not enough in flight fences for in-flight frames.");
+        }
         
-        Debug.Log($"Created {_imageCount} semaphores and {_maxFramesInFlight} fences", VALIDATION_LAYERS.SUCCESS);
+        Debug.Log($"Created {_signalSemaphore.Length} signal semaphores, {_waitSemaphore.Length} wait semaphores and  {_inFlightFences.Length} in flight fences", VALIDATION_LAYERS.SUCCESS);
     }
 
     private Semaphore CreateSemaphore(string name)
@@ -517,32 +453,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         return fence;
     }
 
-    private void DestroyGraphResources()
-    {
-        foreach (var kv in _graphImages)
-        {
-            var rt = kv.Value;
-            if (rt.Imported)
-                continue;
-            
-            if (rt.View.Handle != 0)
-            {
-                _master.Vk.DestroyImageView(_master.VulkanDevice.Device, rt.View, null);
-            }
-
-            if (rt.Image.Handle != 0)
-            {
-                _master.Vk.DestroyImage(_master.VulkanDevice.Device, rt.Image, null);
-            }
-
-            if (rt.Memory.Handle != 0)
-            {
-                _master.Vk.FreeMemory(_master.VulkanDevice.Device, rt.Memory, null);
-            }
-        }
-        
-        _graphImages.Clear();
-    }
+   
 
     private GraphImageRuntime CreateGraphImage(in CompiledResource resource)
     {
@@ -684,26 +595,32 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         return result;
     }
 
-    private void RecreateSwapchain(in PipelineData pipelineData)
+    private bool RecreateSwapchain(in PipelineData pipelineData)
     {
+        if (!_swapchainHandler.RecreateSwapchain(pipelineData.RenderPass, pipelineData.HasDepth))
+        {
+            _framebufferResized = true;
+            return false;
+        }
+
         _framebufferResized = false;
 
-        _swapchainHandler.RecreateSwapchain(pipelineData.RenderPass, pipelineData.HasDepth);
         _swapchainHandler = _master.SwapchainHandler;
 
         _imageCount = _swapchainHandler.ImageCount;
         _imagesInFlight = new Fence[_imageCount];
 
-        RecreateRenderFinishedSemaphores();
+        RecreateSignalSemaphores();
 
         _currentImageIndex = 0;
 
         DestroyGraphResources();
+        return true;
     }
     
-    private void RecreateRenderFinishedSemaphores()
+    private void RecreateSignalSemaphores()
     {
-        foreach (var semaphore in _renderFinishedSemaphores)
+        foreach (var semaphore in _signalSemaphore)
         {
             if (semaphore.Handle != 0)
             {
@@ -711,13 +628,114 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             }
         }
 
-        _renderFinishedSemaphores = new Semaphore[_imageCount];
+        _signalSemaphore = new Semaphore[_imageCount];
         for (var i = 0; i < _imageCount; i++)
         {
-            _renderFinishedSemaphores[i] = CreateSemaphore($"RenderFinishedSemaphore {i}");
+            _signalSemaphore[i] = CreateSemaphore($"SignalSemaphore {i}");
+        }
+    }
+    
+    private void PreparePassResourceLayouts(in CompiledPass pass)
+    {
+        // Reads first, then writes. This keeps intent explicit while we still use a single render pass.
+        foreach (var read in pass.Reads)
+        {
+            TrackResourceLayout(read, isWrite: false);
+        }
+
+        foreach (var write in pass.Writes)
+        {
+            TrackResourceLayout(write, isWrite: true);
         }
     }
 
+    private void TrackResourceLayout(in ResourceHandle handle, bool isWrite)
+    {
+        if (!_resourceLookup.TryGetValue(handle.Handle, out var resource))
+        {
+            return;
+        }
+
+        if (!_graphImages.TryGetValue(handle.Handle, out var runtime))
+        {
+            return;
+        }
+
+        var expectedLayout = ResolveExpectedLayout(resource.Description.Usage, isWrite);
+        if (runtime.CurrentLayout == expectedLayout)
+        {
+            return;
+        }
+
+        //NOTE: We intentionally don't emit vkCmdPipelineBarrier yet because command recording is
+        // still done as one active render pass scope; this first step tracks and validates intended
+        // layout flow so we can move barrier emission out of render-pass scope next.
+        if (LOG_RENDER_GRAPH)
+        {
+            Debug.Log($"[RG] Layout transition planned: {resource.Name} {runtime.CurrentLayout} -> {expectedLayout}");
+        }
+
+        runtime.CurrentLayout = expectedLayout;
+        _graphImages[handle.Handle] = runtime;
+    }
+
+    private static ImageLayout ResolveExpectedLayout(FlagImageUsage usage, bool isWrite)
+    {
+        if ((usage & FlagImageUsage.DepthStencilAttachment) != 0)
+        {
+            return ImageLayout.DepthStencilAttachmentOptimal;
+        }
+
+        if (isWrite)
+        {
+            if ((usage & FlagImageUsage.ColorAttachment) != 0 || (usage & FlagImageUsage.Present) != 0)
+            {
+                return ImageLayout.ColorAttachmentOptimal;
+            }
+        }
+        else
+        {
+            if ((usage & FlagImageUsage.Sampled) != 0)
+            {
+                return ImageLayout.ShaderReadOnlyOptimal;
+            }
+
+            if ((usage & FlagImageUsage.Present) != 0)
+            {
+                return ImageLayout.PresentSrcKhr;
+            }
+        }
+
+        return ImageLayout.General;
+    }
+
+    
+    private void DestroyGraphResources()
+    {
+        foreach (var kv in _graphImages)
+        {
+            var rt = kv.Value;
+            if (rt.Imported)
+                continue;
+            
+            if (rt.View.Handle != 0)
+            {
+                _master.Vk.DestroyImageView(_master.VulkanDevice.Device, rt.View, null);
+            }
+
+            if (rt.Image.Handle != 0)
+            {
+                _master.Vk.DestroyImage(_master.VulkanDevice.Device, rt.Image, null);
+            }
+
+            if (rt.Memory.Handle != 0)
+            {
+                _master.Vk.FreeMemory(_master.VulkanDevice.Device, rt.Memory, null);
+            }
+        }
+        
+        _graphImages.Clear();
+    }
     public void Dispose()
     {
         DestroyGraphResources();
