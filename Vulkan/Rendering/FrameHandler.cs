@@ -171,10 +171,16 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             }
 
             TransitionPassResources(pass, cmd);
+            _master.CommandManager.BeginRenderPass(
+                cmd, _swapchainHandler.Framebuffers,
+                data.PipelineData.RenderPass,
+                _swapchainHandler.Extent,
+                _currentImageIndex,
+                data.PipelineData.HasDepth);
             
             //NOTE: Codex wants BeginPassRenderPass here ... whatever that is ^^ 
             
-            PreparePassResourceLayouts(pass);
+            // PreparePassResourceLayouts(pass);
 
             var descriptorSet = _master.DescriptorFactory.GetDescriptorSet(_currentFrame);
 
@@ -208,7 +214,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 _master.Vk.CmdDraw(cmd, 3, 1, 0, 0);
             }
         }
-
+        _master.Vk.CmdEndRenderPass(cmd);
         EndFrame(data);
     }
     
@@ -305,7 +311,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         
         var cmd = _commandBuffer[_currentFrame];
         
-        _master.Vk.CmdEndRenderPass(cmd);
+        
        
         if (_master.Vk.EndCommandBuffer(cmd) != Result.Success)
             throw new Exception("Failed to end command buffer!");
@@ -585,20 +591,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             }
             var runtime = CreateGraphImage(resource);
             _graphImages[resource.Handle.Handle] = runtime;
-        }
-    }
-
-    private void PreparePassResourceLayouts(in CompiledPass pass)
-    {
-        // Reads first, then writes. This keeps intent explicit while we still use a single render pass.
-        foreach (var read in pass.Reads)
-        {
-            TrackResourceLayout(read, isWrite: false);
-        }
-
-        foreach (var write in pass.Writes)
-        {
-            TrackResourceLayout(write, isWrite: true);
         }
     }
 
