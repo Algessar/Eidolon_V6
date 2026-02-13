@@ -185,7 +185,6 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         LastIndexCount = !drawData.Valid ? 0 : drawData.TotalIdxCount;
         LastCommandListCount = !drawData.Valid ? 0 : drawData.CmdListsCount;
     }
-
     
     //WARNING: I don't like anything below here. Much of this should be handled in Managers/Factories.
     // This is the same vibe-coding problem I ended up with in previous version. 
@@ -347,74 +346,6 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         };
 
         _master.Vk.UpdateDescriptorSets(_master.VulkanDevice.Device, 1, &write, 0, null);
-    }
-    
-    //WARNING: Didn't we just create this in FrameHandler?
-
-    private void TransitionImageLayout(CommandBuffer cmd, Image image, ImageLayout oldLayout, ImageLayout newLayout)
-    {
-        var barrier = new ImageMemoryBarrier
-        {
-            SType = StructureType.ImageMemoryBarrier,
-            OldLayout = oldLayout,
-            NewLayout = newLayout,
-            SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
-            DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
-            Image = image,
-            SubresourceRange = new ImageSubresourceRange
-            {
-                AspectMask = ImageAspectFlags.ColorBit,
-                BaseMipLevel = 0,
-                LevelCount = 1,
-                BaseArrayLayer = 0,
-                LayerCount = 1
-            }
-        };
-
-        PipelineStageFlags srcStage;
-        PipelineStageFlags dstStage;
-
-        if (oldLayout == ImageLayout.Undefined && newLayout == ImageLayout.TransferDstOptimal)
-        {
-            barrier.SrcAccessMask = 0;
-            barrier.DstAccessMask = AccessFlags.TransferWriteBit;
-            srcStage = PipelineStageFlags.TopOfPipeBit;
-            dstStage = PipelineStageFlags.TransferBit;
-        }
-        else if (oldLayout == ImageLayout.TransferDstOptimal && newLayout == ImageLayout.ShaderReadOnlyOptimal)
-        {
-            barrier.SrcAccessMask = AccessFlags.TransferWriteBit;
-            barrier.DstAccessMask = AccessFlags.ShaderReadBit;
-            srcStage = PipelineStageFlags.TransferBit;
-            dstStage = PipelineStageFlags.FragmentShaderBit;
-        }
-        else
-        {
-            throw new Exception($"Unsupported ImGui font image layout transition: {oldLayout} -> {newLayout}");
-        }
-
-        _master.Vk.CmdPipelineBarrier(cmd, srcStage, dstStage, 0, 0, null, 0, null, 1, &barrier);
-    }
-
-    private void CopyBufferToImage(CommandBuffer cmd, Buffer buffer, Image image, uint width, uint height)
-    {
-        var region = new BufferImageCopy
-        {
-            BufferOffset = 0,
-            BufferRowLength = 0,
-            BufferImageHeight = 0,
-            ImageSubresource = new ImageSubresourceLayers
-            {
-                AspectMask = ImageAspectFlags.ColorBit,
-                MipLevel = 0,
-                BaseArrayLayer = 0,
-                LayerCount = 1
-            },
-            ImageOffset = new Offset3D(0, 0, 0),
-            ImageExtent = new Extent3D(width, height, 1)
-        };
-
-        _master.Vk.CmdCopyBufferToImage(cmd, buffer, image, ImageLayout.TransferDstOptimal, 1, &region);
     }
 
     public void Dispose()
