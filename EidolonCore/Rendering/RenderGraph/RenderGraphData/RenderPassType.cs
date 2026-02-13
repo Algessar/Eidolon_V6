@@ -6,5 +6,6 @@ public enum RenderPassType
     Shadow,
     Lighting,
     PostProcess,
+    Ui,
     Present
 }

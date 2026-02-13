@@ -7,14 +7,12 @@ public class EidolonEditor
 {
     public static void Main()
     {
-        ShaderCompiler.CompileShaders(@"G:\Coding\Eidolon_V6\Vulkan\Rendering\Shaders");
+        // ShaderCompiler.CompileShaders(@"G:\Coding\Eidolon_V6\Vulkan\Rendering\Shaders");
 
         Debug.Log("Starting from EidolonEditor", VALIDATION_LAYERS.INFO);
         var initialGraph = BuildInitialGraph(1920, 1080);
         VulkanHost.Run(initialGraph);
         Debug.Log("EidolonEditor shutting down!", VALIDATION_LAYERS.SUCCESS);
-        
-        
     }
 
     private static CompiledRenderGraph BuildInitialGraph(uint width, uint height)
@@ -33,17 +31,18 @@ public class EidolonEditor
             GraphImageDescription.Create(ImageFormat.Bgra8Unorm,
                 FlagImageUsage.ColorAttachment | FlagImageUsage.Present));
 
-        var geo =  graph.AddPass("Geometry", RenderPassType.Geometry)
+        graph.AddPass("Geometry", RenderPassType.Geometry)
             .Write(sceneColor);
         
-        
-
         graph.AddPass("PostProcess", RenderPassType.PostProcess)
             .Read(sceneColor)
             .Write(postColor);
 
         graph.AddPass("Present", RenderPassType.Present)
             .Read(postColor)
+            .Write(backbuffer);
+        
+        graph.AddPass("ImGui", RenderPassType.Ui)
             .Write(backbuffer);
 
 

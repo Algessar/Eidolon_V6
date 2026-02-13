@@ -10,7 +10,7 @@ using Silk.NET.Windowing;
 
 namespace Eidolon.Vulkan;
 
-internal class VulkanMaster : IRenderer
+internal class VulkanMaster
 {
     #region Vulkan Core
 
@@ -49,6 +49,8 @@ internal class VulkanMaster : IRenderer
     DrawData _drawData;
     public VulkanMaster(CompiledRenderGraph? initialGraph = null)
     {
+        ShaderCompiler.CompileShaders(@"G:\Coding\Eidolon_V6\Vulkan\Rendering\Shaders");
+        
         _initialGraph = initialGraph;
         Debug.Log("::: Initializing Vulkan resources :::", VALIDATION_LAYERS.WARNING);
         Vk = Vk.GetApi();
@@ -93,7 +95,6 @@ internal class VulkanMaster : IRenderer
         FrameHandler = new FrameHandler(this);
         PipelineFactory = new PipelineFactory(this);
         Debug.Log("Vulkan resources initialized.", VALIDATION_LAYERS.SUCCESS);
-        // FrameHandler.Initialize();
         
     }
 

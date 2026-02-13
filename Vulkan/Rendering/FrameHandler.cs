@@ -1,5 +1,4 @@
-﻿using System.Diagnostics.SymbolStore;
-using System.Numerics;
+﻿using System.Numerics;
 using System.Reflection.Metadata;
 using EidolonCore.Rendering;
 using ImGuiNET;
@@ -41,8 +40,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     private uint _imageCount;
     private Semaphore[] _waitSemaphore = Array.Empty<Semaphore>();
     private Semaphore[] _signalSemaphore = Array.Empty<Semaphore>();
-    private Semaphore[] _imageAvailableSemaphores = Array.Empty<Semaphore>();
-    private Semaphore[] _renderFinishedSemaphores = Array.Empty<Semaphore>();
     private Fence[] _inFlightFences = Array.Empty<Fence>();
     private Fence[] _imagesInFlight;
     
@@ -53,10 +50,13 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     
     private Dictionary<ulong, string> _semaphoreNames = new();
     private Dictionary<ulong, string> _fenceNames = new();
+
+    
     
     public bool _framebufferResized { get; set; }
 
     bool LOG_RENDER_GRAPH = true;
+    
     public FrameHandler(VulkanMaster master)
     {
         Debug.Log("Creating FrameHandler", VALIDATION_LAYERS.INFO);
@@ -72,14 +72,10 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         
         _master.GetWindow.FramebufferResize += OnWindowResize;
         Debug.Log("FrameHandler created.", VALIDATION_LAYERS.SUCCESS);
-        
     }
-
-    
     
     private void OnWindowResize(Vector2D<int> newSize)
     {
-        // var id = ImGui.CreateContext();
         if (newSize.X == 0 || newSize.Y == 0)
             return;
 
@@ -171,16 +167,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 Debug.Log($"[RG]   Deps:   {string.Join(", ", pass.Dependencies)}", VALIDATION_LAYERS.INFO,
                     LOG_RENDER_GRAPH);
             }
-
-            TransitionPassResources(pass, cmd);
-            _master.CommandManager.BeginRenderPass(
-                cmd, _swapchainHandler.Framebuffers,
-                data.PipelineData.RenderPass,
-                _swapchainHandler.Extent,
-                _currentImageIndex,
-                data.PipelineData.HasDepth);
-            
-            //NOTE: Codex wants BeginPassRenderPass here ... whatever that is ^^ 
             
             
             var frameBuffer = _swapchainHandler.Framebuffers[_currentImageIndex];
@@ -241,7 +227,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         
         EndFrame(data);
     }
-    
+
     public void BeginFrame(in DrawData data)
     {
         if (_frameActive)
@@ -385,7 +371,41 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             }
         }
     }
-    
+
+    private void EnsureGraphResources(CompiledRenderGraph graph)
+    {
+        foreach (var resource in graph.Resources)
+        {
+            if(_graphImages.ContainsKey(resource.Handle.Handle))
+                continue;
+
+            if (LOG_RENDER_GRAPH)
+            {
+                Debug.Log($"Creating runtime resource {resource.Name}"
+                    + $"H:{resource.Handle.Handle}, Imported:{resource.Imported}" +
+                    $"Use:{resource.FirstUsePass} -> {resource.LastUsePass}");
+            }
+
+            if (resource.Imported)
+            {
+                // Imported resources are owned externally (swapchain/depth targets).
+                // We keep metadata for debugging/inspection but do not allocate/destroy Vulkan objects here.
+                _graphImages[resource.Handle.Handle] = new GraphImageRuntime
+                {
+                    
+                    Imported = true,
+                    Usage = resource.Description.Usage,
+                    Format = ResolveVkFormat(resource.Description.Format),
+                    Extent = ResolveGraphExtent(resource.Description),
+                    CurrentLayout = ImageLayout.Undefined,
+                };
+                continue;
+            }
+            var runtime = CreateGraphImage(resource);
+            _graphImages[resource.Handle.Handle] = runtime;
+        }
+    }
+
     private void CreateSyncObjects()
     {
         //INFO: wait semaphores and in flight fences must be the same size as MaxFramesInFlight.
@@ -733,7 +753,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         runtime.CurrentLayout = newLayout;
     }
-
     
     #endregion Transitions
     
@@ -750,7 +769,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         };
         
     }
-    
     private static ImageAspectFlags ResolveAspectFlags(FlagImageUsage usage, ImageFormat format)
     {
         if ((usage & FlagImageUsage.DepthStencilAttachment) != 0)
@@ -761,6 +779,13 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 : ImageAspectFlags.DepthBit;
         }
         return ImageAspectFlags.ColorBit;
+    }
+
+    private Extent2D ResolveGraphExtent(GraphImageDescription description)
+    {
+        var width = Math.Max(1u, (uint)MathF.Round(_swapchainHandler.Extent.Width * description.ScaleX));
+        var height = Math.Max(1u, (uint)MathF.Round(_swapchainHandler.Extent.Height * description.ScaleY));
+        return new Extent2D(width, height);
     }
 
     private static ImageUsageFlags ResolveImageUsage(FlagImageUsage usage)
@@ -785,10 +810,46 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         return result;
     }
-    
-    #endregion Resolve
-    
 
+    private bool RecreateSwapchain(in PipelineData pipelineData)
+    {
+        if (!_swapchainHandler.RecreateSwapchain(pipelineData.RenderPass, pipelineData.HasDepth))
+        {
+            _framebufferResized = true;
+            return false;
+        }
+
+        _framebufferResized = false;
+
+        _swapchainHandler = _master.SwapchainHandler;
+
+        _imageCount = _swapchainHandler.ImageCount;
+        _imagesInFlight = new Fence[_imageCount];
+
+        RecreateSignalSemaphores();
+
+        _currentImageIndex = 0;
+
+        DestroyGraphResources();
+        return true;
+    }
+    
+    private void RecreateSignalSemaphores()
+    {
+        foreach (var semaphore in _signalSemaphore)
+        {
+            if (semaphore.Handle != 0)
+            {
+                _master.Vk.DestroySemaphore(_master.VulkanDevice.Device, semaphore, null);
+            }
+        }
+
+        _signalSemaphore = new Semaphore[_imageCount];
+        for (var i = 0; i < _imageCount; i++)
+        {
+            _signalSemaphore[i] = CreateSemaphore($"SignalSemaphore {i}");
+        }
+    }
 
     private void TrackResourceLayout(in ResourceHandle handle, bool isWrite)
     {
@@ -880,5 +941,4 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     {
         DestroyGraphResources();
     }
-    #endregion
 }
