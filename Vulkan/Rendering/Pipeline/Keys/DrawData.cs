@@ -5,6 +5,7 @@ using Silk.NET.Vulkan;
 
 namespace Eidolon.Vulkan;
 
+//INFO: Scene draw submission
 internal struct DrawData
 {
     public PipelineData PipelineData;

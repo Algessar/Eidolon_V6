@@ -576,6 +576,9 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     
     #region Transitions
     
+    //TODO: 
+    // [Vulkan Validation] ErrorBitExt: vkCmdPipelineBarrier(): pImageMemoryBarriers[0].dstAccessMask (VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT) is not supported by stage mask (VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT).
+
     private void TransitionLayouts(CommandBuffer cmd, in CompiledPass pass)
     {
         // Reads first, then writes. This keeps intent explicit while we still use a single render pass.

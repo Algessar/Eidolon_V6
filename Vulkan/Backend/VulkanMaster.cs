@@ -108,7 +108,7 @@ internal class VulkanMaster
         var id = ImGui.CreateContext(); //NOTE: Had missed completely that CreateContext() returns an ID.
 
         _imguiRenderer = new ImGuiRenderer();
-        _imguiRenderer.Initialize();
+        _imguiRenderer.Initialize(_drawData.PipelineData.RenderPass);
         
         _drawData = BuildDrawData(SwapchainHandler);
         
@@ -131,6 +131,8 @@ internal class VulkanMaster
         
         _window = Window.Create(opts);
     }
+    
+    
 
     //NOTE: TEMP
     private DrawData BuildDrawData(SwapchainHandler swapchain)
