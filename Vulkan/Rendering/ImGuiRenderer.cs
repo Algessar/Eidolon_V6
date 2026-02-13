@@ -8,7 +8,7 @@ namespace Eidolon.Vulkan;
 
 // INFO: UI pass = UI submission
 
-public sealed unsafe class ImGuiRenderer : IDisposable
+internal sealed unsafe class ImGuiRenderer : IDisposable
 {
     VulkanMaster _master;
     
@@ -32,9 +32,11 @@ public sealed unsafe class ImGuiRenderer : IDisposable
     [Header("Debug")]
     bool _showDemoWindow = true;
 
-    public unsafe void Initialize(RenderPass renderPass)
+
+
+    public void Initialize(VulkanMaster master, RenderPass renderPass)
     {
-        
+        _master = master;
         Debug.Log("Creating ImGuiRenderer", VALIDATION_LAYERS.INFO);
         var io = ImGui.GetIO();
         if (io.Fonts.Fonts.Size == 0)
