@@ -47,7 +47,7 @@ internal unsafe class CommandManager : IDisposable
         // 2. SETUP CLEAR VALUES
         ClearValue[] clearValuesArray = hasDepth ? new ClearValue[2] : new ClearValue[1];
         
-        // Color clear value
+        // Colour clear value
         clearValuesArray[0] = new ClearValue
         {
             Color = new ClearColorValue(clearColor.X, clearColor.Y, clearColor.Z, clearColor.W)
@@ -78,7 +78,6 @@ internal unsafe class CommandManager : IDisposable
             _master.Vk.CmdBeginRenderPass(cmd, &renderPassInfo, SubpassContents.Inline);
         }
 
-
         // 5. Debug logging
         Debug.Log($"Recorded command buffer:"
                   + $"  Framebuffer: {framebuffer.Handle:X}" 
@@ -90,6 +89,7 @@ internal unsafe class CommandManager : IDisposable
 
     }
 
+    //NOTE: Remember to check if this is ever used on next major cleanup pass.
     public void BeginRenderPass(CommandBuffer cmd, Framebuffer[] framebuffers, RenderPass renderPass, Extent2D extent, uint currentImageIndex, bool hasDepth)
     {
         var clearValuesArray = hasDepth ? new ClearValue[2] : new ClearValue[1];
@@ -157,6 +157,96 @@ internal unsafe class CommandManager : IDisposable
         }
 
         return commandPool;
+    }
+    
+    
+    public void EndSubmitAndFreeTransientCommandBuffer(CommandBuffer cmd)
+    {
+        if (_master.Vk.EndCommandBuffer(cmd) != Result.Success)
+        {
+            throw new Exception("Failed to end transient command buffer.");
+        }
+
+        var submitInfo = new SubmitInfo
+        {
+            SType = StructureType.SubmitInfo,
+            CommandBufferCount = 1,
+            PCommandBuffers = &cmd
+        };
+
+        if (_master.Vk.QueueSubmit(_master.VulkanDevice.GraphicsQueue, 1, &submitInfo, default) != Result.Success)
+        {
+            throw new Exception("Failed to submit transient command buffer.");
+        }
+
+        _master.Vk.QueueWaitIdle(_master.VulkanDevice.GraphicsQueue);
+        _master.Vk.FreeCommandBuffers(_master.VulkanDevice.Device, _transientCommandPool, 1, &cmd);
+    }
+    public void TransitionImageLayout(CommandBuffer cmd, Image image, ImageLayout oldLayout, ImageLayout newLayout)
+    {
+        var barrier = new ImageMemoryBarrier
+        {
+            SType = StructureType.ImageMemoryBarrier,
+            OldLayout = oldLayout,
+            NewLayout = newLayout,
+            SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
+            DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
+            Image = image,
+            SubresourceRange = new ImageSubresourceRange
+            {
+                AspectMask = ImageAspectFlags.ColorBit,
+                BaseMipLevel = 0,
+                LevelCount = 1,
+                BaseArrayLayer = 0,
+                LayerCount = 1
+            }
+        };
+
+        PipelineStageFlags srcStage;
+        PipelineStageFlags dstStage;
+
+        if (oldLayout == ImageLayout.Undefined && newLayout == ImageLayout.TransferDstOptimal)
+        {
+            barrier.SrcAccessMask = 0;
+            barrier.DstAccessMask = AccessFlags.TransferWriteBit;
+            srcStage = PipelineStageFlags.TopOfPipeBit;
+            dstStage = PipelineStageFlags.TransferBit;
+        }
+        else if (oldLayout == ImageLayout.TransferDstOptimal && newLayout == ImageLayout.ShaderReadOnlyOptimal)
+        {
+            barrier.SrcAccessMask = AccessFlags.TransferWriteBit;
+            barrier.DstAccessMask = AccessFlags.ShaderReadBit;
+            srcStage = PipelineStageFlags.TransferBit;
+            dstStage = PipelineStageFlags.FragmentShaderBit;
+        }
+        else
+        {
+            throw new Exception($"Unsupported image layout transition: {oldLayout} -> {newLayout}");
+        }
+
+        _master.Vk.CmdPipelineBarrier(cmd, srcStage, dstStage, 0, 0, null, 0, null, 1, &barrier);
+    }
+    
+    //NOTE: This is a COMMANDBuffer, which means it actually belongs here -.-
+    public void CopyBufferToImage(CommandBuffer cmd, Silk.NET.Vulkan.Buffer buffer, Image image, uint width, uint height)
+    {
+        var region = new BufferImageCopy
+        {
+            BufferOffset = 0,
+            BufferRowLength = 0,
+            BufferImageHeight = 0,
+            ImageSubresource = new ImageSubresourceLayers
+            {
+                AspectMask = ImageAspectFlags.ColorBit,
+                MipLevel = 0,
+                BaseArrayLayer = 0,
+                LayerCount = 1
+            },
+            ImageOffset = new Offset3D(0, 0, 0),
+            ImageExtent = new Extent3D(width, height, 1)
+        };
+
+        _master.Vk.CmdCopyBufferToImage(cmd, buffer, image, ImageLayout.TransferDstOptimal, 1, &region);
     }
     
     public CommandBuffer AllocateTransientCommandBuffer()

@@ -52,9 +52,9 @@ internal class VulkanMaster
     {
         ShaderCompiler.CompileShaders(@"G:\Coding\Eidolon_V6\Vulkan\Rendering\Shaders");
         
-        // _initialGraph = initialGraph;
+        _initialGraph = initialGraph;
         Debug.Log("::: Initializing Vulkan resources :::", VALIDATION_LAYERS.WARNING);
-        _initialGraph = BuildInitialGraph(900, 720);
+
         Vk = Vk.GetApi();
         
         CreateOSWindow();
@@ -72,7 +72,7 @@ internal class VulkanMaster
                 return;
             }
             
-            _imguiRenderer?.NewFrame((float) delta, new Vec2(_window.Size.X, _window.Size.Y)); // Wonder if my Vec2 works ^^ I doubt it, no implicit operator for Vector2D<T>
+            _imguiRenderer?.NewFrame((float) delta, new Vector2(_window.Size.X, _window.Size.Y)); // Wonder if my Vec2 works ^^ I doubt it, no implicit operator for Vector2D<T>
             _imguiRenderer?.BuildUI();
             _imguiRenderer?.FinalizeFrame();
             
@@ -108,8 +108,8 @@ internal class VulkanMaster
     {
         var id = ImGui.CreateContext(); //NOTE: Had missed completely that CreateContext() returns an ID.
 
-        _imguiRenderer = new ImGuiRenderer();
-        _imguiRenderer.Initialize(this, _drawData.PipelineData.RenderPass);
+        _imguiRenderer = new ImGuiRenderer(this);
+        _imguiRenderer.Initialize( _drawData.PipelineData.RenderPass);
         
         _drawData = BuildDrawData(SwapchainHandler);
         
@@ -199,43 +199,43 @@ internal class VulkanMaster
             ModelMatrix = Matrix4x4.Identity,
         };
     }
-    
-    private static CompiledRenderGraph BuildInitialGraph(uint width, uint height)
-    {
-        var graph = new RenderGraphBuilder();
-
-        var sceneColor = graph.CreateImage("SceneColor",
-            GraphImageDescription.Create(ImageFormat.Rgba16Float,
-                FlagImageUsage.ColorAttachment | FlagImageUsage.Sampled));
-
-        var postColor = graph.CreateImage("PostColor",
-            GraphImageDescription.Create(ImageFormat.Rgba16Float,
-                FlagImageUsage.ColorAttachment | FlagImageUsage.Sampled));
-
-        var backbuffer = graph.ImportImage("Backbuffer",
-            GraphImageDescription.Create(ImageFormat.Bgra8Unorm,
-                FlagImageUsage.ColorAttachment | FlagImageUsage.Present));
-
-        graph.AddPass("Geometry", RenderPassType.Geometry)
-            .Write(sceneColor);
-        
-        graph.AddPass("PostProcess", RenderPassType.PostProcess)
-            .Read(sceneColor)
-            .Write(postColor);
-
-        var imgui = new ImGuiRenderer();
-        imgui.AddToGraph(graph, postColor, backbuffer);
-       
-        graph.AddPass("Present", RenderPassType.Present)
-            .Read(backbuffer);
-        
-        
-        return graph.Compile(new FrameDescription
-        {
-            Width = width,
-            Height = height,
-        });
-    }
+    //
+    // private static CompiledRenderGraph BuildInitialGraph(uint width, uint height)
+    // {
+    //     var graph = new RenderGraphBuilder();
+    //
+    //     var sceneColor = graph.CreateImage("SceneColor",
+    //         GraphImageDescription.Create(ImageFormat.Rgba16Float,
+    //             FlagImageUsage.ColorAttachment | FlagImageUsage.Sampled));
+    //
+    //     var postColor = graph.CreateImage("PostColor",
+    //         GraphImageDescription.Create(ImageFormat.Rgba16Float,
+    //             FlagImageUsage.ColorAttachment | FlagImageUsage.Sampled));
+    //
+    //     var backbuffer = graph.ImportImage("Backbuffer",
+    //         GraphImageDescription.Create(ImageFormat.Bgra8Unorm,
+    //             FlagImageUsage.ColorAttachment | FlagImageUsage.Present));
+    //
+    //     graph.AddPass("Geometry", RenderPassType.Geometry)
+    //         .Write(sceneColor);
+    //     
+    //     graph.AddPass("PostProcess", RenderPassType.PostProcess)
+    //         .Read(sceneColor)
+    //         .Write(postColor);
+    //
+    //     var imgui = new ImGuiRenderer();
+    //     imgui.AddToGraph(graph, postColor, backbuffer);
+    //    
+    //     graph.AddPass("Present", RenderPassType.Present)
+    //         .Read(backbuffer);
+    //     
+    //     
+    //     return graph.Compile(new FrameDescription
+    //     {
+    //         Width = width,
+    //         Height = height,
+    //     });
+    // }
     public void Dispose()
     {
         Vk.Dispose();
