@@ -28,6 +28,7 @@ public class PassBuilder
     public PassBuilder ReadWrite(ResourceHandle resource)
     {
         _graph.RegisterRead(_passIndex, resource);
+        _graph.RegisterWrite(_passIndex, resource);
         return this;
     }
 }

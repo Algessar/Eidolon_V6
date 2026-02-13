@@ -67,7 +67,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         Initialize();
         _commandBuffer = _master.CommandManager.AllocateCommandBuffers(_maxFramesInFlight);
 
-        _importMap = new GraphResourceImportMap();
+        // _importMap = new GraphResourceImportMap();
 
         
         _master.GetWindow.FramebufferResize += OnWindowResize;
@@ -189,7 +189,13 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             
             TransitionLayouts(cmd, pass);
             _master.Vk.CmdBeginRenderPass(cmd, in beginInfo, SubpassContents.Inline);
-
+            
+            if (pass.Type is RenderPassType.Ui or RenderPassType.Present)
+            {
+                // ImGui command emission gets plugged here once GPU upload + draw path is ready.
+                _master.Vk.CmdEndRenderPass(cmd);
+                continue;
+            }
             var descriptorSet = _master.DescriptorFactory.GetDescriptorSet(_currentFrame);
 
             _master.Vk.CmdBindDescriptorSets(
@@ -221,8 +227,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
                 _master.Vk.CmdDraw(cmd, 3, 1, 0, 0);
                 
-                _master.Vk.CmdEndRenderPass(cmd);
             }
+            _master.Vk.CmdEndRenderPass(cmd);
         }
         
         EndFrame(data);
@@ -291,6 +297,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         _imagesInFlight[imageIndex] = _inFlightFences[_currentFrame];
    
         _currentImageIndex = imageIndex;
+
+        ResolveImportedGraphResources();
         
         fixed (Fence* frameFence = &_inFlightFences[_currentFrame])
         {
@@ -568,7 +576,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     
     #region Transitions
     
-    private void TransitionLayouts( CommandBuffer cmd, in CompiledPass pass)
+    private void TransitionLayouts(CommandBuffer cmd, in CompiledPass pass)
     {
         // Reads first, then writes. This keeps intent explicit while we still use a single render pass.
 
@@ -598,8 +606,14 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
             if (runtime.Imported)
             {
-                // Swapchain image
-                EmitPresentTransition(cmd, resource, ref runtime);
+                if (pass.Type == RenderPassType.Present)
+                {
+                    EmitPresentTransition(cmd, resource, ref runtime);
+                }
+                else
+                {
+                    EmitImportedColorAttachmentTransition(cmd, resource, ref runtime);
+                }
             }
 
             else
@@ -612,8 +626,13 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     
     private void EmitColorAttachmentTransition(CommandBuffer cmd, in CompiledResource resource, ref GraphImageRuntime runtime)
     {
-        if (runtime.CurrentLayout != ImageLayout.Undefined)
+        if(runtime.CurrentLayout == ImageLayout.PresentSrcKhr)
+        {
             return;
+        }
+        
+        // if (runtime.CurrentLayout != ImageLayout.Undefined)
+        //     return;
 
         var newLayout = ImageLayout.ColorAttachmentOptimal;
 
@@ -626,7 +645,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
             DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
 
-            SrcAccessMask = 0,
+            SrcAccessMask = runtime.CurrentLayout == ImageLayout.ColorAttachmentOptimal ? AccessFlags.ColorAttachmentWriteBit : 0,
             DstAccessMask = AccessFlags.ColorAttachmentWriteBit,
 
             Image = runtime.Image,
@@ -640,15 +659,27 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 LayerCount = 1
             }
         };
-
+        
         _master.Vk.CmdPipelineBarrier(
             cmd,
-            PipelineStageFlags.TopOfPipeBit,
-            PipelineStageFlags.ColorAttachmentOutputBit,
+            runtime.CurrentLayout ==
+            ImageLayout.ColorAttachmentOptimal ? 
+                PipelineStageFlags.ColorAttachmentOutputBit : 
+                PipelineStageFlags.TopOfPipeBit,
+            PipelineStageFlags.BottomOfPipeBit,
             0,
             0, null,
             0, null,
             1, &barrier);
+
+        // _master.Vk.CmdPipelineBarrier(
+        //     cmd,
+        //     PipelineStageFlags.TopOfPipeBit,
+        //     PipelineStageFlags.ColorAttachmentOutputBit,
+        //     0,
+        //     0, null,
+        //     0, null,
+        //     1, &barrier);
 
         if (LOG_RENDER_GRAPH)
         {
@@ -754,8 +785,76 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         runtime.CurrentLayout = newLayout;
     }
     
-    #endregion Transitions
+    private void EmitImportedColorAttachmentTransition(CommandBuffer cmd, in CompiledResource resource, ref GraphImageRuntime runtime)
+    {
+        if (runtime.CurrentLayout == ImageLayout.ColorAttachmentOptimal)
+            return;
+
+        var barrier = new ImageMemoryBarrier
+        {
+            SType = StructureType.ImageMemoryBarrier,
+            OldLayout = runtime.CurrentLayout,
+            NewLayout = ImageLayout.ColorAttachmentOptimal,
+
+            SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
+            DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
+
+            SrcAccessMask = runtime.CurrentLayout == ImageLayout.PresentSrcKhr ? AccessFlags.MemoryReadBit : 0,
+            DstAccessMask = AccessFlags.ColorAttachmentWriteBit,
+
+            Image = runtime.Image,
+            SubresourceRange = new ImageSubresourceRange
+            {
+                AspectMask = ImageAspectFlags.ColorBit,
+                BaseMipLevel = 0,
+                LevelCount = 1,
+                BaseArrayLayer = 0,
+                LayerCount = 1
+            }
+        };
+
+        _master.Vk.CmdPipelineBarrier(
+            cmd,
+            PipelineStageFlags.TopOfPipeBit,
+            PipelineStageFlags.ColorAttachmentOutputBit,
+            0,
+            0, null,
+            0, null,
+            1, &barrier);
+
+        runtime.CurrentLayout = ImageLayout.ColorAttachmentOptimal;
+    }
     
+    #endregion Transitions
+
+    #region Resolve
+    
+    private void ResolveImportedGraphResources()
+    {
+        if (_compiledGraph is null)
+            return;
+
+        foreach (var resource in _compiledGraph.Resources)
+        {
+            if (!resource.Imported)
+                continue;
+
+            if (!_importMap.TryResolve(resource, _swapchainHandler, _currentImageIndex, out var imageData))
+                continue;
+
+            _graphImages[resource.Handle.Handle] = new GraphImageRuntime
+            {
+                Image = imageData.Image,
+                View = imageData.View,
+                Memory = imageData.Memory,
+                Imported = true,
+                Format = imageData.Format,
+                Extent = imageData.Extent,
+                Usage = resource.Description.Usage,
+                CurrentLayout = ImageLayout.Undefined
+            };
+        }
+    }
 
     private Format ResolveVkFormat(ImageFormat format)
     {
@@ -810,6 +909,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         return result;
     }
+    
+    #endregion Resolve
 
     private bool RecreateSwapchain(in PipelineData pipelineData)
     {

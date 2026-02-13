@@ -44,6 +44,8 @@ internal class VulkanMaster
     public SwapchainHandler SwapchainHandler { get; private set; }
     public FrameHandler FrameHandler { get; private set; }
 
+    
+    private ImGuiRenderer? _imguiRenderer;
     private readonly CompiledRenderGraph? _initialGraph;
     DrawData _drawData;
     public VulkanMaster(CompiledRenderGraph? initialGraph = null)
@@ -68,7 +70,11 @@ internal class VulkanMaster
             {
                 return;
             }
-
+            
+            _imguiRenderer.NewFrame((float) delta, new Vec2(_window.Size.X, _window.Size.Y)); // Wonder if my Vec2 works ^^ I doubt it, no implicit operator for Vector2D<T>
+            _imguiRenderer.BuildUI();
+            _imguiRenderer.FinalizeFrame();
+            
             FrameHandler.Draw(in _drawData);
         };
         
@@ -101,6 +107,9 @@ internal class VulkanMaster
     {
         var id = ImGui.CreateContext(); //NOTE: Had missed completely that CreateContext() returns an ID.
 
+        _imguiRenderer = new ImGuiRenderer();
+        _imguiRenderer.Initialize();
+        
         _drawData = BuildDrawData(SwapchainHandler);
         
         if (_initialGraph is not null)
