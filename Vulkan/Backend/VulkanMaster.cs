@@ -49,6 +49,8 @@ internal class VulkanMaster
     DrawData _drawData;
     public VulkanMaster(CompiledRenderGraph? initialGraph = null)
     {
+        ShaderCompiler.CompileShaders(@"G:\Coding\Eidolon_V6\Vulkan\Rendering\Shaders");
+        
         _initialGraph = initialGraph;
         Debug.Log("::: Initializing Vulkan resources :::", VALIDATION_LAYERS.WARNING);
         Vk = Vk.GetApi();
