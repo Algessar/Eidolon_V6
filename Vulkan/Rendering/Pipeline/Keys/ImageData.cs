@@ -10,3 +10,4 @@ internal struct ImageData
     public Format Format;
     public Extent2D Extent;
 }
+

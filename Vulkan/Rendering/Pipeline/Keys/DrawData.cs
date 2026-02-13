@@ -1,4 +1,5 @@
 ﻿using System.Numerics;
+using EidolonCore.Rendering.Interfaces;
 using EidolonCore.Resources;
 using Silk.NET.Vulkan;
 
@@ -28,6 +29,4 @@ internal struct DrawData
 }
 
 
-internal interface IRenderTarget
-{
-}
+

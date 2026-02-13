@@ -10,7 +10,7 @@ using Silk.NET.Windowing;
 
 namespace Eidolon.Vulkan;
 
-internal class VulkanMaster : IRenderer
+internal class VulkanMaster
 {
     #region Vulkan Core
 
@@ -93,7 +93,6 @@ internal class VulkanMaster : IRenderer
         FrameHandler = new FrameHandler(this);
         PipelineFactory = new PipelineFactory(this);
         Debug.Log("Vulkan resources initialized.", VALIDATION_LAYERS.SUCCESS);
-        // FrameHandler.Initialize();
         
     }
 

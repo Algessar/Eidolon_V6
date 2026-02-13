@@ -11,4 +11,18 @@ internal class GameView : IRenderer
         // TODO release managed resources here
     }
 
+    public void NewFrame()
+    {
+        throw new NotImplementedException();
+    }
+
+    public void Build()
+    {
+        throw new NotImplementedException();
+    }
+
+    public void UploadData()
+    {
+        throw new NotImplementedException();
+    }
 }

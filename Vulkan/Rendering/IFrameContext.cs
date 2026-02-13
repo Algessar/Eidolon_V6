@@ -32,8 +32,3 @@ internal interface IFrameContext
 
     #endregion
 }
-
-public interface IDrawData
-{
-    
-}

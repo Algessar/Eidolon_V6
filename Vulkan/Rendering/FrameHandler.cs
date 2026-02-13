@@ -40,8 +40,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     private uint _imageCount;
     private Semaphore[] _waitSemaphore = Array.Empty<Semaphore>();
     private Semaphore[] _signalSemaphore = Array.Empty<Semaphore>();
-    private Semaphore[] _imageAvailableSemaphores = Array.Empty<Semaphore>();
-    private Semaphore[] _renderFinishedSemaphores = Array.Empty<Semaphore>();
     private Fence[] _inFlightFences = Array.Empty<Fence>();
     private Fence[] _imagesInFlight;
     
@@ -74,14 +72,10 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         
         _master.GetWindow.FramebufferResize += OnWindowResize;
         Debug.Log("FrameHandler created.", VALIDATION_LAYERS.SUCCESS);
-        
     }
-
-    
     
     private void OnWindowResize(Vector2D<int> newSize)
     {
-        // var id = ImGui.CreateContext();
         if (newSize.X == 0 || newSize.Y == 0)
             return;
 
@@ -398,6 +392,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 // We keep metadata for debugging/inspection but do not allocate/destroy Vulkan objects here.
                 _graphImages[resource.Handle.Handle] = new GraphImageRuntime
                 {
+                    
                     Imported = true,
                     Usage = resource.Description.Usage,
                     Format = ResolveVkFormat(resource.Description.Format),
@@ -758,7 +753,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         runtime.CurrentLayout = newLayout;
     }
-
     
     #endregion Transitions
     
@@ -856,8 +850,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             _signalSemaphore[i] = CreateSemaphore($"SignalSemaphore {i}");
         }
     }
-    
-
 
     private void TrackResourceLayout(in ResourceHandle handle, bool isWrite)
     {

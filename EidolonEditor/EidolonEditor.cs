@@ -33,17 +33,22 @@ public class EidolonEditor
             GraphImageDescription.Create(ImageFormat.Bgra8Unorm,
                 FlagImageUsage.ColorAttachment | FlagImageUsage.Present));
 
-        var geo =  graph.AddPass("Geometry", RenderPassType.Geometry)
+        graph.AddPass("Geometry", RenderPassType.Geometry)
             .Write(sceneColor);
         
+        graph.AddPass("Lighting", RenderPassType.Lighting)
+            .Read(sceneColor)
+            .Write(sceneColor);
         
-
         graph.AddPass("PostProcess", RenderPassType.PostProcess)
             .Read(sceneColor)
             .Write(postColor);
 
         graph.AddPass("Present", RenderPassType.Present)
             .Read(postColor)
+            .Write(backbuffer);
+        
+        graph.AddPass("ImGui", RenderPassType.Ui)
             .Write(backbuffer);
 
 
