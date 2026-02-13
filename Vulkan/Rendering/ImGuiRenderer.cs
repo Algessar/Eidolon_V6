@@ -26,6 +26,8 @@ public sealed class ImGuiRenderer : IDisposable
 
     public unsafe void Initialize()
     {
+        
+        Debug.Log("Creating ImGuiRenderer", VALIDATION_LAYERS.INFO);
         var io = ImGui.GetIO();
         if (io.Fonts.Fonts.Size == 0)
         {
@@ -39,6 +41,8 @@ public sealed class ImGuiRenderer : IDisposable
         }
         
         io.Fonts.ClearTexData();
+        
+        Debug.Log("ImGuiRenderer initialized", VALIDATION_LAYERS.INFO);
     }
     
     public void NewFrame(float delta, Vector2 size)

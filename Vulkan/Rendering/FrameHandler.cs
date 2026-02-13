@@ -739,7 +739,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
     private void EmitPresentTransition(CommandBuffer cmd, in CompiledResource resource, ref GraphImageRuntime runtime)
     {
-        if (runtime.CurrentLayout != ImageLayout.ColorAttachmentOptimal)
+        if (runtime.CurrentLayout == ImageLayout.PresentSrcKhr)
             return;
 
         var newLayout = ImageLayout.PresentSrcKhr;
@@ -753,7 +753,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
             DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
 
-            SrcAccessMask = AccessFlags.ColorAttachmentWriteBit,
+            SrcAccessMask = runtime.CurrentLayout == ImageLayout.ColorAttachmentOptimal ? AccessFlags.ColorAttachmentWriteBit : 0,
             DstAccessMask = 0,
 
             Image = runtime.Image,
@@ -770,8 +770,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         _master.Vk.CmdPipelineBarrier(
             cmd,
-            PipelineStageFlags.ColorAttachmentOutputBit,
-            PipelineStageFlags.BottomOfPipeBit,
+            runtime.CurrentLayout == ImageLayout.ColorAttachmentOptimal ? PipelineStageFlags.ColorAttachmentOutputBit : PipelineStageFlags.TopOfPipeBit,
+            PipelineStageFlags.AllCommandsBit,
             0,
             0, null,
             0, null,
@@ -785,6 +785,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         runtime.CurrentLayout = newLayout;
     }
     
+
     private void EmitImportedColorAttachmentTransition(CommandBuffer cmd, in CompiledResource resource, ref GraphImageRuntime runtime)
     {
         if (runtime.CurrentLayout == ImageLayout.ColorAttachmentOptimal)
@@ -815,7 +816,9 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         _master.Vk.CmdPipelineBarrier(
             cmd,
-            PipelineStageFlags.TopOfPipeBit,
+            runtime.CurrentLayout == ImageLayout.PresentSrcKhr ?
+                PipelineStageFlags.ColorAttachmentOutputBit : 
+                PipelineStageFlags.TopOfPipeBit,
             PipelineStageFlags.ColorAttachmentOutputBit,
             0,
             0, null,
