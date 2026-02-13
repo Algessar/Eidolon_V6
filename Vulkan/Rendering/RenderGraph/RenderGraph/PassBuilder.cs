@@ -1,6 +1,6 @@
 ﻿using System.Runtime.InteropServices;
 
-namespace EidolonCore.Rendering;
+namespace Eidolon.Vulkan;
 
 public class PassBuilder
 {

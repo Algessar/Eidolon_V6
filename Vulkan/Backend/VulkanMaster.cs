@@ -1,5 +1,4 @@
 ﻿using System.Numerics;
-using System.Runtime.InteropServices;
 using Eidolon.Vulkan.Rendering;
 using EidolonCore.Rendering;
 using ImGuiNET;

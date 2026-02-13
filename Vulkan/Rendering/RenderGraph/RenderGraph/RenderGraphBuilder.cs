@@ -1,6 +1,6 @@
 ﻿using System.Diagnostics;
 
-namespace EidolonCore.Rendering;
+namespace Eidolon.Vulkan;
 
 public sealed class RenderGraphBuilder
 {

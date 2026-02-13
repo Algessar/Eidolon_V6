@@ -1,6 +1,6 @@
 using Silk.NET.Vulkan;
 
-namespace Eidolon.Vulkan.Rendering;
+namespace Eidolon.Vulkan;
 
 internal unsafe class RenderPassFactory(VulkanMaster master)
 {

@@ -1,4 +1,4 @@
-using EidolonCore.Rendering;
+using Eidolon.Vulkan;
 
 namespace EidolonEngine;
 

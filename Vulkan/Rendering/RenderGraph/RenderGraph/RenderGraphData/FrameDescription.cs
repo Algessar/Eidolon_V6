@@ -1,4 +1,4 @@
-﻿namespace EidolonCore.Rendering;
+﻿namespace Eidolon.Vulkan;
 
 public struct FrameDescription(uint[,] size)
 {

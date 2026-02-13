@@ -1,4 +1,4 @@
-﻿namespace EidolonCore.Rendering;
+﻿namespace Eidolon.Vulkan;
 
 [Flags]
 public enum FlagImageUsage : uint
