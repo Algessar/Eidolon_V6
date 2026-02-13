@@ -35,10 +35,7 @@ public class EidolonEditor
 
         graph.AddPass("Geometry", RenderPassType.Geometry)
             .Write(sceneColor);
-        
-        graph.AddPass("Lighting", RenderPassType.Lighting)
-            .Read(sceneColor)
-            .Write(sceneColor);
+
         
         graph.AddPass("PostProcess", RenderPassType.PostProcess)
             .Read(sceneColor)
