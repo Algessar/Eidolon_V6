@@ -9,12 +9,12 @@ namespace Eidolon.Vulkan;
 public sealed class ImGuiRenderer : IDisposable
 {
     // // Lifetime (created once)
-    // private PipelineData _pipeline;
-    // private DescriptorSet _fontSet;
-    // private GpuImage _fontImage; // From ImageData?
-    //
-    // // Per-frame CPU state
-    // private DrawData _drawData; // Holds Vertex/IndexBuffers
+    private PipelineData _pipeline;
+    private DescriptorSet _fontSet;
+    private GpuImage _fontImage; // From ImageData?
+    
+    // Per-frame CPU state
+    private DrawData _drawData; // Holds Vertex/IndexBuffers
 
     
     public int LastVertexCount { get; private set; }
@@ -94,20 +94,4 @@ public sealed class ImGuiRenderer : IDisposable
     {
         
     }
-
-
 }
-
-// internal struct ImGuiDrawData
-// {
-//     public GpuBuffer VertexBuffer;
-//     public GpuBuffer IndexBuffer;
-//     
-//     public uint VertexCount;
-//     public uint IndexCount;
-//     
-//     public bool HasIndices;
-//     
-//     
-// }
-

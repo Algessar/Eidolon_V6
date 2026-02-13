@@ -615,7 +615,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                     EmitImportedColorAttachmentTransition(cmd, resource, ref runtime);
                 }
             }
-
             else
             {
                 EmitColorAttachmentTransition(cmd, resource, ref runtime);
@@ -671,15 +670,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             0, null,
             0, null,
             1, &barrier);
-
-        // _master.Vk.CmdPipelineBarrier(
-        //     cmd,
-        //     PipelineStageFlags.TopOfPipeBit,
-        //     PipelineStageFlags.ColorAttachmentOutputBit,
-        //     0,
-        //     0, null,
-        //     0, null,
-        //     1, &barrier);
 
         if (LOG_RENDER_GRAPH)
         {
@@ -770,7 +760,9 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         _master.Vk.CmdPipelineBarrier(
             cmd,
-            runtime.CurrentLayout == ImageLayout.ColorAttachmentOptimal ? PipelineStageFlags.ColorAttachmentOutputBit : PipelineStageFlags.TopOfPipeBit,
+            runtime.CurrentLayout == ImageLayout.ColorAttachmentOptimal ? 
+                PipelineStageFlags.ColorAttachmentOutputBit : 
+                PipelineStageFlags.TopOfPipeBit,
             PipelineStageFlags.AllCommandsBit,
             0,
             0, null,
@@ -816,7 +808,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         _master.Vk.CmdPipelineBarrier(
             cmd,
-            runtime.CurrentLayout == ImageLayout.PresentSrcKhr ?
+            runtime.CurrentLayout == ImageLayout.PresentSrcKhr ? 
                 PipelineStageFlags.ColorAttachmentOutputBit : 
                 PipelineStageFlags.TopOfPipeBit,
             PipelineStageFlags.ColorAttachmentOutputBit,
@@ -845,6 +837,10 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             if (!_importMap.TryResolve(resource, _swapchainHandler, _currentImageIndex, out var imageData))
                 continue;
 
+            var initialLayout = (resource.Description.Usage & FlagImageUsage.Present) != 0
+                ? ImageLayout.PresentSrcKhr
+                : ImageLayout.Undefined;
+
             _graphImages[resource.Handle.Handle] = new GraphImageRuntime
             {
                 Image = imageData.Image,
@@ -854,7 +850,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 Format = imageData.Format,
                 Extent = imageData.Extent,
                 Usage = resource.Description.Usage,
-                CurrentLayout = ImageLayout.Undefined
+                CurrentLayout = initialLayout
             };
         }
     }

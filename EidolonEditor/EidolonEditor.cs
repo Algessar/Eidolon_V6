@@ -39,11 +39,10 @@ public class EidolonEditor
             .Write(postColor);
 
         var imgui = new ImGuiRenderer();
-        imgui.AddToGraph(graph, sceneColor, backbuffer);
-        
+        imgui.AddToGraph(graph, postColor, backbuffer);
+       
         graph.AddPass("Present", RenderPassType.Present)
-            .Read(postColor)
-            .Write(backbuffer);
+            .Read(backbuffer);
         
         
         return graph.Compile(new FrameDescription
