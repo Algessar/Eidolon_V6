@@ -10,6 +10,9 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 {
     public VulkanMaster _master { get; }
     private SwapchainHandler _swapchainHandler;
+    
+    private readonly PassExecutionFactory _passExecutionFactory;
+    
     [Header("Resources")]
     private CommandBuffer[] _commandBuffer;
 
@@ -17,6 +20,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     private readonly GraphResourceImportMap _importMap = new();    
     private readonly Dictionary<uint, GraphImageRuntime> _graphImages = new();
     private readonly Dictionary<uint, CompiledResource> _resourceLookup  = new();
+    
+    
     
     private struct GraphImageRuntime
     {
@@ -63,6 +68,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         _master = master;
         _swapchainHandler = master.SwapchainHandler;
         _imageCount = _swapchainHandler.ImageCount;
+        _passExecutionFactory = new PassExecutionFactory(master, ResolvePassAttachment);
         
         Initialize();
         _commandBuffer = _master.CommandManager.AllocateCommandBuffers(_maxFramesInFlight);
@@ -1033,6 +1039,15 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     
     #region Resolve
     
+    private PassAttachmentRuntime? ResolvePassAttachment(uint handle)
+    {
+        if (!_graphImages.TryGetValue(handle, out var runtime))
+            return null;
+
+        return new PassAttachmentRuntime(runtime.View, runtime.Format, runtime.Extent, runtime.Usage);
+    }
+
+    
     private void ResolveImportedGraphResources()
     {
         if (_compiledGraph is null)
@@ -1187,6 +1202,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         }
         
         _graphImages.Clear();
+        _passExecutionFactory.Reset();
     }
     public void Dispose()
     {

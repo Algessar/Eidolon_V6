@@ -8,8 +8,18 @@ internal unsafe class RenderPassFactory(VulkanMaster master)
     VulkanMaster _master = master;
     private readonly Dictionary<RenderPassKey, RenderPass> _renderPassCache = new();
     
-
+    
     public RenderPass CreateRenderPass(RenderPassKey key)
+    {
+        return CreateRenderPass(key, SampleCountFlags.Count1Bit, key.LoadOp, key.StoreOp);
+    }
+    public RenderPass CreateRenderPass(PassExecutionKey key)
+    {
+        return CreateRenderPass(ToRenderPassKey(key), key.SampleCount, key.DepthLoadOp, key.DepthStoreOp);
+    }
+
+    private RenderPass CreateRenderPass(RenderPassKey key, SampleCountFlags samples, 
+        AttachmentLoadOp depthLoadOp, AttachmentStoreOp depthStoreOp)
     {
         if (_renderPassCache.TryGetValue(key, out var existing))
         {
@@ -19,7 +29,7 @@ internal unsafe class RenderPassFactory(VulkanMaster master)
         var colorAttachment = new AttachmentDescription
         {
             Format = key.ColorFormat,
-            Samples = SampleCountFlags.Count1Bit,
+            Samples = samples,
             LoadOp = key.LoadOp,
             StoreOp = key.StoreOp,
             StencilLoadOp = AttachmentLoadOp.DontCare,
@@ -37,12 +47,12 @@ internal unsafe class RenderPassFactory(VulkanMaster master)
             depthAttachment = new AttachmentDescription
             {
                 Format = key.DepthFormat,
-                Samples = SampleCountFlags.Count1Bit,
-                LoadOp = key.LoadOp,
-                StoreOp = key.StoreOp,
+                Samples = samples,
+                LoadOp = depthLoadOp,
+                StoreOp = depthStoreOp,
                 StencilLoadOp = AttachmentLoadOp.DontCare,
                 StencilStoreOp = AttachmentStoreOp.DontCare,
-                InitialLayout = key.InitialLayout,
+                InitialLayout = key.InitialDepthLayout,
                 FinalLayout = key.FinalDepthLayout
             };
         }
@@ -127,5 +137,25 @@ internal unsafe class RenderPassFactory(VulkanMaster master)
         
         _renderPassCache.Add(key, renderPass);
         return renderPass;
+    }
+    
+    private static RenderPassKey ToRenderPassKey(PassExecutionKey key)
+    {
+        return new RenderPassKey
+        {
+            ColorFormat = key.ColorFormat,
+            DepthFormat = key.DepthFormat,
+            HasAlpha = true,
+            HasDepth = key.DepthTargetHandle != 0,
+            HasStencil = false,
+            LoadOp = key.ColorLoadOp,
+            StoreOp = key.ColorStoreOp,
+            StencilLoadOp = AttachmentLoadOp.DontCare,
+            StencilStoreOp = AttachmentStoreOp.DontCare,
+            FinalDepthLayout = ImageLayout.DepthStencilAttachmentOptimal,
+            InitialDepthLayout = ImageLayout.DepthStencilAttachmentOptimal,
+            InitialLayout = ImageLayout.ColorAttachmentOptimal,
+            FinalLayout = key.PassType == RenderPassType.Present ? ImageLayout.PresentSrcKhr : ImageLayout.ColorAttachmentOptimal
+        };
     }
 }
