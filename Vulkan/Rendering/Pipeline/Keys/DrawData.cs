@@ -22,7 +22,10 @@ internal struct DrawData
     public int[] VertexOffsets { get; set; }
     public int[] IndexOffsets { get; set; }
     
+    
     public ImGuiDrawData ImGuiDrawData;
+    
+    //These two are stupid
     public PipelineData UiPipelineData; //NOTE: this seems overly specific. There is already PipelineData. Why have a duplicate?
     public DescriptorSet UiDescriptorSet; //NOTE: This could also be generic no?
     //NOTE: I will keep it like this for now and refactor later.

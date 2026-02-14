@@ -25,12 +25,12 @@ internal unsafe class PipelineFactory
         var vs = _master.ShaderManager.Load(key.VertexShaderPath);
         var fs = _master.ShaderManager.Load(key.FragmentShaderPath);
 
-        Debug.Log($"Key VertexShaderPath: {key.VertexShaderPath}, FragmentShaderPath: {key.FragmentShaderPath}");
         key.Vert = vs;
         key.Frag = fs;
 
+        Debug.Log($"Key VertexShaderPath: {key.VertexShaderPath}, FragmentShaderPath: {key.FragmentShaderPath}");
         Debug.Log($"Key.Vert.Handle {key.Vert.Handle}, Key.Frag.Handle {key.Frag.Handle}");
-        
+        Debug.Log($"Shader modules loaded :: vert {vs.Handle}, frag {fs.Handle}");
         fixed (byte* pMain = _mainNameArray)
         {
             

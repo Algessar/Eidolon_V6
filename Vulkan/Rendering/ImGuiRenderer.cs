@@ -34,7 +34,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     public int LastCommandListCount { get; private set; }
     
     [Header("Debug")]
-    bool _showDemoWindow = true;
+    bool _showDemoWindow = false;
 
 
     public ImGuiRenderer(VulkanMaster master)
@@ -235,9 +235,6 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
 
     private void CreatePipeline(RenderPass renderPass)
     {
-        
-
-        
         var resolvedRenderPass = ResolveRenderPass(renderPass);
         var key = new PipelineKey
         {

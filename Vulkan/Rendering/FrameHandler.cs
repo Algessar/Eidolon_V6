@@ -1,6 +1,4 @@
 ﻿using System.Numerics;
-using System.Reflection.Metadata;
-using EidolonCore.Rendering;
 using ImGuiNET;
 using Silk.NET.Maths;
 using Silk.NET.Vulkan;
@@ -33,7 +31,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         public ImageLayout CurrentLayout;
     }
 
-
     private uint _maxFramesInFlight => Constants.MAX_FRAMES_IN_FLIGHT;
 
     [Header("Sync Objects")]
@@ -57,9 +54,9 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     
     //WARNING: I HATE THIS, THIS IS DEFINITELY TEMP. WHY DO THIS WHEN DRAWDATA HAS GPUBUFFERS?
     
-    private GpuBuffer[] _uiVertexBuffers = Array.Empty<GpuBuffer>();
+    // THESE EXIST IN DRAWDATA
+    private GpuBuffer[] _uiVertexBuffers = Array.Empty<GpuBuffer>(); 
     private GpuBuffer[] _uiIndexBuffers = Array.Empty<GpuBuffer>();
-
     
     public FrameHandler(VulkanMaster master)
     {
@@ -1036,8 +1033,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         _master.Vk.FreeMemory(_master.VulkanDevice.Device, buffer.Memory, null);
         buffer = default;
     }
-
-    
+   
     
     #region Resolve
     
@@ -1127,6 +1123,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     }
     
     #endregion Resolve
+    
+    #region Cleanup
 
     private bool RecreateSwapchain(in PipelineData pipelineData)
     {
@@ -1206,4 +1204,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         DestroyGraphResources();
     }
+    
+    #endregion Cleanup
 }
