@@ -65,6 +65,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     
     public FrameHandler(VulkanMaster master)
     {
+        throw new Exception("This is an old FrameHandler, use the new one instead.");
         Debug.Log("Creating FrameHandler", VALIDATION_LAYERS.INFO);
         _master = master;
         _swapchainHandler = master.SwapchainHandler;
@@ -844,73 +845,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
     private void RecordUiDrawCommands(CommandBuffer cmd, in DrawData data)
     {
-        var drawData = data.ImGuiDrawData;
-        if (!drawData.HasData || !data.UiPipelineData.IsValid || data.UiDescriptorSet.Handle == 0)
-            return;
 
-        EnsureCurrentFrameUiBuffers(drawData);
-        UploadCurrentFrameUiData(drawData);
-
-        var vk = _master.Vk;
-
-        vk.CmdBindPipeline(cmd, PipelineBindPoint.Graphics, data.UiPipelineData.VkPipeline);
-
-        var uiDescriptor = data.UiDescriptorSet;
-        vk.CmdBindDescriptorSets(
-            cmd,
-            PipelineBindPoint.Graphics,
-            data.UiPipelineData.VkLayout,
-            0,
-            1,
-            &uiDescriptor,
-            0,
-            null);
-
-        ref var vertexBuffer = ref _uiVertexBuffers[(int)_currentFrame];
-        ref var indexBuffer = ref _uiIndexBuffers[(int)_currentFrame];
-
-        var vb = vertexBuffer.Buffer;
-        ulong vbOffset = 0;
-        vk.CmdBindVertexBuffers(cmd, 0, 1, &vb, &vbOffset);
-        vk.CmdBindIndexBuffer(cmd, indexBuffer.Buffer, 0, IndexType.Uint16);
-
-        var displayWidth = MathF.Max(1f, drawData.DisplaySize.X);
-        var displayHeight = MathF.Max(1f, drawData.DisplaySize.Y);
-
-        foreach (var drawCommand in drawData.Commands)
-        {
-            if (drawCommand.ElementCount == 0)
-                continue;
-
-            var clipRect = drawCommand.ClipRect;
-            var minX = Math.Clamp((int)clipRect.X, 0, (int)displayWidth);
-            var minY = Math.Clamp((int)clipRect.Y, 0, (int)displayHeight);
-            var maxX = Math.Clamp((int)clipRect.Z, minX, (int)displayWidth);
-            var maxY = Math.Clamp((int)clipRect.W, minY, (int)displayHeight);
-
-            if (maxX <= minX || maxY <= minY)
-                continue;
-
-            var scissor = new Rect2D(
-                new Offset2D(minX, minY),
-                new Extent2D((uint)(maxX - minX), (uint)(maxY - minY)));
-            vk.CmdSetScissor(cmd, 0, 1, &scissor);
-
-            vk.CmdDrawIndexed(
-                cmd,
-                drawCommand.ElementCount,
-                1,
-                drawCommand.FirstIndex,
-                drawCommand.VertexOffset,
-                0);
-        }
-
-        if (_currentFrame == 0)
-        {
-            Debug.Log($"[RG] UI pass draw submitted: cmds={drawData.Commands.Length}, vtx={drawData.TotalVertexCount}, idx={drawData.TotalIndexCount}",
-                VALIDATION_LAYERS.INFO,
-                LOG_RENDER_GRAPH);
-        }
+        throw new Exception("Using RecordUiDrawCommands from old FrameHandler. This is not supported anymore.");
     }
     
     private void EnsureUiFrameArrays()

@@ -75,9 +75,18 @@ internal class VulkanMaster
             _imguiRenderer?.NewFrame((float) delta, new Vector2(_window.Size.X, _window.Size.Y)); // Wonder if my Vec2 works ^^ I doubt it, no implicit operator for Vector2D<T>
             _imguiRenderer?.BuildUI();
             _imguiRenderer?.FinalizeFrame();
-            _drawData.ImGuiDrawData = _imguiRenderer?.CurrentDrawData ?? ImGuiDrawData.Empty;
-            _drawData.UiPipelineData = _imguiRenderer?.PipelineData ?? default;
-            _drawData.UiDescriptorSet = _imguiRenderer?.DescriptorSet ?? default;            
+            // _drawData.ImGuiDrawData = _imguiRenderer?.CurrentDrawData ?? ImGuiDrawData.Empty;
+            // _drawData.UiPipelineData = _imguiRenderer?.PipelineData ?? default;
+            // _drawData.UiDescriptorSet = _imguiRenderer?.DescriptorSet ?? default;      
+            
+            _imguiRenderer?.BuildDrawSubmissions(FrameHandler.CurrentFrameIndex, Constants.MAX_FRAMES_IN_FLIGHT);
+
+            var baseSubmissions = _drawData.Submissions ?? Array.Empty<DrawSubmission>();
+            var uiSubmissions = _imguiRenderer?.CurrentSubmissions ?? Array.Empty<DrawSubmission>();
+            var mergedSubmissions = new DrawSubmission[baseSubmissions.Length + uiSubmissions.Length];
+            baseSubmissions.CopyTo(mergedSubmissions, 0);
+            uiSubmissions.CopyTo(mergedSubmissions, baseSubmissions.Length);
+            _drawData.Submissions = mergedSubmissions;
             FrameHandler.Draw(in _drawData);
         };
         
@@ -196,13 +205,41 @@ internal class VulkanMaster
         };
         var pipelineData = PipelineFactory.GetOrCreate(pipelineKey);
         swapchain.CreateFramebuffers(pipelineData.RenderPass, pipelineData.HasDepth);
+
+        var descriptorSet = DescriptorFactory.GetDescriptorSet(0);
         
         return new DrawData
         {
             PipelineData = pipelineData,
             ModelMatrix = Matrix4x4.Identity,
-            ImGuiDrawData = ImGuiDrawData.Empty,
+            Submissions =
+            [
+                new DrawSubmission
+                {
+                    PassType = RenderPassType.Geometry,
+                    PipelineData = pipelineData,
+                    DescriptorSet = descriptorSet,
+                    Topology = PrimitiveTopology.TriangleList,
+                    VertexBuffer = default,
+                    VertexOffset = 0,
+                    IndexBuffer = default,
+                    IndexOffset = 0,
+                    IndexType = IndexType.Uint16,
+                    VertexCount = 3,
+                    IndexCount = 0,
+                    InstanceCount = 1,
+                    FirstVertex = 0,
+                    FirstIndex = 0,
+                    VertexBase = 0,
+                    ScissorPolicy = SubmissionScissorPolicy.PassDefault,
+                    Scissor = default,
+                    ViewportPolicy = SubmissionViewportPolicy.PassDefault,
+                    Viewport = default,
+                    PushConstants = PushConstantPayload.Empty
+                }
+            ]
         };
+        
     }
 
     public void Dispose()

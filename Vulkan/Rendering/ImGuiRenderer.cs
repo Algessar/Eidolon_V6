@@ -24,8 +24,10 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     private Sampler _fontSampler;
     
     // Per-frame CPU state
-    private DrawData _drawData; // Holds Vertex/IndexBuffers
+    // private DrawData _drawData; // Holds Vertex/IndexBuffers
+    private readonly UiGeometryUploader _uiGeometryUploader;
     public ImGuiDrawData CurrentDrawData { get; private set; } = ImGuiDrawData.Empty;
+    public DrawSubmission[] CurrentSubmissions { get; private set; } = Array.Empty<DrawSubmission>();
     public PipelineData PipelineData => _pipelineData;
     public DescriptorSet DescriptorSet => _descriptorSet;
     
@@ -40,6 +42,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     public ImGuiRenderer(VulkanMaster master)
     {
         _master = master;
+        _uiGeometryUploader = new UiGeometryUploader(master);
     }
     public void Initialize( RenderPass renderPass)
     {
@@ -289,12 +292,6 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
 
         return _master.RenderPassFactory.CreateRenderPass(fallbackKey);
     }
-
-
-
-
-    //WARNING: I don't like anything below here. Much of this should be handled in Managers/Factories.
-    // This is the same vibe-coding problem I ended up with in previous version. 
     
     private void CreateFontAtlasTexture(byte* pixels, int width, int height, int bytesPerPixel)
     {
@@ -455,8 +452,72 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         _master.Vk.UpdateDescriptorSets(_master.VulkanDevice.Device, 1, &write, 0, null);
     }
 
+
+    public void BuildDrawSubmissions(uint currentFrame, uint maxFramesInFlight)
+    {
+        if (!CurrentDrawData.HasData)
+        {
+            CurrentSubmissions = Array.Empty<DrawSubmission>();
+            return;
+        }
+
+        _uiGeometryUploader.EnsureCurrentFrameUiBuffers(CurrentDrawData, currentFrame, maxFramesInFlight);
+        _uiGeometryUploader.UploadCurrentFrameUiData(CurrentDrawData, currentFrame, maxFramesInFlight);
+
+        ref var vertexBuffer = ref _uiGeometryUploader.GetCurrentFrameVertexBuffer(currentFrame);
+        ref var indexBuffer = ref _uiGeometryUploader.GetCurrentFrameIndexBuffer(currentFrame);
+
+        var submissions = new List<DrawSubmission>(CurrentDrawData.Commands.Length);
+        var displayWidth = MathF.Max(1f, CurrentDrawData.DisplaySize.X);
+        var displayHeight = MathF.Max(1f, CurrentDrawData.DisplaySize.Y);
+
+        foreach (var drawCommand in CurrentDrawData.Commands)
+        {
+            if (drawCommand.ElementCount == 0)
+                continue;
+
+            var clipRect = drawCommand.ClipRect;
+            var minX = Math.Clamp((int)clipRect.X, 0, (int)displayWidth);
+            var minY = Math.Clamp((int)clipRect.Y, 0, (int)displayHeight);
+            var maxX = Math.Clamp((int)clipRect.Z, minX, (int)displayWidth);
+            var maxY = Math.Clamp((int)clipRect.W, minY, (int)displayHeight);
+            if (maxX <= minX || maxY <= minY)
+                continue;
+
+            submissions.Add(new DrawSubmission
+            {
+                PassType = RenderPassType.Ui,
+                PipelineData = _pipelineData,
+                DescriptorSet = _descriptorSet,
+                Topology = PrimitiveTopology.TriangleList,
+                VertexBuffer = vertexBuffer,
+                VertexOffset = 0,
+                IndexBuffer = indexBuffer,
+                IndexOffset = 0,
+                IndexType = IndexType.Uint16,
+                VertexCount = 0,
+                IndexCount = drawCommand.ElementCount,
+                InstanceCount = 1,
+                FirstVertex = 0,
+                FirstIndex = drawCommand.FirstIndex,
+                VertexBase = drawCommand.VertexOffset,
+                ScissorPolicy = SubmissionScissorPolicy.Explicit,
+                Scissor = new Rect2D(new Offset2D(minX, minY), new Extent2D((uint)(maxX - minX), (uint)(maxY - minY))),
+                ViewportPolicy = SubmissionViewportPolicy.PassDefault,
+                Viewport = default,
+                PushConstants = PushConstantPayload.Empty //TODO: This needs to not be empty.
+                                                          // "Shader in VK_SHADER_STAGE_VERTEX_BIT uses push-constant
+                                                          // statically but vkCmdPushConstants was not called yet
+                                                          // for pipeline layout VkPipelineLayout 0x260000000026."
+            });
+        }
+
+        CurrentSubmissions = submissions.ToArray();
+    }
+
     public void Dispose()
     {
+        _uiGeometryUploader.Dispose();
         if (_descriptorPool.Handle != 0)
         {
             _master.Vk.DestroyDescriptorPool(_master.VulkanDevice.Device, _descriptorPool, null);

@@ -15,7 +15,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     private readonly PassExecutionFactory _passExecutionFactory;
     private readonly GraphResourceRuntimeManager _graphResourceRuntimeManager;
     private readonly GraphBarrierPlanner _graphBarrierPlanner;
-    private readonly UiGeometryUploader _uiGeometryUploader;
+    // private readonly UiGeometryUploader _uiGeometryUploader;
     
     [Header("Resources")]
     private CommandBuffer[] _commandBuffer;
@@ -35,12 +35,13 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     private uint _currentFrame;
     private bool _frameActive;
     private uint _currentImageIndex;
-    private bool _useSwapchainForFrame = true;
-    
+
+    //NOTE: Only used for debug logging rn?
     private Dictionary<ulong, string> _semaphoreNames = new();
     private Dictionary<ulong, string> _fenceNames = new();
     
     public bool _framebufferResized { get; set; }
+    public uint CurrentFrameIndex => _currentImageIndex;
 
     private readonly bool LOG_RENDER_GRAPH = true;
     
@@ -53,7 +54,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         _passExecutionFactory = new PassExecutionFactory(master, ResolvePassAttachment);
         _graphResourceRuntimeManager = new GraphResourceRuntimeManager(master);
         _graphBarrierPlanner = new GraphBarrierPlanner(master, _graphResourceRuntimeManager, LOG_RENDER_GRAPH);
-        _uiGeometryUploader = new UiGeometryUploader(master);
+        // _uiGeometryUploader = new UiGeometryUploader(master);
         
         Initialize();
         _commandBuffer = _master.CommandManager.AllocateCommandBuffers(_maxFramesInFlight);
@@ -123,18 +124,13 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         var cmd = _commandBuffer[_currentFrame];
 
-        var viewport = new Viewport(
-            0,
-            0,
-            _swapchainHandler.Extent.Width,
-            _swapchainHandler.Extent.Height,
-            0f,
-            1f);
+        var passViewport = new Viewport(0, 0, _swapchainHandler.Extent.Width, _swapchainHandler.Extent.Height, 0f, 1f);
+        var passScissor = new Rect2D(new Offset2D(0, 0), _swapchainHandler.Extent);
 
-        _master.Vk.CmdSetViewport(cmd, 0, 1, &viewport);
-
-        var scissor = new Rect2D(new Offset2D(0, 0), _swapchainHandler.Extent);
-        _master.Vk.CmdSetScissor(cmd, 0, 1, &scissor);
+        _master.Vk.CmdSetViewport(cmd, 0, 1, &passViewport);
+        _master.Vk.CmdSetScissor(cmd, 0, 1, &passScissor);
+        
+        var submissions = data.Submissions ?? Array.Empty<DrawSubmission>();
 
         // Execute passes (already in execution order)
         foreach (var pass in _compiledGraph.Passes)
@@ -159,13 +155,11 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 SType = StructureType.RenderPassBeginInfo,
                 RenderPass = data.PipelineData.RenderPass,
                 Framebuffer = frameBuffer,
-                RenderArea = new Rect2D(new Offset2D(0, 0), _swapchainHandler.Extent)
+                RenderArea = new Rect2D(new Offset2D(0, 0), _swapchainHandler.Extent),
+                ClearValueCount = 1
             };
 
-            var clearColor = new ClearValue
-            {
-                Color = new ClearColorValue(0f, 0f, 0f, 1f)
-            };
+            var clearColor = new ClearValue { Color = new ClearColorValue(0f, 0f, 0f, 1f) };
 
             beginInfo.ClearValueCount = 1;
             beginInfo.PClearValues = &clearColor;
@@ -173,53 +167,123 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             _graphBarrierPlanner.TransitionLayouts(cmd, pass);
             _master.Vk.CmdBeginRenderPass(cmd, in beginInfo, SubpassContents.Inline);
                 
-            if (pass.Type is RenderPassType.Ui)
+            // if (pass.Type is RenderPassType.Ui)
+            // {
+            //     RecordUiDrawCommands(cmd, data);
+            //     _master.Vk.CmdEndRenderPass(cmd);
+            //     continue;
+            // }
+            
+            if (pass.Type is not RenderPassType.Present)
             {
-                RecordUiDrawCommands(cmd, data);
-                _master.Vk.CmdEndRenderPass(cmd);
-                continue;
+                foreach (var submission in submissions)
+                {
+                    if (submission.PassType != pass.Type)
+                        continue;
+
+                    RecordSubmission(cmd, in submission, passViewport, passScissor);
+                }
             }
             
-            if (pass.Type is RenderPassType.Present)
-            {
-                _master.Vk.CmdEndRenderPass(cmd);
-                continue;
-            }
-            var descriptorSet = _master.DescriptorFactory.GetDescriptorSet(_currentFrame);
+            _master.Vk.CmdEndRenderPass(cmd);
+            
+            // var descriptorSet = _master.DescriptorFactory.GetDescriptorSet(_currentFrame);
+            //
+            // _master.Vk.CmdBindDescriptorSets(
+            //     cmd,
+            //     PipelineBindPoint.Graphics,
+            //     data.PipelineData.VkLayout,
+            //     0,
+            //     1,
+            //     &descriptorSet,
+            //     0,
+            //     null);
+            //
+            // if (data.PipelineData.IsValid)
+            // {
+            //     _master.Vk.CmdBindPipeline(
+            //         cmd,
+            //         PipelineBindPoint.Graphics,
+            //         data.PipelineData.VkPipeline);
+            //     
+            //     var modelMatrix = data.ModelMatrix ?? Matrix4x4.Identity;
+            //     _master.Vk.CmdPushConstants(
+            //         cmd,
+            //         data.PipelineData.VkLayout,
+            //         ShaderStageFlags.VertexBit,
+            //         0,
+            //         (uint)sizeof(Matrix4x4),
+            //         &modelMatrix
+            //     );
+            //
+            //     _master.Vk.CmdDraw(cmd, 3, 1, 0, 0);
+            //     
+            // }
+            // _master.Vk.CmdEndRenderPass(cmd);
+        }
+    }
+    
+    private void RecordSubmission(CommandBuffer cmd, in DrawSubmission submission, in Viewport passViewport, in Rect2D passScissor)
+    {
+        if (!submission.PipelineData.IsValid)
+            return;
 
+        _master.Vk.CmdBindPipeline(cmd, PipelineBindPoint.Graphics, submission.PipelineData.VkPipeline);
+
+        var descriptorSet = submission.DescriptorSet;
+        if (descriptorSet.Handle != 0)
+        {
             _master.Vk.CmdBindDescriptorSets(
                 cmd,
                 PipelineBindPoint.Graphics,
-                data.PipelineData.VkLayout,
+                submission.PipelineData.VkLayout,
                 0,
                 1,
                 &descriptorSet,
                 0,
                 null);
+        }
 
-            if (data.PipelineData.IsValid)
+        var viewport = submission.ViewportPolicy == SubmissionViewportPolicy.Explicit ? submission.Viewport : passViewport;
+        _master.Vk.CmdSetViewport(cmd, 0, 1, &viewport);
+
+        var scissor = submission.ScissorPolicy == SubmissionScissorPolicy.Explicit ? submission.Scissor : passScissor;
+        _master.Vk.CmdSetScissor(cmd, 0, 1, &scissor);
+
+        if (submission.PushConstants.HasData)
+        {
+            fixed (byte* pushData = submission.PushConstants.Data)
             {
-                _master.Vk.CmdBindPipeline(
-                    cmd,
-                    PipelineBindPoint.Graphics,
-                    data.PipelineData.VkPipeline);
-                
-                var modelMatrix = data.ModelMatrix ?? Matrix4x4.Identity;
                 _master.Vk.CmdPushConstants(
                     cmd,
-                    data.PipelineData.VkLayout,
-                    ShaderStageFlags.VertexBit,
-                    0,
-                    (uint)sizeof(Matrix4x4),
-                    &modelMatrix
-                );
-
-                _master.Vk.CmdDraw(cmd, 3, 1, 0, 0);
-                
+                    submission.PipelineData.VkLayout,
+                    submission.PushConstants.StageFlags,
+                    submission.PushConstants.Offset,
+                    (uint)submission.PushConstants.Data.Length,
+                    pushData);
             }
-            _master.Vk.CmdEndRenderPass(cmd);
+        }
+
+        if (submission.VertexBuffer.IsValid)
+        {
+            var vb = submission.VertexBuffer.Buffer;
+            var vbOffset = submission.VertexOffset;
+            _master.Vk.CmdBindVertexBuffers(cmd, 0, 1, &vb, &vbOffset);
+        }
+
+        if (submission.IndexBuffer.IsValid && submission.IndexCount > 0)
+        {
+            _master.Vk.CmdBindIndexBuffer(cmd, submission.IndexBuffer.Buffer, submission.IndexOffset, submission.IndexType);
+            _master.Vk.CmdDrawIndexed(cmd, submission.IndexCount, Math.Max(submission.InstanceCount, 1), submission.FirstIndex, submission.VertexBase, 0);
+            return;
+        }
+
+        if (submission.VertexCount > 0)
+        {
+            _master.Vk.CmdDraw(cmd, submission.VertexCount, Math.Max(submission.InstanceCount, 1), submission.FirstVertex, 0);
         }
     }
+
 
     public void Draw(in DrawData data)
     {
@@ -452,76 +516,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     }
     
     #endregion
-    private void RecordUiDrawCommands(CommandBuffer cmd, in DrawData data)
-    {
-        var drawData = data.ImGuiDrawData;
-        if (!drawData.HasData || !data.UiPipelineData.IsValid || data.UiDescriptorSet.Handle == 0)
-            return;
-
-        _uiGeometryUploader.EnsureCurrentFrameUiBuffers(drawData, _currentFrame, _maxFramesInFlight);
-        _uiGeometryUploader.UploadCurrentFrameUiData(drawData, _currentFrame, _maxFramesInFlight);
-
-        var vk = _master.Vk;
-
-        vk.CmdBindPipeline(cmd, PipelineBindPoint.Graphics, data.UiPipelineData.VkPipeline);
-
-        var uiDescriptor = data.UiDescriptorSet;
-        vk.CmdBindDescriptorSets(
-            cmd,
-            PipelineBindPoint.Graphics,
-            data.UiPipelineData.VkLayout,
-            0,
-            1,
-            &uiDescriptor,
-            0,
-            null);
-
-        ref var vertexBuffer = ref _uiGeometryUploader.GetCurrentFrameVertexBuffer(_currentFrame);
-        ref var indexBuffer = ref _uiGeometryUploader.GetCurrentFrameIndexBuffer(_currentFrame);
-
-        var vb = vertexBuffer.Buffer;
-        ulong vbOffset = 0;
-        vk.CmdBindVertexBuffers(cmd, 0, 1, &vb, &vbOffset);
-        vk.CmdBindIndexBuffer(cmd, indexBuffer.Buffer, 0, IndexType.Uint16);
-
-        var displayWidth = MathF.Max(1f, drawData.DisplaySize.X);
-        var displayHeight = MathF.Max(1f, drawData.DisplaySize.Y);
-
-        foreach (var drawCommand in drawData.Commands)
-        {
-            if (drawCommand.ElementCount == 0)
-                continue;
-
-            var clipRect = drawCommand.ClipRect;
-            var minX = Math.Clamp((int)clipRect.X, 0, (int)displayWidth);
-            var minY = Math.Clamp((int)clipRect.Y, 0, (int)displayHeight);
-            var maxX = Math.Clamp((int)clipRect.Z, minX, (int)displayWidth);
-            var maxY = Math.Clamp((int)clipRect.W, minY, (int)displayHeight);
-
-            if (maxX <= minX || maxY <= minY)
-                continue;
-
-            var scissor = new Rect2D(
-                new Offset2D(minX, minY),
-                new Extent2D((uint)(maxX - minX), (uint)(maxY - minY)));
-            vk.CmdSetScissor(cmd, 0, 1, &scissor);
-
-            vk.CmdDrawIndexed(
-                cmd,
-                drawCommand.ElementCount,
-                1,
-                drawCommand.FirstIndex,
-                drawCommand.VertexOffset,
-                0);
-        }
-
-        if (_currentFrame == 0)
-        {
-            Debug.Log($"[RG] UI pass draw submitted: cmds={drawData.Commands.Length}, vtx={drawData.TotalVertexCount}, idx={drawData.TotalIndexCount}",
-                VALIDATION_LAYERS.INFO,
-                LOG_RENDER_GRAPH);
-        }
-    }
+    
     
     #region Resolve
     
@@ -583,7 +578,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     {
         _master.Vk.DeviceWaitIdle(_master.VulkanDevice.Device);
 
-        _uiGeometryUploader.Dispose();
+        // _uiGeometryUploader.Dispose();
         _graphResourceRuntimeManager.DestroyGraphResources();
         _passExecutionFactory.Reset();
     }

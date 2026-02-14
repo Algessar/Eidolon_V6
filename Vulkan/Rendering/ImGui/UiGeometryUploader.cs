@@ -9,64 +9,44 @@ internal sealed unsafe class UiGeometryUploader : IDisposable
     private readonly VulkanMaster _master;
     private GpuBuffer[] _uiVertexBuffers = Array.Empty<GpuBuffer>();
     private GpuBuffer[] _uiIndexBuffers = Array.Empty<GpuBuffer>();
+    
+    private GpuBufferKey? _vertexKey;
+    private GpuBufferKey? _indexKey;
+    
+    public ref GpuBuffer GetCurrentFrameVertexBuffer(uint currentFrame) => ref _uiVertexBuffers[(int)currentFrame];
 
     public UiGeometryUploader(VulkanMaster master)
     {
         _master = master;
     }
 
-    public ref GpuBuffer GetCurrentFrameVertexBuffer(uint currentFrame)
-    {
-        return ref _uiVertexBuffers[(int)currentFrame];
-    }
 
-    public ref GpuBuffer GetCurrentFrameIndexBuffer(uint currentFrame)
-    {
-        return ref _uiIndexBuffers[(int)currentFrame];
-    }
 
-    public void EnsureUiFrameArrays(uint currentFrame, uint maxFramesInFlight)
+    public ref GpuBuffer GetCurrentFrameIndexBuffer(uint currentFrame) => ref _uiIndexBuffers[(int)currentFrame];
+
+
+
+    public void EnsureCurrentFrameUiBuffers(ImGuiDrawData drawData, uint currentFrame, uint maxFramesInFlight)
     {
         var frameCount = (int)maxFramesInFlight;
         if (frameCount <= 0)
             throw new InvalidOperationException("MAX_FRAMES_IN_FLIGHT must be greater than zero.");
 
-        if (_uiVertexBuffers.Length != frameCount)
-            _uiVertexBuffers = new GpuBuffer[frameCount];
-
-        if (_uiIndexBuffers.Length != frameCount)
-            _uiIndexBuffers = new GpuBuffer[frameCount];
-
         if (currentFrame >= frameCount)
             throw new ArgumentOutOfRangeException(nameof(currentFrame));
+
+        var vertexBytes = Math.Max((ulong)(drawData.Vertices.Length * sizeof(ImGuiVertex)), 1UL);
+        var indexBytes = Math.Max((ulong)(drawData.Indices.Length * sizeof(ushort)), 1UL);
+
+        EnsureVertexBuffers(vertexBytes, maxFramesInFlight);
+        EnsureIndexBuffers(indexBytes, maxFramesInFlight);
     }
 
-    public void EnsureCurrentFrameUiBuffers(ImGuiDrawData drawData, uint currentFrame, uint maxFramesInFlight)
-    {
-        EnsureUiFrameArrays(currentFrame, maxFramesInFlight);
-
-        ref var vertexBuffer = ref _uiVertexBuffers[(int)currentFrame];
-        ref var indexBuffer = ref _uiIndexBuffers[(int)currentFrame];
-
-        var vertexBytes = (ulong)(drawData.Vertices.Length * sizeof(ImGuiVertex));
-        var indexBytes = (ulong)(drawData.Indices.Length * sizeof(ushort));
-
-        if (!vertexBuffer.IsValid || vertexBuffer.Size < vertexBytes)
-        {
-            DestroyBuffer(ref vertexBuffer);
-            vertexBuffer = CreateHostVisibleBuffer(vertexBytes, BufferUsageFlags.VertexBufferBit);
-        }
-
-        if (!indexBuffer.IsValid || indexBuffer.Size < indexBytes)
-        {
-            DestroyBuffer(ref indexBuffer);
-            indexBuffer = CreateHostVisibleBuffer(indexBytes, BufferUsageFlags.IndexBufferBit);
-        }
-    }
 
     public void UploadCurrentFrameUiData(ImGuiDrawData drawData, uint currentFrame, uint maxFramesInFlight)
     {
-        EnsureUiFrameArrays(currentFrame, maxFramesInFlight);
+        if (_uiVertexBuffers.Length != (int)maxFramesInFlight || _uiIndexBuffers.Length != (int)maxFramesInFlight)
+            return;
 
         ref var vertexBuffer = ref _uiVertexBuffers[(int)currentFrame];
         ref var indexBuffer = ref _uiIndexBuffers[(int)currentFrame];
@@ -76,86 +56,86 @@ internal sealed unsafe class UiGeometryUploader : IDisposable
 
         void* mapped;
         var vertexBytes = (nuint)(drawData.Vertices.Length * sizeof(ImGuiVertex));
-        fixed (ImGuiVertex* srcVertices = drawData.Vertices)
+        if (vertexBytes > 0)
         {
-            _master.Vk.MapMemory(_master.VulkanDevice.Device, vertexBuffer.Memory, 0, vertexBuffer.Size, 0, &mapped);
-            global::System.Buffer.MemoryCopy(srcVertices, mapped, vertexBuffer.Size, vertexBytes);
-            _master.Vk.UnmapMemory(_master.VulkanDevice.Device, vertexBuffer.Memory);
+            fixed (ImGuiVertex* srcVertices = drawData.Vertices)
+            {
+                _master.Vk.MapMemory(_master.VulkanDevice.Device, vertexBuffer.Memory, 0, vertexBytes, 0, &mapped);
+                global::System.Buffer.MemoryCopy(srcVertices, mapped, vertexBytes, vertexBytes);
+                _master.Vk.UnmapMemory(_master.VulkanDevice.Device, vertexBuffer.Memory);
+            }
         }
 
         var indexBytes = (nuint)(drawData.Indices.Length * sizeof(ushort));
-        fixed (ushort* srcIndices = drawData.Indices)
+        if (indexBytes > 0)
         {
-            _master.Vk.MapMemory(_master.VulkanDevice.Device, indexBuffer.Memory, 0, indexBuffer.Size, 0, &mapped);
-            global::System.Buffer.MemoryCopy(srcIndices, mapped, indexBuffer.Size, indexBytes);
-            _master.Vk.UnmapMemory(_master.VulkanDevice.Device, indexBuffer.Memory);
+            fixed (ushort* srcIndices = drawData.Indices)
+            {
+                _master.Vk.MapMemory(_master.VulkanDevice.Device, indexBuffer.Memory, 0, indexBytes, 0, &mapped);
+                global::System.Buffer.MemoryCopy(srcIndices, mapped, indexBytes, indexBytes);
+                _master.Vk.UnmapMemory(_master.VulkanDevice.Device, indexBuffer.Memory);
+            }
         }
     }
-
-    private GpuBuffer CreateHostVisibleBuffer(ulong size, BufferUsageFlags usage)
+    private void EnsureVertexBuffers(ulong vertexBytes, uint maxFramesInFlight)
     {
-        var bufferInfo = new BufferCreateInfo
-        {
-            SType = StructureType.BufferCreateInfo,
-            Size = size,
-            Usage = usage,
-            SharingMode = SharingMode.Exclusive,
-        };
-
-        if (_master.Vk.CreateBuffer(_master.VulkanDevice.Device, in bufferInfo, null, out var buffer) != Result.Success)
-            throw new Exception("Failed to create UI buffer.");
-
-        _master.Vk.GetBufferMemoryRequirements(_master.VulkanDevice.Device, buffer, out var requirements);
-
-        var allocInfo = new MemoryAllocateInfo
-        {
-            SType = StructureType.MemoryAllocateInfo,
-            AllocationSize = requirements.Size,
-            MemoryTypeIndex = _master.VulkanDevice.FindMemoryType(
-                requirements.MemoryTypeBits,
-                MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit),
-        };
-
-        if (_master.Vk.AllocateMemory(_master.VulkanDevice.Device, in allocInfo, null, out var memory) != Result.Success)
-        {
-            _master.Vk.DestroyBuffer(_master.VulkanDevice.Device, buffer, null);
-            throw new Exception("Failed to allocate UI buffer memory.");
-        }
-
-        if (_master.Vk.BindBufferMemory(_master.VulkanDevice.Device, buffer, memory, 0) != Result.Success)
-        {
-            _master.Vk.FreeMemory(_master.VulkanDevice.Device, memory, null);
-            _master.Vk.DestroyBuffer(_master.VulkanDevice.Device, buffer, null);
-            throw new Exception("Failed to bind UI buffer memory.");
-        }
-
-        return new GpuBuffer
-        {
-            Buffer = buffer,
-            Memory = memory,
-            Size = size,
-            Usage = usage,
-            MemoryFlags = MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit,
-            HostVisible = true,
-        };
-    }
-
-    private void DestroyBuffer(ref GpuBuffer buffer)
-    {
-        if (!buffer.IsValid)
+        if (_vertexKey is { } key && key.Size >= vertexBytes)
             return;
 
-        _master.Vk.DestroyBuffer(_master.VulkanDevice.Device, buffer.Buffer, null);
-        _master.Vk.FreeMemory(_master.VulkanDevice.Device, buffer.Memory, null);
-        buffer = default;
+        if (_vertexKey is { } oldKey)
+            _master.GpuBufferFactory.Release(oldKey);
+
+        var newKey = new GpuBufferKey
+        {
+            Size = vertexBytes,
+            Usage = BufferUsageFlags.VertexBufferBit,
+            MemoryProperties = MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit,
+            Count = maxFramesInFlight,
+            UsageClass = GpuBufferUsageClass.Vertex,
+            AllocationStrategy = GpuBufferAllocationStrategy.PerFrame
+        };
+
+        _uiVertexBuffers = _master.GpuBufferFactory.GetOrCreate(newKey);
+        _vertexKey = newKey;
+    }
+    
+    private void EnsureIndexBuffers(ulong indexBytes, uint maxFramesInFlight)
+    {
+        if (_indexKey is { } key && key.Size >= indexBytes)
+            return;
+
+        if (_indexKey is { } oldKey)
+            _master.GpuBufferFactory.Release(oldKey);
+
+        var newKey = new GpuBufferKey
+        {
+            Size = indexBytes,
+            Usage = BufferUsageFlags.IndexBufferBit,
+            MemoryProperties = MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit,
+            Count = maxFramesInFlight,
+            UsageClass = GpuBufferUsageClass.Index,
+            AllocationStrategy = GpuBufferAllocationStrategy.PerFrame
+        };
+
+        _uiIndexBuffers = _master.GpuBufferFactory.GetOrCreate(newKey);
+        _indexKey = newKey;
     }
 
     public void Dispose()
     {
-        for (var i = 0; i < _uiVertexBuffers.Length; i++)
+        if (_vertexKey is { } vertexKey)
         {
-            DestroyBuffer(ref _uiVertexBuffers[i]);
-            DestroyBuffer(ref _uiIndexBuffers[i]);
+            _master.GpuBufferFactory.Release(vertexKey);
+            _vertexKey = null;
         }
+
+        if (_indexKey is { } indexKey)
+        {
+            _master.GpuBufferFactory.Release(indexKey);
+            _indexKey = null;
+        }
+
+        _uiVertexBuffers = Array.Empty<GpuBuffer>();
+        _uiIndexBuffers = Array.Empty<GpuBuffer>();
     }
 }
