@@ -47,7 +47,10 @@ internal class VulkanMaster
     
     private ImGuiRenderer? _imguiRenderer;
     private readonly CompiledRenderGraph? _initialGraph;
-    DrawData _drawData;
+    
+    private DrawData _drawData;
+    private DrawSubmission[] _sceneSubmissions = Array.Empty<DrawSubmission>();
+    
     public VulkanMaster(CompiledRenderGraph? initialGraph = null)
     {
         ShaderCompiler.CompileShaders(@"G:\Coding\Eidolon_V6\Vulkan\Rendering\Shaders");
@@ -121,6 +124,8 @@ internal class VulkanMaster
         
         _drawData = BuildDrawData(SwapchainHandler);
 
+        _sceneSubmissions = _drawData.Submissions ?? Array.Empty<DrawSubmission>();
+        
         if (_drawData.PipelineData.RenderPass.Handle == 0)
         {
             throw new InvalidOperationException("Main pipeline render pass is null before ImGui initialization.");

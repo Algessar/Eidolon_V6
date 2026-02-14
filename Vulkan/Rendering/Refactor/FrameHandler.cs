@@ -129,10 +129,9 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         _master.Vk.CmdSetViewport(cmd, 0, 1, &passViewport);
         _master.Vk.CmdSetScissor(cmd, 0, 1, &passScissor);
-        
+
         var submissions = data.Submissions ?? Array.Empty<DrawSubmission>();
 
-        // Execute passes (already in execution order)
         foreach (var pass in _compiledGraph.Passes)
         {
             if (_currentFrame == 0)
@@ -146,10 +145,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 Debug.Log($"[RG]   Deps:   {string.Join(", ", pass.Dependencies)}", VALIDATION_LAYERS.INFO,
                     LOG_RENDER_GRAPH);
             }
-
-
+            
             var frameBuffer = _swapchainHandler.Framebuffers[_currentImageIndex];
-
             var beginInfo = new RenderPassBeginInfo
             {
                 SType = StructureType.RenderPassBeginInfo,
@@ -160,20 +157,11 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             };
 
             var clearColor = new ClearValue { Color = new ClearColorValue(0f, 0f, 0f, 1f) };
-
-            beginInfo.ClearValueCount = 1;
             beginInfo.PClearValues = &clearColor;
-            
+
             _graphBarrierPlanner.TransitionLayouts(cmd, pass);
             _master.Vk.CmdBeginRenderPass(cmd, in beginInfo, SubpassContents.Inline);
-                
-            // if (pass.Type is RenderPassType.Ui)
-            // {
-            //     RecordUiDrawCommands(cmd, data);
-            //     _master.Vk.CmdEndRenderPass(cmd);
-            //     continue;
-            // }
-            
+
             if (pass.Type is not RenderPassType.Present)
             {
                 foreach (var submission in submissions)
@@ -184,46 +172,12 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                     RecordSubmission(cmd, in submission, passViewport, passScissor);
                 }
             }
-            
+
             _master.Vk.CmdEndRenderPass(cmd);
-            
-            // var descriptorSet = _master.DescriptorFactory.GetDescriptorSet(_currentFrame);
-            //
-            // _master.Vk.CmdBindDescriptorSets(
-            //     cmd,
-            //     PipelineBindPoint.Graphics,
-            //     data.PipelineData.VkLayout,
-            //     0,
-            //     1,
-            //     &descriptorSet,
-            //     0,
-            //     null);
-            //
-            // if (data.PipelineData.IsValid)
-            // {
-            //     _master.Vk.CmdBindPipeline(
-            //         cmd,
-            //         PipelineBindPoint.Graphics,
-            //         data.PipelineData.VkPipeline);
-            //     
-            //     var modelMatrix = data.ModelMatrix ?? Matrix4x4.Identity;
-            //     _master.Vk.CmdPushConstants(
-            //         cmd,
-            //         data.PipelineData.VkLayout,
-            //         ShaderStageFlags.VertexBit,
-            //         0,
-            //         (uint)sizeof(Matrix4x4),
-            //         &modelMatrix
-            //     );
-            //
-            //     _master.Vk.CmdDraw(cmd, 3, 1, 0, 0);
-            //     
-            // }
-            // _master.Vk.CmdEndRenderPass(cmd);
         }
     }
     
-    private void RecordSubmission(CommandBuffer cmd, in DrawSubmission submission, in Viewport passViewport, in Rect2D passScissor)
+   private void RecordSubmission(CommandBuffer cmd, in DrawSubmission submission, in Viewport passViewport, in Rect2D passScissor)
     {
         if (!submission.PipelineData.IsValid)
             return;
@@ -262,6 +216,17 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                     (uint)submission.PushConstants.Data.Length,
                     pushData);
             }
+        }
+        else
+        {
+            var identity = Matrix4x4.Identity;
+            _master.Vk.CmdPushConstants(
+                cmd,
+                submission.PipelineData.VkLayout,
+                ShaderStageFlags.VertexBit,
+                0,
+                (uint)sizeof(Matrix4x4),
+                &identity);
         }
 
         if (submission.VertexBuffer.IsValid)
