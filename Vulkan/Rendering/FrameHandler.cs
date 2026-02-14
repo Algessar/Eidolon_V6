@@ -57,8 +57,9 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     
     //WARNING: I HATE THIS, THIS IS DEFINITELY TEMP. WHY DO THIS WHEN DRAWDATA HAS GPUBUFFERS?
     
-    private GpuBuffer _uiVertexBuffer;
-    private GpuBuffer _uiIndexBuffer;
+    private GpuBuffer[] _uiVertexBuffers = Array.Empty<GpuBuffer>();
+    private GpuBuffer[] _uiIndexBuffers = Array.Empty<GpuBuffer>();
+
     
     public FrameHandler(VulkanMaster master)
     {
@@ -194,7 +195,13 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             
             if (pass.Type is RenderPassType.Ui)
             {
-                EmitUiPass(cmd, data);
+                RecordUiDrawCommands(cmd, data);
+                _master.Vk.CmdEndRenderPass(cmd);
+                continue;
+            }
+            
+            if (pass.Type is RenderPassType.Present)
+            {
                 _master.Vk.CmdEndRenderPass(cmd);
                 continue;
             }
@@ -365,6 +372,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         
         _commandBuffer = new CommandBuffer[_maxFramesInFlight];
 
+        CreateUiBuffers();
         fixed (CommandBuffer* commandBufferPtr = _commandBuffer)
         {
             var allocInfo = new CommandBufferAllocateInfo
@@ -574,6 +582,16 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     
     }
     
+    
+    //WARNING: More hateful shit
+
+    private void CreateUiBuffers()
+    {
+        _uiVertexBuffers = new GpuBuffer[(int)_maxFramesInFlight];
+        _uiIndexBuffers = new GpuBuffer[(int)_maxFramesInFlight];
+
+    }
+    
     #endregion Creation
     
     #region Transitions
@@ -593,7 +611,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             if (runtime.Imported)
                 continue;
 
-            EmitShaderReadTransition(cmd, resource, ref runtime);
+            EmitShaderReadBarrier(cmd, resource, ref runtime);
 
             _graphImages[read.Handle] = runtime;
         }
@@ -610,22 +628,22 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             {
                 if (pass.Type == RenderPassType.Present)
                 {
-                    EmitPresentTransition(cmd, resource, ref runtime);
+                    EmitPresentBarrier(cmd, resource, ref runtime);
                 }
                 else
                 {
-                    EmitImportedColorAttachmentTransition(cmd, resource, ref runtime);
+                    EmitImportedColorAttachmentBarrier(cmd, resource, ref runtime);
                 }
             }
             else
             {
-                EmitColorAttachmentTransition(cmd, resource, ref runtime);
+                EmitColorAttachmentBarrier(cmd, resource, ref runtime);
             }
             _graphImages[write.Handle] = runtime;
         }
     }
     
-    private void EmitColorAttachmentTransition(CommandBuffer cmd, in CompiledResource resource, ref GraphImageRuntime runtime)
+    private void EmitColorAttachmentBarrier(CommandBuffer cmd, in CompiledResource resource, ref GraphImageRuntime runtime)
     {
         if(runtime.CurrentLayout == ImageLayout.PresentSrcKhr)
         {
@@ -680,7 +698,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         runtime.CurrentLayout = newLayout;
     }
     
-    private void EmitShaderReadTransition(CommandBuffer cmd, in CompiledResource resource, ref GraphImageRuntime runtime)
+    private void EmitShaderReadBarrier(CommandBuffer cmd, in CompiledResource resource, ref GraphImageRuntime runtime)
     {
         if (runtime.CurrentLayout != ImageLayout.ColorAttachmentOptimal)
             return;
@@ -728,7 +746,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         runtime.CurrentLayout = newLayout;
     }
 
-    private void EmitPresentTransition(CommandBuffer cmd, in CompiledResource resource, ref GraphImageRuntime runtime)
+    private void EmitPresentBarrier(CommandBuffer cmd, in CompiledResource resource, ref GraphImageRuntime runtime)
     {
         if (runtime.CurrentLayout == ImageLayout.PresentSrcKhr)
             return;
@@ -778,7 +796,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         runtime.CurrentLayout = newLayout;
     }
     
-    private void EmitImportedColorAttachmentTransition(CommandBuffer cmd, in CompiledResource resource, ref GraphImageRuntime runtime)
+    private void EmitImportedColorAttachmentBarrier(CommandBuffer cmd, in CompiledResource resource, ref GraphImageRuntime runtime)
     {
         if (runtime.CurrentLayout == ImageLayout.ColorAttachmentOptimal)
             return;
@@ -819,44 +837,51 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         runtime.CurrentLayout = ImageLayout.ColorAttachmentOptimal;
     }
+    
+    #endregion Transitions
+    
+    //WARNING: All of this is absolutely hateful, ugly, duplicated shit code. I am going to have to refactor so much CRAP.
 
-    private void EmitUiPass(CommandBuffer cmd, DrawData  data)
+    private void RecordUiDrawCommands(CommandBuffer cmd, in DrawData data)
     {
         var drawData = data.ImGuiDrawData;
-
         if (!drawData.HasData || !data.UiPipelineData.IsValid || data.UiDescriptorSet.Handle == 0)
-        {
             return;
-        }
-        
-        EnsureUiBuffers(drawData);
-        UploadUiData(drawData);
-        
-        _master.Vk.CmdBindPipeline(cmd, PipelineBindPoint.Graphics, data.UiPipelineData.VkPipeline);
+
+        EnsureCurrentFrameUiBuffers(drawData);
+        UploadCurrentFrameUiData(drawData);
+
+        var vk = _master.Vk;
+
+        vk.CmdBindPipeline(cmd, PipelineBindPoint.Graphics, data.UiPipelineData.VkPipeline);
 
         var uiDescriptor = data.UiDescriptorSet;
-        _master.Vk.CmdBindDescriptorSets(
+        vk.CmdBindDescriptorSets(
             cmd,
             PipelineBindPoint.Graphics,
             data.UiPipelineData.VkLayout,
-            0, 
-            1, 
-            &uiDescriptor, 
-            0, 
+            0,
+            1,
+            &uiDescriptor,
+            0,
             null);
 
-        var vb = _uiVertexBuffer.Buffer;
+        ref var vertexBuffer = ref _uiVertexBuffers[(int)_currentFrame];
+        ref var indexBuffer = ref _uiIndexBuffers[(int)_currentFrame];
+
+        var vb = vertexBuffer.Buffer;
         ulong vbOffset = 0;
-        _master.Vk.CmdBindVertexBuffers(cmd, 0, 1, &vb, &vbOffset);
-        _master.Vk.CmdBindIndexBuffer(cmd, _uiIndexBuffer.Buffer, 0, IndexType.Uint16);
+        vk.CmdBindVertexBuffers(cmd, 0, 1, &vb, &vbOffset);
+        vk.CmdBindIndexBuffer(cmd, indexBuffer.Buffer, 0, IndexType.Uint16);
 
         var displayWidth = MathF.Max(1f, drawData.DisplaySize.X);
         var displayHeight = MathF.Max(1f, drawData.DisplaySize.Y);
 
         foreach (var drawCommand in drawData.Commands)
         {
-            if (drawCommand.ElementCount == 0) continue;
-            
+            if (drawCommand.ElementCount == 0)
+                continue;
+
             var clipRect = drawCommand.ClipRect;
             var minX = Math.Clamp((int)clipRect.X, 0, (int)displayWidth);
             var minY = Math.Clamp((int)clipRect.Y, 0, (int)displayHeight);
@@ -869,14 +894,14 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             var scissor = new Rect2D(
                 new Offset2D(minX, minY),
                 new Extent2D((uint)(maxX - minX), (uint)(maxY - minY)));
-            _master.Vk.CmdSetScissor(cmd, 0, 1, &scissor);
+            vk.CmdSetScissor(cmd, 0, 1, &scissor);
 
-            _master.Vk.CmdDrawIndexed(
+            vk.CmdDrawIndexed(
                 cmd,
                 drawCommand.ElementCount,
                 1,
                 drawCommand.FirstIndex,
-                (int)drawCommand.VertexOffset,
+                drawCommand.VertexOffset,
                 0);
         }
 
@@ -888,51 +913,70 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         }
     }
     
-    #endregion Transitions
-
-    
-    //WARNING: All of this is absolutely hateful, ugly, duplicated shit code. I am going to have to refactor so much CRAP.
-    
-   
-
-    private void EnsureUiBuffers(ImGuiDrawData drawData)
+    private void EnsureUiFrameArrays()
     {
+        var frameCount = (int)_maxFramesInFlight;
+        if (frameCount <= 0)
+            throw new InvalidOperationException("MAX_FRAMES_IN_FLIGHT must be greater than zero.");
+
+        if (_uiVertexBuffers.Length != frameCount)
+            _uiVertexBuffers = new GpuBuffer[frameCount];
+
+        if (_uiIndexBuffers.Length != frameCount)
+            _uiIndexBuffers = new GpuBuffer[frameCount];
+
+        if (_currentFrame >= frameCount)
+            _currentFrame = 0;
+    }
+    
+    private void EnsureCurrentFrameUiBuffers(ImGuiDrawData drawData)
+    {
+        EnsureUiFrameArrays();
+
+        ref var vertexBuffer = ref _uiVertexBuffers[(int)_currentFrame];
+        ref var indexBuffer = ref _uiIndexBuffers[(int)_currentFrame];
+
         var vertexBytes = (ulong)(drawData.Vertices.Length * sizeof(ImGuiVertex));
         var indexBytes = (ulong)(drawData.Indices.Length * sizeof(ushort));
 
-        if (!_uiVertexBuffer.IsValid || _uiVertexBuffer.Size < vertexBytes)
+        if (!vertexBuffer.IsValid || vertexBuffer.Size < vertexBytes)
         {
-            DestroyBuffer(ref _uiVertexBuffer);
-            _uiVertexBuffer = CreateHostVisibleBuffer(vertexBytes, BufferUsageFlags.VertexBufferBit);
+            DestroyBuffer(ref vertexBuffer);
+            vertexBuffer = CreateHostVisibleBuffer(vertexBytes, BufferUsageFlags.VertexBufferBit);
         }
 
-        if (!_uiIndexBuffer.IsValid || _uiIndexBuffer.Size < indexBytes)
+        if (!indexBuffer.IsValid || indexBuffer.Size < indexBytes)
         {
-            DestroyBuffer(ref _uiIndexBuffer);
-            _uiIndexBuffer = CreateHostVisibleBuffer(indexBytes, BufferUsageFlags.IndexBufferBit);
+            DestroyBuffer(ref indexBuffer);
+            indexBuffer = CreateHostVisibleBuffer(indexBytes, BufferUsageFlags.IndexBufferBit);
         }
     }
 
-    private void UploadUiData(ImGuiDrawData drawData)
+    private void UploadCurrentFrameUiData(ImGuiDrawData drawData)
     {
-        if (!_uiVertexBuffer.IsValid || !_uiIndexBuffer.IsValid)
+        EnsureUiFrameArrays();
+
+        ref var vertexBuffer = ref _uiVertexBuffers[(int)_currentFrame];
+        ref var indexBuffer = ref _uiIndexBuffers[(int)_currentFrame];
+
+        if (!vertexBuffer.IsValid || !indexBuffer.IsValid)
             return;
 
         void* mapped;
-        var vertexBytes = (nuint)(drawData.TotalVertexCount * sizeof(ImGuiVertex));
+        var vertexBytes = (nuint)(drawData.Vertices.Length * sizeof(ImGuiVertex));
         fixed (ImGuiVertex* srcVertices = drawData.Vertices)
         {
-            _master.Vk.MapMemory(_master.VulkanDevice.Device, _uiVertexBuffer.Memory, 0, _uiVertexBuffer.Size, 0, &mapped);
-            global::System.Buffer.MemoryCopy(srcVertices, mapped, _uiVertexBuffer.Size, vertexBytes);
-            _master.Vk.UnmapMemory(_master.VulkanDevice.Device, _uiVertexBuffer.Memory);
+            _master.Vk.MapMemory(_master.VulkanDevice.Device, vertexBuffer.Memory, 0, vertexBuffer.Size, 0, &mapped);
+            global::System.Buffer.MemoryCopy(srcVertices, mapped, vertexBuffer.Size, vertexBytes);
+            _master.Vk.UnmapMemory(_master.VulkanDevice.Device, vertexBuffer.Memory);
         }
 
         var indexBytes = (nuint)(drawData.Indices.Length * sizeof(ushort));
         fixed (ushort* srcIndices = drawData.Indices)
         {
-            _master.Vk.MapMemory(_master.VulkanDevice.Device, _uiIndexBuffer.Memory, 0, _uiIndexBuffer.Size, 0, &mapped);
-            global::System.Buffer.MemoryCopy(srcIndices, mapped, _uiIndexBuffer.Size, indexBytes);
-            _master.Vk.UnmapMemory(_master.VulkanDevice.Device, _uiIndexBuffer.Memory);
+            _master.Vk.MapMemory(_master.VulkanDevice.Device, indexBuffer.Memory, 0, indexBuffer.Size, 0, &mapped);
+            global::System.Buffer.MemoryCopy(srcIndices, mapped, indexBuffer.Size, indexBytes);
+            _master.Vk.UnmapMemory(_master.VulkanDevice.Device, indexBuffer.Memory);
         }
     }
 
@@ -983,7 +1027,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             HostVisible = true,
         };
     }
-
     private void DestroyBuffer(ref GpuBuffer buffer)
     {
         if (!buffer.IsValid)
@@ -993,6 +1036,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         _master.Vk.FreeMemory(_master.VulkanDevice.Device, buffer.Memory, null);
         buffer = default;
     }
+
     
     
     #region Resolve
@@ -1152,8 +1196,14 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     }
     public void Dispose()
     {
-        DestroyBuffer(ref _uiVertexBuffer);
-        DestroyBuffer(ref _uiIndexBuffer);
+        _master.Vk.DeviceWaitIdle(_master.VulkanDevice.Device);
+
+        for (var i = 0; i < _uiVertexBuffers.Length; i++)
+        {
+            DestroyBuffer(ref _uiVertexBuffers[i]);
+            DestroyBuffer(ref _uiIndexBuffers[i]);
+        }
+
         DestroyGraphResources();
     }
 }
