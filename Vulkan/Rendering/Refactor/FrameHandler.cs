@@ -53,7 +53,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         _passExecutionFactory = new PassExecutionFactory(master, ResolvePassAttachment);
         _graphResourceRuntimeManager = new GraphResourceRuntimeManager(master);
         _graphBarrierPlanner = new GraphBarrierPlanner(master, _graphResourceRuntimeManager, LOG_RENDER_GRAPH);
-        // _uiGeometryUploader = new UiGeometryUploader(master);
         
         Initialize();
         _commandBuffer = _master.CommandManager.AllocateCommandBuffers(_maxFramesInFlight);

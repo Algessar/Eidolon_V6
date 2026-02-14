@@ -235,6 +235,27 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         
         //TODO: upload ImGui font atlas to GPU and write CombinedImageSampler descriptor at binding 0.
     }
+    private void UpdateFontDescriptorSet()
+    {
+        var imageInfo = new DescriptorImageInfo
+        {
+            Sampler = _fontSampler,
+            ImageView = _fontImageView,
+            ImageLayout = ImageLayout.ShaderReadOnlyOptimal
+        };
+
+        var write = new WriteDescriptorSet
+        {
+            SType = StructureType.WriteDescriptorSet,
+            DstSet = _descriptorSet,
+            DstBinding = 0,
+            DescriptorCount = 1,
+            DescriptorType = DescriptorType.CombinedImageSampler,
+            PImageInfo = &imageInfo
+        };
+        
+        _master.Vk.UpdateDescriptorSets(_master.VulkanDevice.Device, 1, &write, 0, null);
+    }
 
     private void CreatePipeline(RenderPass renderPass)
     {
@@ -334,7 +355,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
 
         UpdateFontDescriptorSet();
     }
-    
+
     private void CreateStagingBuffer(ulong size, out Buffer buffer, out DeviceMemory memory)
     {
         var bufferInfo = new BufferCreateInfo
@@ -442,27 +463,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
             throw new Exception("Failed to create ImGui font sampler.");
     }
     
-    private void UpdateFontDescriptorSet()
-    {
-        var imageInfo = new DescriptorImageInfo
-        {
-            Sampler = _fontSampler,
-            ImageView = _fontImageView,
-            ImageLayout = ImageLayout.ShaderReadOnlyOptimal
-        };
 
-        var write = new WriteDescriptorSet
-        {
-            SType = StructureType.WriteDescriptorSet,
-            DstSet = _descriptorSet,
-            DstBinding = 0,
-            DescriptorCount = 1,
-            DescriptorType = DescriptorType.CombinedImageSampler,
-            PImageInfo = &imageInfo
-        };
-
-        _master.Vk.UpdateDescriptorSets(_master.VulkanDevice.Device, 1, &write, 0, null);
-    }
 
     public void BuildDrawSubmissions(uint currentFrame, uint maxFramesInFlight)
     {

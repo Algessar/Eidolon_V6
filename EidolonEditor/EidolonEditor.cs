@@ -31,9 +31,9 @@ public class EidolonEditor
             GraphImageDescription.Create(ImageFormat.Bgra8Unorm,
                 FlagImageUsage.ColorAttachment | FlagImageUsage.Present));
 
-        // graph.AddPass("Geometry", RenderPassType.Geometry)
-        //     .Write(sceneColor);
-        //
+        graph.AddPass("Geometry", RenderPassType.Geometry)
+            .Write(sceneColor);
+        
         // graph.AddPass("PostProcess", RenderPassType.PostProcess)
         //     .Read(sceneColor)
         //     .Write(postColor);
