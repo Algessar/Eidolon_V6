@@ -82,7 +82,7 @@ internal class VulkanMaster
         _window.Run();
     }
 
-    public void InitializeManagers()
+    private void InitializeManagers()
     {
         VulkanInstance = new VulkanInstance(this, _window);
             
@@ -107,11 +107,15 @@ internal class VulkanMaster
     private void SetupFrameChain()
     {
         var id = ImGui.CreateContext(); //NOTE: Had missed completely that CreateContext() returns an ID.
-
-        _imguiRenderer = new ImGuiRenderer(this);
-        _imguiRenderer.Initialize( _drawData.PipelineData.RenderPass);
         
         _drawData = BuildDrawData(SwapchainHandler);
+
+        if (_drawData.PipelineData.RenderPass.Handle == 0)
+        {
+            throw new InvalidOperationException("Main pipeline render pass is null before ImGui initialization.");
+        }
+        _imguiRenderer = new ImGuiRenderer(this);
+        _imguiRenderer.Initialize( _drawData.PipelineData.RenderPass);
         
         if (_initialGraph is not null)
         {
@@ -133,8 +137,6 @@ internal class VulkanMaster
         _window = Window.Create(opts);
     }
     
-    
-
     //NOTE: TEMP
     private DrawData BuildDrawData(SwapchainHandler swapchain)
     {

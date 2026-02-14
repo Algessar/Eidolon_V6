@@ -575,9 +575,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     #endregion Creation
     
     #region Transitions
-    
-    //TODO: 
-    // [Vulkan Validation] ErrorBitExt: vkCmdPipelineBarrier(): pImageMemoryBarriers[0].dstAccessMask (VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT) is not supported by stage mask (VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT).
 
     private void TransitionLayouts(CommandBuffer cmd, in CompiledPass pass)
     {
@@ -641,7 +638,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         var barrier = new ImageMemoryBarrier
         {
             SType = StructureType.ImageMemoryBarrier,
-            OldLayout = ImageLayout.Undefined,
+            OldLayout = runtime.CurrentLayout,
             NewLayout = newLayout,
 
             SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
@@ -664,11 +661,10 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         
         _master.Vk.CmdPipelineBarrier(
             cmd,
-            runtime.CurrentLayout ==
-            ImageLayout.ColorAttachmentOptimal ? 
-                PipelineStageFlags.ColorAttachmentOutputBit : 
-                PipelineStageFlags.TopOfPipeBit,
-            PipelineStageFlags.BottomOfPipeBit,
+            runtime.CurrentLayout == ImageLayout.ColorAttachmentOptimal
+                ? PipelineStageFlags.ColorAttachmentOutputBit
+                : PipelineStageFlags.TopOfPipeBit,
+            PipelineStageFlags.ColorAttachmentOutputBit,
             0,
             0, null,
             0, null,
@@ -676,7 +672,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         if (LOG_RENDER_GRAPH)
         {
-            Debug.Log($"[RG] Barrier: {resource.Name} Undefined -> ColorAttachmentOptimal");
+            Debug.Log($"[RG] Barrier: {resource.Name} {barrier.OldLayout} -> ColorAttachmentOptimal");
         }
 
         runtime.CurrentLayout = newLayout;

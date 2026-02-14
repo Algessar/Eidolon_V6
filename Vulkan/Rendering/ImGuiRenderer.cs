@@ -18,7 +18,6 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     private DescriptorSetLayout _descriptorSetLayout;
     private DescriptorPool _descriptorPool; // Not sure what this is doing here. Shouldn't this be in DescriptorFactory?
     private DescriptorSet _descriptorSet;
-    // private GpuImage _fontImage; // NOTE: GpuImage is an empty struct. Should probably not be used. Use Image directly?
     private Image _fontImage;
     private ImageView _fontImageView;
     private DeviceMemory _fontImageMemory;
@@ -63,6 +62,39 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         
         Debug.Log("ImGuiRenderer initialized", VALIDATION_LAYERS.INFO);
     }
+    
+    public void NewFrame(float delta, Vector2 size)
+    {
+        var io = ImGui.GetIO();
+        io.DisplaySize = size;
+        io.DeltaTime = MathF.Max(1f / 1000f, delta);
+        ImGui.NewFrame();
+    }
+    
+    public void BuildUI()
+    {
+        ImGui.Begin("Eidolon / Render Graph");
+        ImGui.Text("ImGui is integrated in the frame lifecycle.");
+        ImGui.Text($"CmdLists: {LastCommandListCount}, Vtx: {LastVertexCount}, Idx: {LastIndexCount}");
+        ImGui.Checkbox("Show ImGui Demo Window", ref _showDemoWindow);
+        ImGui.End();
+
+        if (_showDemoWindow)
+        {
+            ImGui.ShowDemoWindow(ref _showDemoWindow);
+        }
+    }
+
+    public void FinalizeFrame()
+    {
+        ImGui.Render();
+        var drawData = ImGui.GetDrawData();
+
+        LastVertexCount = !drawData.Valid ? 0 : drawData.TotalVtxCount;
+        LastIndexCount = !drawData.Valid ? 0 : drawData.TotalIdxCount;
+        LastCommandListCount = !drawData.Valid ? 0 : drawData.CmdListsCount;
+    }
+
 
     private void CreateDescriptorResources()
     {
@@ -130,11 +162,13 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
 
     private void CreatePipeline(RenderPass renderPass)
     {
+        
+        var resolvedRenderPass = ResolveRenderPass(renderPass);
         var key = new PipelineKey
         {
             VertexShaderPath = "basic.vert.spv",
             FragmentShaderPath = "basic.frag.spv",
-            RenderPass = renderPass,
+            RenderPass = resolvedRenderPass,
             Layout = _descriptorSetLayout,
             VertexFormat = new VertexFormat
             {
@@ -153,39 +187,35 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
 
         _pipelineData = _master.PipelineFactory.GetOrCreate(key);
     }
-
-    public void NewFrame(float delta, Vector2 size)
-    {
-        var io = ImGui.GetIO();
-        io.DisplaySize = size;
-        io.DeltaTime = MathF.Max(1f / 1000f, delta);
-        ImGui.NewFrame();
-    }
-
-    public void BuildUI()
-    {
-        ImGui.Begin("Eidolon / Render Graph");
-        ImGui.Text("ImGui is integrated in the frame lifecycle.");
-        ImGui.Text($"CmdLists: {LastCommandListCount}, Vtx: {LastVertexCount}, Idx: {LastIndexCount}");
-        ImGui.Checkbox("Show ImGui Demo Window", ref _showDemoWindow);
-        ImGui.End();
-
-        if (_showDemoWindow)
-        {
-            ImGui.ShowDemoWindow(ref _showDemoWindow);
-        }
-    }
-
-    public void FinalizeFrame()
-    {
-        ImGui.Render();
-        var drawData = ImGui.GetDrawData();
-
-        LastVertexCount = !drawData.Valid ? 0 : drawData.TotalVtxCount;
-        LastIndexCount = !drawData.Valid ? 0 : drawData.TotalIdxCount;
-        LastCommandListCount = !drawData.Valid ? 0 : drawData.CmdListsCount;
-    }
     
+    private RenderPass ResolveRenderPass(RenderPass renderPass)
+    {
+        if (renderPass.Handle != 0)
+            return renderPass;
+
+        Debug.Log("ImGuiRenderer received null render pass; creating fallback render pass from swapchain.", VALIDATION_LAYERS.WARNING);
+
+        var swapchain = _master.SwapchainHandler;
+        var fallbackKey = new RenderPassKey
+        {
+            ColorFormat = swapchain.SwapchainImageFormat,
+            DepthFormat = Format.D32Sfloat,
+            HasDepth = false,
+            HasAlpha = true,
+            LoadOp = AttachmentLoadOp.Clear,
+            StoreOp = AttachmentStoreOp.Store,
+            InitialLayout = ImageLayout.Undefined,
+            FinalLayout = ImageLayout.PresentSrcKhr,
+            InitialDepthLayout = ImageLayout.Undefined,
+            FinalDepthLayout = ImageLayout.DepthStencilAttachmentOptimal,
+        };
+
+        return _master.RenderPassFactory.CreateRenderPass(fallbackKey);
+    }
+
+
+
+
     //WARNING: I don't like anything below here. Much of this should be handled in Managers/Factories.
     // This is the same vibe-coding problem I ended up with in previous version. 
     
