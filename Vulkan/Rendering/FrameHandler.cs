@@ -12,7 +12,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     private SwapchainHandler _swapchainHandler;
     [Header("Resources")]
     private CommandBuffer[] _commandBuffer;
-    private Framebuffer[] _framebuffers;
 
     private CompiledRenderGraph? _compiledGraph;
     private readonly GraphResourceImportMap _importMap = new();    
@@ -67,9 +66,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         
         Initialize();
         _commandBuffer = _master.CommandManager.AllocateCommandBuffers(_maxFramesInFlight);
-
-        // _importMap = new GraphResourceImportMap();
-
         
         _master.GetWindow.FramebufferResize += OnWindowResize;
         Debug.Log("FrameHandler created.", VALIDATION_LAYERS.SUCCESS);

@@ -197,6 +197,7 @@ internal unsafe class PipelineFactory
                 PScissors = null
             };
             
+            
             var pipelineInfo = new GraphicsPipelineCreateInfo
             {
                 SType = StructureType.GraphicsPipelineCreateInfo,

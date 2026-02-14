@@ -11,37 +11,37 @@ internal enum CullModeBits
 
 internal record struct PipelineKey
 {
-    public required string VertexShaderPath { get; set; }
-    public required string FragmentShaderPath { get; set; }
-    public required RenderPass RenderPass { get; set; }
+    public required string VertexShaderPath { get; init; }
+    public required string FragmentShaderPath { get; init; }
+    
+    //NOTE: Do I actually need RenderPass here? I've asked that before haven't I? It's used in PipelineFactory.
+    // Can I shorten the path it takes?
+    public required RenderPass RenderPass { get; init; }
     public ShaderModule Vert { get; set; }
     public ShaderModule Frag { get; set; }
     
-    public DescriptorSetLayout Layout { get; set; }
-    public VertexFormat VertexFormat { get; set; }
-    public required PrimitiveTopology Topology { get; set; }
-    public CullModeBits CullMode  { get; set; } = CullModeBits.Back;
+    public DescriptorSetLayout Layout { get; init; }
+    public VertexFormat VertexFormat { get; init; }
+    public required PrimitiveTopology Topology { get; init; }
+    public CullModeBits CullMode  { get; init; } = CullModeBits.Back;
     
     // Depth test, Pipeline
 
-    public bool DepthTestEnable { get; set; }
-    public bool DepthWriteEnable { get; set; }
-    public bool DepthCompareOp  { get; set; }
-    public FrontFace FrontFace { get; set; }
+    public bool DepthTestEnable { get; init; }
+    public bool DepthWriteEnable { get; init; }
+    public bool DepthCompareOp  { get; init; }
+    public FrontFace FrontFace { get; init; }
 
     public bool EnableBlending;
     public BlendState BlendState;
 
     public bool HasDepth;
-
     
     public PipelineKey()
     {
         EnableBlending = false;
         BlendState = BlendState.NoBlending;
         RenderPass = default;
-        Vert = default;
-        Frag = default;
         VertexShaderPath = null;
         FragmentShaderPath = null;
         VertexFormat = default;

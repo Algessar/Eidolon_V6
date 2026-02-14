@@ -34,6 +34,7 @@ internal class VulkanMaster
 
     public ShaderManager ShaderManager { get; set; }
     public BufferFactory BufferFactory { get; set; }
+    public GpuBufferFactory GpuBufferFactory { get; set; }
     public DescriptorFactory DescriptorFactory { get; set; }
     public RenderPassFactory RenderPassFactory { get; set; }
     public PipelineFactory PipelineFactory { get; set; }
@@ -94,9 +95,9 @@ internal class VulkanMaster
         VulkanDevice = new VulkanDevice(this);
             
         SwapchainHandler = new SwapchainHandler(this, SurfaceKhr, KhrSurface);
-        
         ShaderManager = new ShaderManager(this);
         BufferFactory = new BufferFactory(this);
+        GpuBufferFactory = new GpuBufferFactory(this);
         DescriptorFactory = new DescriptorFactory(this);
         RenderPassFactory = new RenderPassFactory(this);
         CommandManager = new CommandManager(this);
@@ -210,6 +211,7 @@ internal class VulkanMaster
         Vk.Dispose();
         VulkanDevice.Dispose();
         DescriptorFactory.Dispose();
+        GpuBufferFactory.Dispose();
         PipelineFactory.Dispose();
         CommandManager.Dispose();
     }
