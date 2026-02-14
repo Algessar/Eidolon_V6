@@ -83,7 +83,9 @@ internal sealed unsafe class UiGeometryUploader : IDisposable
             return;
 
         if (_vertexKey is { } oldKey)
+        {
             _master.GpuBufferFactory.Release(oldKey);
+        }
 
         var newKey = new GpuBufferKey
         {

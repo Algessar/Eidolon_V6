@@ -15,7 +15,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     private readonly PassExecutionFactory _passExecutionFactory;
     private readonly GraphResourceRuntimeManager _graphResourceRuntimeManager;
     private readonly GraphBarrierPlanner _graphBarrierPlanner;
-    // private readonly UiGeometryUploader _uiGeometryUploader;
     
     [Header("Resources")]
     private CommandBuffer[] _commandBuffer;
@@ -274,7 +273,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         var cmd = _commandBuffer[_currentFrame];
 
         // Wait for this frame to finish
-        fixed (Fence* frameFence = &_inFlightFences[_currentFrame])
+        fixed (Fence* frameFence = &_inFlightFences[_currentImageIndex])
         {
             vk.WaitForFences(device, 1, frameFence, true, ulong.MaxValue);
         }
@@ -543,7 +542,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     {
         _master.Vk.DeviceWaitIdle(_master.VulkanDevice.Device);
 
-        // _uiGeometryUploader.Dispose();
+
         _graphResourceRuntimeManager.DestroyGraphResources();
         _passExecutionFactory.Reset();
     }

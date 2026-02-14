@@ -3,6 +3,7 @@ using Buffer = Silk.NET.Vulkan.Buffer;
 
 namespace Eidolon.Vulkan.Rendering;
 
+//NOTE: This class seems to have been abandoned for unclear reasons.
 internal unsafe class BufferFactory
 {
     private VulkanMaster _master;

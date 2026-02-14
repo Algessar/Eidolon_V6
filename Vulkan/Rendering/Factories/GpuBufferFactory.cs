@@ -35,6 +35,8 @@ internal unsafe class GpuBufferFactory : IDisposable
 
         foreach (var buffer in buffers)
         {
+            _master.Vk.DeviceWaitIdle(_master.VulkanDevice.Device); //TODO: temp fix, find a better solution to avoid CPU-GPU sync stall
+
             Destroy(buffer);
         }
     }

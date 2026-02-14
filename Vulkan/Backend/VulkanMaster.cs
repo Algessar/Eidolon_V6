@@ -78,13 +78,11 @@ internal class VulkanMaster
             _imguiRenderer?.NewFrame((float) delta, new Vector2(_window.Size.X, _window.Size.Y)); // Wonder if my Vec2 works ^^ I doubt it, no implicit operator for Vector2D<T>
             _imguiRenderer?.BuildUI();
             _imguiRenderer?.FinalizeFrame();
-            // _drawData.ImGuiDrawData = _imguiRenderer?.CurrentDrawData ?? ImGuiDrawData.Empty;
-            // _drawData.UiPipelineData = _imguiRenderer?.PipelineData ?? default;
-            // _drawData.UiDescriptorSet = _imguiRenderer?.DescriptorSet ?? default;      
+  
             
             _imguiRenderer?.BuildDrawSubmissions(FrameHandler.CurrentFrameIndex, Constants.MAX_FRAMES_IN_FLIGHT);
 
-            var baseSubmissions = _drawData.Submissions ?? Array.Empty<DrawSubmission>();
+            var baseSubmissions = _sceneSubmissions;   // ← reset to original scene submissions
             var uiSubmissions = _imguiRenderer?.CurrentSubmissions ?? Array.Empty<DrawSubmission>();
             var mergedSubmissions = new DrawSubmission[baseSubmissions.Length + uiSubmissions.Length];
             baseSubmissions.CopyTo(mergedSubmissions, 0);
