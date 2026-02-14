@@ -38,8 +38,8 @@ internal sealed unsafe class UiGeometryUploader : IDisposable
         var vertexBytes = Math.Max((ulong)(drawData.Vertices.Length * sizeof(ImGuiVertex)), 1UL);
         var indexBytes = Math.Max((ulong)(drawData.Indices.Length * sizeof(ushort)), 1UL);
 
-        EnsureVertexBuffers(vertexBytes, maxFramesInFlight);
-        EnsureIndexBuffers(indexBytes, maxFramesInFlight);
+        EnsureVertexBuffers(vertexBytes, Constants.MAX_FRAMES_IN_FLIGHT);
+        EnsureIndexBuffers(indexBytes, Constants.MAX_FRAMES_IN_FLIGHT);
     }
 
 

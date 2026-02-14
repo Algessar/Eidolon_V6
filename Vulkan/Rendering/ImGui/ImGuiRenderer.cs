@@ -463,8 +463,6 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
             throw new Exception("Failed to create ImGui font sampler.");
     }
     
-
-
     public void BuildDrawSubmissions(uint currentFrame, uint maxFramesInFlight)
     {
         if (!CurrentDrawData.HasData)
@@ -517,13 +515,32 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
                 Scissor = new Rect2D(new Offset2D(minX, minY), new Extent2D((uint)(maxX - minX), (uint)(maxY - minY))),
                 ViewportPolicy = SubmissionViewportPolicy.PassDefault,
                 Viewport = default,
-                PushConstants = PushConstantPayload.Empty
+                PushConstants = PushConstantPayload.Empty,
+                ModelMatrix = CalculateImGuiProjection(),
+                
             });
         }
 
         CurrentSubmissions = submissions.ToArray();
     }
 
+    private Matrix4x4 CalculateImGuiProjection()
+    {
+        var io = ImGui.GetIO();
+        float width = io.DisplaySize.X;
+        float height = io.DisplaySize.Y;
+        
+        // Standard orthographic projection for Vulkan (Y down, depth 0 to 1)
+        // Maps pixel coordinates (0,0 at top-left) to Vulkan Normalized Device Coordinates
+        // NDC: X = -1 (left), 1 (right). Y = -1 (top), 1 (bottom). Z = 0 (near), 1 (far).
+        return new Matrix4x4(
+            2.0f / width, 0.0f,           0.0f, 0.0f, //xyzw
+            0.0f,         2.0f / height,  0.0f, 0.0f, //xyzw
+            0.0f,         0.0f,           1.0f, 0.0f, // Depth range 0->1
+            -1.0f,        -1.0f,          0.0f, 1.0f  // Translation
+        );
+    }
+    
     public void Dispose()
     {
         _uiGeometryUploader.Dispose();

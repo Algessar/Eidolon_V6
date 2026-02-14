@@ -163,6 +163,13 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             beginInfo.PClearValues = &clearColor;
 
             _graphBarrierPlanner.TransitionLayouts(cmd, pass);
+            if (pass.Type == RenderPassType.Present)
+            {
+                // Transition to present layout (already done in TransitionLayouts)
+                // Do NOT begin a render pass.
+                continue; // skip the render pass block
+            }
+            
             _master.Vk.CmdBeginRenderPass(cmd, in beginInfo, SubpassContents.Inline);
 
             if (pass.Type is not RenderPassType.Present)
@@ -214,6 +221,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         
         if (submission.PushConstants.HasData)
         {
+            var modelMatrix = submission.ModelMatrix;
             fixed (byte* pushData = submission.PushConstants.Data)
             {
                 _master.Vk.CmdPushConstants(
@@ -222,7 +230,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                     submission.PushConstants.StageFlags,
                     submission.PushConstants.Offset,
                     (uint)submission.PushConstants.Data.Length,
-                    pushData);
+                    &modelMatrix// pushData
+                    );
             }
         }
         else

@@ -1,4 +1,5 @@
-﻿using Silk.NET.Vulkan;
+﻿using System.Numerics;
+using Silk.NET.Vulkan;
 
 namespace Eidolon.Vulkan;
 
@@ -46,6 +47,7 @@ internal struct DrawSubmission
     public SubmissionViewportPolicy ViewportPolicy;
     public Viewport Viewport;
 
+    public Matrix4x4 ModelMatrix;
     public PushConstantPayload PushConstants;
 }
 
