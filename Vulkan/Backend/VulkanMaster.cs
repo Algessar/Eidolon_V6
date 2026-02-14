@@ -24,7 +24,6 @@ internal class VulkanMaster
     
     public VulkanInstance VulkanInstance { get; set; }
     public VulkanDevice VulkanDevice { get; set; }
-    // public Surfaces Surfaces { get; set; }
     public KhrSurface KhrSurface { get; set; }
     public SurfaceKHR SurfaceKhr { get; set; }
 
@@ -43,7 +42,7 @@ internal class VulkanMaster
     #endregion
     
     public SwapchainHandler SwapchainHandler { get; private set; }
-    public FrameHandler FrameHandler { get; private set; }
+    private Eidolon.Vulkan.Refactor.FrameHandler FrameHandler { get; set; }
 
     
     private ImGuiRenderer? _imguiRenderer;
@@ -101,7 +100,7 @@ internal class VulkanMaster
         DescriptorFactory = new DescriptorFactory(this);
         RenderPassFactory = new RenderPassFactory(this);
         CommandManager = new CommandManager(this);
-        FrameHandler = new FrameHandler(this);
+        FrameHandler = new Eidolon.Vulkan.Refactor.FrameHandler(this);
         PipelineFactory = new PipelineFactory(this);
         Debug.Log("Vulkan resources initialized.", VALIDATION_LAYERS.SUCCESS);
         

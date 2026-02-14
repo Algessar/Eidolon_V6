@@ -6,6 +6,7 @@ using Semaphore = Silk.NET.Vulkan.Semaphore;
 
 namespace Eidolon.Vulkan;
 
+[Obsolete("This class is no longer used and will be removed in next refactor.")]
 internal unsafe class FrameHandler : IFrameContext, IDisposable
 {
     public VulkanMaster _master { get; }
