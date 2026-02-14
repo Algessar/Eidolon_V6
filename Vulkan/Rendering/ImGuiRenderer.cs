@@ -25,6 +25,9 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     
     // Per-frame CPU state
     private DrawData _drawData; // Holds Vertex/IndexBuffers
+    public ImGuiDrawData CurrentDrawData { get; private set; } = ImGuiDrawData.Empty;
+    public PipelineData PipelineData => _pipelineData;
+    public DescriptorSet DescriptorSet => _descriptorSet;
     
     public int LastVertexCount { get; private set; }
     public int LastIndexCount { get; private set; }
@@ -93,6 +96,76 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         LastVertexCount = !drawData.Valid ? 0 : drawData.TotalVtxCount;
         LastIndexCount = !drawData.Valid ? 0 : drawData.TotalIdxCount;
         LastCommandListCount = !drawData.Valid ? 0 : drawData.CmdListsCount;
+        
+        CurrentDrawData = ConvertDrawData(drawData);
+    }
+
+    private static ImGuiDrawData ConvertDrawData(ImDrawDataPtr drawData)
+    {
+        if (!drawData.Valid || drawData.CmdListsCount == 0 || drawData.TotalVtxCount <= 0 || drawData.TotalIdxCount <= 0)
+        {
+            return ImGuiDrawData.Empty;
+        }
+
+        var vertices = new ImGuiVertex[drawData.TotalVtxCount];
+        var indices = new ushort[drawData.TotalIdxCount];
+
+        var totalCommandCount = 0;
+        for (var listIndex = 0; listIndex < drawData.CmdListsCount; listIndex++)
+        {
+            var cmdList = drawData.CmdLists[listIndex];
+            totalCommandCount += cmdList.CmdBuffer.Size;
+        }
+
+        var commands = new ImGuiDrawCommand[totalCommandCount];
+
+        var vertexBase = 0;
+        var indexBase = 0;
+        var commandBase = 0;
+        var displaySize = drawData.DisplaySize;
+        var safeWidth = MathF.Max(1f, displaySize.X);
+        var safeHeight = MathF.Max(1f, displaySize.Y);
+        var displayPos = drawData.DisplayPos;
+
+        for (var listIndex = 0; listIndex < drawData.CmdListsCount; listIndex++)
+        {
+            var cmdList = drawData.CmdLists[listIndex];
+
+            for (var vertexIndex = 0; vertexIndex < cmdList.VtxBuffer.Size; vertexIndex++)
+            {
+                var vtx = cmdList.VtxBuffer[vertexIndex];
+                var normalizedPos = new Vector2((vtx.pos.X - displayPos.X) / safeWidth, (vtx.pos.Y - displayPos.Y) / safeHeight);
+                vertices[vertexBase + vertexIndex] = new ImGuiVertex(normalizedPos, vtx.uv, vtx.col);
+            }
+
+            for (var index = 0; index < cmdList.IdxBuffer.Size; index++)
+            {
+                indices[indexBase + index] = cmdList.IdxBuffer[index];
+            }
+
+            for (var commandIndex = 0; commandIndex < cmdList.CmdBuffer.Size; commandIndex++)
+            {
+                var cmd = cmdList.CmdBuffer[commandIndex];
+                commands[commandBase + commandIndex] = new ImGuiDrawCommand(
+                    cmd.ElemCount,
+                    (uint)(indexBase + cmd.IdxOffset),
+                    vertexBase + (int)cmd.VtxOffset,
+                    new Vector4(cmd.ClipRect.X - displayPos.X, cmd.ClipRect.Y - displayPos.Y, cmd.ClipRect.Z - displayPos.X, cmd.ClipRect.W - displayPos.Y),
+                    cmd.TextureId);
+            }
+
+            commandBase += cmdList.CmdBuffer.Size;
+            vertexBase += cmdList.VtxBuffer.Size;
+            indexBase += cmdList.IdxBuffer.Size;
+        }
+
+        return new ImGuiDrawData
+        {
+            Vertices = vertices,
+            Indices = indices,
+            Commands = commands,
+            DisplaySize = drawData.DisplaySize,
+        };
     }
 
 
@@ -163,17 +236,24 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     private void CreatePipeline(RenderPass renderPass)
     {
         
+
+        
         var resolvedRenderPass = ResolveRenderPass(renderPass);
         var key = new PipelineKey
         {
-            VertexShaderPath = "basic.vert.spv",
-            FragmentShaderPath = "basic.frag.spv",
+            VertexShaderPath = "imgui.vert.spv",
+            FragmentShaderPath = "imgui.frag.spv",
             RenderPass = resolvedRenderPass,
             Layout = _descriptorSetLayout,
             VertexFormat = new VertexFormat
             {
-                Stride = 0,
-                Attributes = Array.Empty<VertexAttribute>()
+                Stride = (uint)sizeof(ImGuiVertex),
+                Attributes =
+                [
+                    new VertexAttribute(0, Format.R32G32Sfloat, 0),
+                    new VertexAttribute(1, Format.R32G32Sfloat, 8),
+                    new VertexAttribute(2, Format.R8G8B8A8Unorm, 16),
+                ]
             },
             Topology = PrimitiveTopology.TriangleList,
             CullMode = CullModeBits.None,

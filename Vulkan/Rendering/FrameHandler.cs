@@ -6,7 +6,7 @@ using Silk.NET.Maths;
 using Silk.NET.Vulkan;
 using Semaphore = Silk.NET.Vulkan.Semaphore;
 
-namespace Eidolon.Vulkan.Rendering;
+namespace Eidolon.Vulkan;
 
 internal unsafe class FrameHandler : IFrameContext, IDisposable
 {
@@ -50,12 +50,15 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     
     private Dictionary<ulong, string> _semaphoreNames = new();
     private Dictionary<ulong, string> _fenceNames = new();
-
-    
     
     public bool _framebufferResized { get; set; }
 
-    bool LOG_RENDER_GRAPH = true;
+    private readonly bool LOG_RENDER_GRAPH = true;
+    
+    //WARNING: I HATE THIS, THIS IS DEFINITELY TEMP. WHY DO THIS WHEN DRAWDATA HAS GPUBUFFERS?
+    
+    private GpuBuffer _uiVertexBuffer;
+    private GpuBuffer _uiIndexBuffer;
     
     public FrameHandler(VulkanMaster master)
     {
@@ -91,7 +94,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         CreateSyncObjects();
         _currentFrame = 0;
         _currentImageIndex = 0;
-
     }
     
     public void SetCompiledGraph(CompiledRenderGraph graph)
@@ -190,9 +192,9 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             TransitionLayouts(cmd, pass);
             _master.Vk.CmdBeginRenderPass(cmd, in beginInfo, SubpassContents.Inline);
             
-            if (pass.Type is RenderPassType.Ui or RenderPassType.Present)
+            if (pass.Type is RenderPassType.Ui)
             {
-                // ImGui command emission gets plugged here once GPU upload + draw path is ready.
+                EmitUiPass(cmd, data);
                 _master.Vk.CmdEndRenderPass(cmd);
                 continue;
             }
@@ -776,7 +778,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         runtime.CurrentLayout = newLayout;
     }
     
-
     private void EmitImportedColorAttachmentTransition(CommandBuffer cmd, in CompiledResource resource, ref GraphImageRuntime runtime)
     {
         if (runtime.CurrentLayout == ImageLayout.ColorAttachmentOptimal)
@@ -818,9 +819,182 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         runtime.CurrentLayout = ImageLayout.ColorAttachmentOptimal;
     }
+
+    private void EmitUiPass(CommandBuffer cmd, DrawData  data)
+    {
+        var drawData = data.ImGuiDrawData;
+
+        if (!drawData.HasData || !data.UiPipelineData.IsValid || data.UiDescriptorSet.Handle == 0)
+        {
+            return;
+        }
+        
+        EnsureUiBuffers(drawData);
+        UploadUiData(drawData);
+        
+        _master.Vk.CmdBindPipeline(cmd, PipelineBindPoint.Graphics, data.UiPipelineData.VkPipeline);
+
+        var uiDescriptor = data.UiDescriptorSet;
+        _master.Vk.CmdBindDescriptorSets(
+            cmd,
+            PipelineBindPoint.Graphics,
+            data.UiPipelineData.VkLayout,
+            0, 
+            1, 
+            &uiDescriptor, 
+            0, 
+            null);
+
+        var vb = _uiVertexBuffer.Buffer;
+        ulong vbOffset = 0;
+        _master.Vk.CmdBindVertexBuffers(cmd, 0, 1, &vb, &vbOffset);
+        _master.Vk.CmdBindIndexBuffer(cmd, _uiIndexBuffer.Buffer, 0, IndexType.Uint16);
+
+        var displayWidth = MathF.Max(1f, drawData.DisplaySize.X);
+        var displayHeight = MathF.Max(1f, drawData.DisplaySize.Y);
+
+        foreach (var drawCommand in drawData.Commands)
+        {
+            if (drawCommand.ElementCount == 0) continue;
+            
+            var clipRect = drawCommand.ClipRect;
+            var minX = Math.Clamp((int)clipRect.X, 0, (int)displayWidth);
+            var minY = Math.Clamp((int)clipRect.Y, 0, (int)displayHeight);
+            var maxX = Math.Clamp((int)clipRect.Z, minX, (int)displayWidth);
+            var maxY = Math.Clamp((int)clipRect.W, minY, (int)displayHeight);
+
+            if (maxX <= minX || maxY <= minY)
+                continue;
+
+            var scissor = new Rect2D(
+                new Offset2D(minX, minY),
+                new Extent2D((uint)(maxX - minX), (uint)(maxY - minY)));
+            _master.Vk.CmdSetScissor(cmd, 0, 1, &scissor);
+
+            _master.Vk.CmdDrawIndexed(
+                cmd,
+                drawCommand.ElementCount,
+                1,
+                drawCommand.FirstIndex,
+                (int)drawCommand.VertexOffset,
+                0);
+        }
+
+        if (_currentFrame == 0)
+        {
+            Debug.Log($"[RG] UI pass draw submitted: cmds={drawData.Commands.Length}, vtx={drawData.TotalVertexCount}, idx={drawData.TotalIndexCount}",
+                VALIDATION_LAYERS.INFO,
+                LOG_RENDER_GRAPH);
+        }
+    }
     
     #endregion Transitions
 
+    
+    //WARNING: All of this is absolutely hateful, ugly, duplicated shit code. I am going to have to refactor so much CRAP.
+    
+   
+
+    private void EnsureUiBuffers(ImGuiDrawData drawData)
+    {
+        var vertexBytes = (ulong)(drawData.Vertices.Length * sizeof(ImGuiVertex));
+        var indexBytes = (ulong)(drawData.Indices.Length * sizeof(ushort));
+
+        if (!_uiVertexBuffer.IsValid || _uiVertexBuffer.Size < vertexBytes)
+        {
+            DestroyBuffer(ref _uiVertexBuffer);
+            _uiVertexBuffer = CreateHostVisibleBuffer(vertexBytes, BufferUsageFlags.VertexBufferBit);
+        }
+
+        if (!_uiIndexBuffer.IsValid || _uiIndexBuffer.Size < indexBytes)
+        {
+            DestroyBuffer(ref _uiIndexBuffer);
+            _uiIndexBuffer = CreateHostVisibleBuffer(indexBytes, BufferUsageFlags.IndexBufferBit);
+        }
+    }
+
+    private void UploadUiData(ImGuiDrawData drawData)
+    {
+        if (!_uiVertexBuffer.IsValid || !_uiIndexBuffer.IsValid)
+            return;
+
+        void* mapped;
+        var vertexBytes = (nuint)(drawData.TotalVertexCount * sizeof(ImGuiVertex));
+        fixed (ImGuiVertex* srcVertices = drawData.Vertices)
+        {
+            _master.Vk.MapMemory(_master.VulkanDevice.Device, _uiVertexBuffer.Memory, 0, _uiVertexBuffer.Size, 0, &mapped);
+            global::System.Buffer.MemoryCopy(srcVertices, mapped, _uiVertexBuffer.Size, vertexBytes);
+            _master.Vk.UnmapMemory(_master.VulkanDevice.Device, _uiVertexBuffer.Memory);
+        }
+
+        var indexBytes = (nuint)(drawData.Indices.Length * sizeof(ushort));
+        fixed (ushort* srcIndices = drawData.Indices)
+        {
+            _master.Vk.MapMemory(_master.VulkanDevice.Device, _uiIndexBuffer.Memory, 0, _uiIndexBuffer.Size, 0, &mapped);
+            global::System.Buffer.MemoryCopy(srcIndices, mapped, _uiIndexBuffer.Size, indexBytes);
+            _master.Vk.UnmapMemory(_master.VulkanDevice.Device, _uiIndexBuffer.Memory);
+        }
+    }
+
+    private GpuBuffer CreateHostVisibleBuffer(ulong size, BufferUsageFlags usage)
+    {
+        var bufferInfo = new BufferCreateInfo
+        {
+            SType = StructureType.BufferCreateInfo,
+            Size = size,
+            Usage = usage,
+            SharingMode = SharingMode.Exclusive,
+        };
+
+        if (_master.Vk.CreateBuffer(_master.VulkanDevice.Device, in bufferInfo, null, out var buffer) != Result.Success)
+            throw new Exception("Failed to create UI buffer.");
+
+        _master.Vk.GetBufferMemoryRequirements(_master.VulkanDevice.Device, buffer, out var requirements);
+
+        var allocInfo = new MemoryAllocateInfo
+        {
+            SType = StructureType.MemoryAllocateInfo,
+            AllocationSize = requirements.Size,
+            MemoryTypeIndex = _master.VulkanDevice.FindMemoryType(
+                requirements.MemoryTypeBits,
+                MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit),
+        };
+
+        if (_master.Vk.AllocateMemory(_master.VulkanDevice.Device, in allocInfo, null, out var memory) != Result.Success)
+        {
+            _master.Vk.DestroyBuffer(_master.VulkanDevice.Device, buffer, null);
+            throw new Exception("Failed to allocate UI buffer memory.");
+        }
+
+        if (_master.Vk.BindBufferMemory(_master.VulkanDevice.Device, buffer, memory, 0) != Result.Success)
+        {
+            _master.Vk.FreeMemory(_master.VulkanDevice.Device, memory, null);
+            _master.Vk.DestroyBuffer(_master.VulkanDevice.Device, buffer, null);
+            throw new Exception("Failed to bind UI buffer memory.");
+        }
+
+        return new GpuBuffer
+        {
+            Buffer = buffer,
+            Memory = memory,
+            Size = size,
+            Usage = usage,
+            MemoryFlags = MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit,
+            HostVisible = true,
+        };
+    }
+
+    private void DestroyBuffer(ref GpuBuffer buffer)
+    {
+        if (!buffer.IsValid)
+            return;
+
+        _master.Vk.DestroyBuffer(_master.VulkanDevice.Device, buffer.Buffer, null);
+        _master.Vk.FreeMemory(_master.VulkanDevice.Device, buffer.Memory, null);
+        buffer = default;
+    }
+    
+    
     #region Resolve
     
     private void ResolveImportedGraphResources()
@@ -949,66 +1123,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             _signalSemaphore[i] = CreateSemaphore($"SignalSemaphore {i}");
         }
     }
-
-    private void TrackResourceLayout(in ResourceHandle handle, bool isWrite)
-    {
-        if (!_resourceLookup.TryGetValue(handle.Handle, out var resource))
-        {
-            return;
-        }
-
-        if (!_graphImages.TryGetValue(handle.Handle, out var runtime))
-        {
-            return;
-        }
-
-        var expectedLayout = ResolveExpectedLayout(resource.Description.Usage, isWrite);
-        if (runtime.CurrentLayout == expectedLayout)
-        {
-            return;
-        }
-
-        //NOTE: We intentionally don't emit vkCmdPipelineBarrier yet because command recording is
-        // still done as one active render pass scope; this first step tracks and validates intended
-        // layout flow so we can move barrier emission out of render-pass scope next.
-        if (LOG_RENDER_GRAPH)
-        {
-            Debug.Log($"[RG] Layout transition planned: {resource.Name} {runtime.CurrentLayout} -> {expectedLayout}");
-        }
-
-        runtime.CurrentLayout = expectedLayout;
-        _graphImages[handle.Handle] = runtime;
-    }
-
-    private static ImageLayout ResolveExpectedLayout(FlagImageUsage usage, bool isWrite)
-    {
-        if ((usage & FlagImageUsage.DepthStencilAttachment) != 0)
-        {
-            return ImageLayout.DepthStencilAttachmentOptimal;
-        }
-
-        if (isWrite)
-        {
-            if ((usage & FlagImageUsage.ColorAttachment) != 0 || (usage & FlagImageUsage.Present) != 0)
-            {
-                return ImageLayout.ColorAttachmentOptimal;
-            }
-        }
-        else
-        {
-            if ((usage & FlagImageUsage.Sampled) != 0)
-            {
-                return ImageLayout.ShaderReadOnlyOptimal;
-            }
-
-            if ((usage & FlagImageUsage.Present) != 0)
-            {
-                return ImageLayout.PresentSrcKhr;
-            }
-        }
-
-        return ImageLayout.General;
-    }
     
     private void DestroyGraphResources()
     {
@@ -1038,6 +1152,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     }
     public void Dispose()
     {
+        DestroyBuffer(ref _uiVertexBuffer);
+        DestroyBuffer(ref _uiIndexBuffer);
         DestroyGraphResources();
     }
 }

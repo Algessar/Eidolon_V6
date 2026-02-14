@@ -75,7 +75,9 @@ internal class VulkanMaster
             _imguiRenderer?.NewFrame((float) delta, new Vector2(_window.Size.X, _window.Size.Y)); // Wonder if my Vec2 works ^^ I doubt it, no implicit operator for Vector2D<T>
             _imguiRenderer?.BuildUI();
             _imguiRenderer?.FinalizeFrame();
-            
+            _drawData.ImGuiDrawData = _imguiRenderer?.CurrentDrawData ?? ImGuiDrawData.Empty;
+            _drawData.UiPipelineData = _imguiRenderer?.PipelineData ?? default;
+            _drawData.UiDescriptorSet = _imguiRenderer?.DescriptorSet ?? default;            
             FrameHandler.Draw(in _drawData);
         };
         
@@ -115,7 +117,7 @@ internal class VulkanMaster
             throw new InvalidOperationException("Main pipeline render pass is null before ImGui initialization.");
         }
         _imguiRenderer = new ImGuiRenderer(this);
-        _imguiRenderer.Initialize( _drawData.PipelineData.RenderPass);
+        _imguiRenderer.Initialize(_drawData.PipelineData.RenderPass);
         
         if (_initialGraph is not null)
         {
@@ -199,6 +201,7 @@ internal class VulkanMaster
         {
             PipelineData = pipelineData,
             ModelMatrix = Matrix4x4.Identity,
+            ImGuiDrawData = ImGuiDrawData.Empty,
         };
     }
     //

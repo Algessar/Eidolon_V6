@@ -12,12 +12,6 @@ internal struct DrawData
 
     public IRenderTarget? RenderTarget;
 
-    // I think this will be handled completely by DescriptorManager now. I think.
-    // public DescriptorSet DescriptorSet;
-
-    //NOTE: Do I want to keep this?
-    // public DescriptorBinding DescriptorBinding;
-
     public GpuBuffer VertexBuffer;
     public GpuBuffer IndexBuffer;
     public uint VertexCount;
@@ -27,6 +21,12 @@ internal struct DrawData
     public Matrix4x4? ModelMatrix;
     public int[] VertexOffsets { get; set; }
     public int[] IndexOffsets { get; set; }
+    
+    public ImGuiDrawData ImGuiDrawData;
+    public PipelineData UiPipelineData; //NOTE: this seems overly specific. There is already PipelineData. Why have a duplicate?
+    public DescriptorSet UiDescriptorSet; //NOTE: This could also be generic no?
+    //NOTE: I will keep it like this for now and refactor later.
+    
 }
 
 
