@@ -1,7 +1,7 @@
 ﻿
 # Rendering Refactor Plan (Updated)
 
-## Current status
+## Current statusCmdDrawIndexed
 
 ### ✅ Landed recently
 

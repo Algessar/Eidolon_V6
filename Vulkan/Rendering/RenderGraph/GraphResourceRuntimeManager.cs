@@ -107,8 +107,8 @@ internal sealed unsafe class GraphResourceRuntimeManager
                 continue;
 
             var initialLayout = (resource.Description.Usage & FlagImageUsage.Present) != 0
-                ? ImageLayout.PresentSrcKhr
-                : ImageLayout.Undefined;
+                ? ImageLayout.Undefined
+                : ImageLayout.PresentSrcKhr;
 
             _graphImages[resource.Handle.Handle] = new GraphImageRuntime
             {

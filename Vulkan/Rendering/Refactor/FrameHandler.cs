@@ -144,6 +144,11 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 Debug.Log($"[RG]   Deps:   {string.Join(", ", pass.Dependencies)}", VALIDATION_LAYERS.INFO,
                     LOG_RENDER_GRAPH);
             }
+
+            if (_currentFrame == 0)
+            {
+                Debug.Log($"RenderPass used in FrameHandler: {data.PipelineData.RenderPass.Handle}");
+            }
             
             var frameBuffer = _swapchainHandler.Framebuffers[_currentImageIndex];
             var beginInfo = new RenderPassBeginInfo
@@ -155,7 +160,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 ClearValueCount = 1
             };
 
-            var clearColor = new ClearValue { Color = new ClearColorValue(0f, 0f, 0f, 1f) };
+            var clearColor = new ClearValue { Color = new ClearColorValue(1f, 1f, 1f, 1f) };
             beginInfo.PClearValues = &clearColor;
 
             _graphBarrierPlanner.TransitionLayouts(cmd, pass);
@@ -203,6 +208,11 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         var scissor = submission.ScissorPolicy == SubmissionScissorPolicy.Explicit ? submission.Scissor : passScissor;
         _master.Vk.CmdSetScissor(cmd, 0, 1, &scissor);
 
+        if (_currentFrame == 0)
+        {
+            Debug.Log($"Submission vertex count: {submission.VertexCount}, index count: {submission.IndexCount}, instance count: {submission.InstanceCount}", VALIDATION_LAYERS.INFO, LOG_RENDER_GRAPH);
+        }
+        
         if (submission.PushConstants.HasData)
         {
             fixed (byte* pushData = submission.PushConstants.Data)

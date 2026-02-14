@@ -32,7 +32,7 @@ internal sealed unsafe class UiGeometryUploader : IDisposable
         if (frameCount <= 0)
             throw new InvalidOperationException("MAX_FRAMES_IN_FLIGHT must be greater than zero.");
 
-        if (currentFrame >= frameCount)
+        if (currentFrame >= Constants.MAX_FRAMES_IN_FLIGHT)
             throw new ArgumentOutOfRangeException(nameof(currentFrame));
 
         var vertexBytes = Math.Max((ulong)(drawData.Vertices.Length * sizeof(ImGuiVertex)), 1UL);

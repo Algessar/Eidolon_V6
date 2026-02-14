@@ -31,12 +31,12 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     public PipelineData PipelineData => _pipelineData;
     public DescriptorSet DescriptorSet => _descriptorSet;
     
-    public int LastVertexCount { get; private set; }
-    public int LastIndexCount { get; private set; }
+    public uint LastVertexCount { get; private set; }
+    public uint LastIndexCount { get; private set; }
     public int LastCommandListCount { get; private set; }
     
     [Header("Debug")]
-    bool _showDemoWindow = false;
+    bool _showDemoWindow = true;
 
 
     public ImGuiRenderer(VulkanMaster master)
@@ -96,8 +96,8 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         ImGui.Render();
         var drawData = ImGui.GetDrawData();
 
-        LastVertexCount = !drawData.Valid ? 0 : drawData.TotalVtxCount;
-        LastIndexCount = !drawData.Valid ? 0 : drawData.TotalIdxCount;
+        LastVertexCount = !drawData.Valid ? 0 : (uint)drawData.TotalVtxCount;
+        LastIndexCount = !drawData.Valid ? 0 : (uint)drawData.TotalIdxCount;
         LastCommandListCount = !drawData.Valid ? 0 : drawData.CmdListsCount;
         
         CurrentDrawData = ConvertDrawData(drawData);
@@ -239,6 +239,11 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     private void CreatePipeline(RenderPass renderPass)
     {
         var resolvedRenderPass = ResolveRenderPass(renderPass);
+
+        if (renderPass.Handle == 0)
+        {
+            throw new Exception("ImGuiRenderer received null render pass; cannot create pipeline.");
+        }
         var key = new PipelineKey
         {
             VertexShaderPath = "imgui.vert.spv",
@@ -266,12 +271,20 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         };
 
         _pipelineData = _master.PipelineFactory.GetOrCreate(key);
+        
+        if (_pipelineData.RenderPass.Handle == 0)
+        {
+            throw new Exception("ImGuiRenderer received null render pass; cannot create pipeline.");
+        }
     }
     
     private RenderPass ResolveRenderPass(RenderPass renderPass)
     {
         if (renderPass.Handle != 0)
+        {
+            Debug.Log($"ImGuiRenderer received valid render pass {renderPass.Handle}; using it.", VALIDATION_LAYERS.WARNING);
             return renderPass;
+        }
 
         Debug.Log("ImGuiRenderer received null render pass; creating fallback render pass from swapchain.", VALIDATION_LAYERS.WARNING);
 
@@ -321,7 +334,6 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
 
         UpdateFontDescriptorSet();
     }
-
     
     private void CreateStagingBuffer(ulong size, out Buffer buffer, out DeviceMemory memory)
     {
@@ -452,7 +464,6 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         _master.Vk.UpdateDescriptorSets(_master.VulkanDevice.Device, 1, &write, 0, null);
     }
 
-
     public void BuildDrawSubmissions(uint currentFrame, uint maxFramesInFlight)
     {
         if (!CurrentDrawData.HasData)
@@ -495,7 +506,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
                 IndexBuffer = indexBuffer,
                 IndexOffset = 0,
                 IndexType = IndexType.Uint16,
-                VertexCount = 0,
+                VertexCount = (uint)CurrentDrawData.TotalVertexCount,
                 IndexCount = drawCommand.ElementCount,
                 InstanceCount = 1,
                 FirstVertex = 0,
@@ -505,10 +516,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
                 Scissor = new Rect2D(new Offset2D(minX, minY), new Extent2D((uint)(maxX - minX), (uint)(maxY - minY))),
                 ViewportPolicy = SubmissionViewportPolicy.PassDefault,
                 Viewport = default,
-                PushConstants = PushConstantPayload.Empty //TODO: This needs to not be empty.
-                                                          // "Shader in VK_SHADER_STAGE_VERTEX_BIT uses push-constant
-                                                          // statically but vkCmdPushConstants was not called yet
-                                                          // for pipeline layout VkPipelineLayout 0x260000000026."
+                PushConstants = PushConstantPayload.Empty
             });
         }
 
