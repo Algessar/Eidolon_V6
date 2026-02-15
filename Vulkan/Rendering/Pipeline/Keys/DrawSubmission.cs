@@ -46,8 +46,7 @@ internal struct DrawSubmission
 
     public SubmissionViewportPolicy ViewportPolicy;
     public Viewport Viewport;
-
-    public Matrix4x4 ModelMatrix;
+    
     public PushConstantPayload PushConstants;
 }
 

@@ -24,7 +24,7 @@ internal unsafe class PassExecutionFactory(VulkanMaster master, Func<uint, PassA
             ? _resolveAttachment(depthTarget.Handle.Handle)
             : null;
 
-        var key = BuildKey(pass, colorTarget, depthTarget, depthRuntime);
+        var key = BuildKey(pass, colorTarget, colorRuntime, depthTarget, depthRuntime);
         var renderPass = GetOrCreateRenderPass(key);
 
         var framebuffer = GetOrCreateFramebuffer(
@@ -38,6 +38,7 @@ internal unsafe class PassExecutionFactory(VulkanMaster master, Func<uint, PassA
             renderPass,
             framebuffer,
             colorRuntime.Extent,
+            depthRuntime is not null,
             key.ColorLoadOp == AttachmentLoadOp.Clear,
             key.DepthLoadOp == AttachmentLoadOp.Clear && depthRuntime is not null);
     }
@@ -121,6 +122,7 @@ internal unsafe class PassExecutionFactory(VulkanMaster master, Func<uint, PassA
     private static PassExecutionKey BuildKey(
         in CompiledPass pass,
         in CompiledResource colorTarget,
+        in PassAttachmentRuntime colorRuntime,
         CompiledResource? depthTarget,
         PassAttachmentRuntime? depthRuntime)
     {
@@ -134,7 +136,7 @@ internal unsafe class PassExecutionFactory(VulkanMaster master, Func<uint, PassA
             pass.Type,
             colorTarget.Handle.Handle,
             depthTarget?.Handle.Handle ?? 0,
-            ResolveVkFormat(colorTarget.Description.Format),
+            colorRuntime.Format,
             hasDepth && depthRuntime is not null ? depthRuntime.Value.Format : Format.Undefined,
             colorLoadOp,
             AttachmentStoreOp.Store,
@@ -208,6 +210,7 @@ internal readonly record struct PassExecutionContext(
     RenderPass RenderPass,
     Framebuffer Framebuffer,
     Extent2D Extent,
+    bool HasDepth,
     bool ClearColor,
     bool ClearDepth);
 

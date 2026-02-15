@@ -197,7 +197,6 @@ internal class VulkanMaster
             //     ]
             },
             Topology = PrimitiveTopology.TriangleList,
-            // Keep triangle visible regardless of clip-space winding during fallback path.
             CullMode = CullModeBits.None,
             FrontFace = FrontFace.CounterClockwise,
             HasDepth = false,
@@ -221,6 +220,7 @@ internal class VulkanMaster
                 {
                     PassType = RenderPassType.Geometry,
                     PipelineData = pipelineData,
+                    PipelineKey = pipelineKey,
                     DescriptorSet = descriptorSet,
                     Topology = PrimitiveTopology.TriangleList,
                     VertexBuffer = default,

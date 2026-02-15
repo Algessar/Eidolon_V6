@@ -42,7 +42,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     public bool _framebufferResized { get; set; }
     public uint CurrentFrameIndex => _currentImageIndex;
 
-    private readonly bool LOG_RENDER_GRAPH = true;
+    private readonly bool LOG_RENDER_GRAPH = false;
     
     public FrameHandler(VulkanMaster master)
     {
@@ -149,18 +149,18 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 Debug.Log($"RenderPass used in FrameHandler: {data.PipelineData.RenderPass.Handle}");
             }
             
-            var frameBuffer = _swapchainHandler.Framebuffers[_currentImageIndex];
-            var beginInfo = new RenderPassBeginInfo
-            {
-                SType = StructureType.RenderPassBeginInfo,
-                RenderPass = data.PipelineData.RenderPass,
-                Framebuffer = frameBuffer,
-                RenderArea = new Rect2D(new Offset2D(0, 0), _swapchainHandler.Extent),
-                ClearValueCount = 1
-            };
+            // var frameBuffer = _swapchainHandler.Framebuffers[_currentImageIndex];
+            // var beginInfo = new RenderPassBeginInfo
+            // {
+            //     SType = StructureType.RenderPassBeginInfo,
+            //     RenderPass = data.PipelineData.RenderPass,
+            //     Framebuffer = frameBuffer,
+            //     RenderArea = new Rect2D(new Offset2D(0, 0), _swapchainHandler.Extent),
+            //     ClearValueCount = 1
+            // };
 
-            var clearColor = new ClearValue { Color = new ClearColorValue(1f, 1f, 1f, 1f) };
-            beginInfo.PClearValues = &clearColor;
+            // var clearColor = new ClearValue { Color = new ClearColorValue(1f, 1f, 1f, 1f) };
+            // beginInfo.PClearValues = &clearColor;
 
             _graphBarrierPlanner.TransitionLayouts(cmd, pass);
             if (pass.Type == RenderPassType.Present)
@@ -169,6 +169,31 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 // Do NOT begin a render pass.
                 continue; // skip the render pass block
             }
+            
+            var execution = _passExecutionFactory.GetOrCreate(pass, _compiledGraph, _currentImageIndex);
+            var clearValues = stackalloc ClearValue[2];
+            clearValues[0] = execution.ClearColor
+                ? new ClearValue { Color = new ClearColorValue(1f, 1f, 1f, 1f) }
+                : new ClearValue();
+
+            uint clearValueCount = 1;
+            if (execution.HasDepth)
+            {
+                clearValues[1] = execution.ClearDepth
+                    ? new ClearValue { DepthStencil = new ClearDepthStencilValue(1.0f, 0) }
+                    : new ClearValue();
+                clearValueCount = 2;
+            }
+
+            var beginInfo = new RenderPassBeginInfo
+            {
+                SType = StructureType.RenderPassBeginInfo,
+                RenderPass = execution.RenderPass,
+                Framebuffer = execution.Framebuffer,
+                RenderArea = new Rect2D(new Offset2D(0, 0), execution.Extent),
+                ClearValueCount = clearValueCount,
+                PClearValues = clearValues
+            };
             
             _master.Vk.CmdBeginRenderPass(cmd, in beginInfo, SubpassContents.Inline);
 
@@ -179,7 +204,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                     if (submission.PassType != pass.Type)
                         continue;
 
-                    RecordSubmission(cmd, in submission, passViewport, passScissor);
+                    RecordSubmission(cmd, in submission, execution.RenderPass, passViewport, passScissor);
                 }
             }
 
@@ -187,10 +212,13 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         }
     }
     
-   private void RecordSubmission(CommandBuffer cmd, in DrawSubmission submission, in Viewport passViewport, in Rect2D passScissor)
+   private void RecordSubmission(CommandBuffer cmd, in DrawSubmission submission,  RenderPass activeRenderPass, in Viewport passViewport, in Rect2D passScissor)
     {
-        if (!submission.PipelineData.IsValid)
+        
+        var pipelineData = ResolvePipelineForPass(in submission, activeRenderPass);
+        if (!pipelineData.IsValid)
             return;
+
 
         _master.Vk.CmdBindPipeline(cmd, PipelineBindPoint.Graphics, submission.PipelineData.VkPipeline);
 
@@ -200,7 +228,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             _master.Vk.CmdBindDescriptorSets(
                 cmd,
                 PipelineBindPoint.Graphics,
-                submission.PipelineData.VkLayout,
+                pipelineData.VkLayout,
                 0,
                 1,
                 &descriptorSet,
@@ -221,16 +249,15 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         
         if (submission.PushConstants.HasData)
         {
-            var modelMatrix = submission.ModelMatrix;
             fixed (byte* pushData = submission.PushConstants.Data)
             {
                 _master.Vk.CmdPushConstants(
                     cmd,
-                    submission.PipelineData.VkLayout,
+                    pipelineData.VkLayout,
                     submission.PushConstants.StageFlags,
                     submission.PushConstants.Offset,
                     (uint)submission.PushConstants.Data.Length,
-                    &modelMatrix// pushData
+                    pushData
                     );
             }
         }
@@ -239,7 +266,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             var identity = Matrix4x4.Identity;
             _master.Vk.CmdPushConstants(
                 cmd,
-                submission.PipelineData.VkLayout,
+                pipelineData.VkLayout,
                 ShaderStageFlags.VertexBit,
                 0,
                 (uint)sizeof(Matrix4x4),
@@ -501,6 +528,25 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     
     
     #region Resolve
+    
+    private PipelineData ResolvePipelineForPass(in DrawSubmission submission, RenderPass activeRenderPass)
+    {
+        var pipelineData = submission.PipelineData;
+        if (!pipelineData.IsValid)
+            return pipelineData;
+
+        if (pipelineData.RenderPass.Handle == activeRenderPass.Handle)
+            return pipelineData;
+
+        if (submission.PipelineKey is not { } key)
+        {
+            Debug.Log($"Skipping submission with incompatible render pass. Submission pipeline RP={pipelineData.RenderPass.Handle}, active RP={activeRenderPass.Handle}", VALIDATION_LAYERS.WARNING);
+            return default;
+        }
+
+        var passSpecificKey = key with { RenderPass = activeRenderPass };
+        return _master.PipelineFactory.GetOrCreate(passSpecificKey);
+    }
     
     private PassAttachmentRuntime? ResolvePassAttachment(uint handle)
     {

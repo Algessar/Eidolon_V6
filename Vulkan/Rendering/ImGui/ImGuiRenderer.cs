@@ -28,6 +28,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     private readonly UiGeometryUploader _uiGeometryUploader;
     public ImGuiDrawData CurrentDrawData { get; private set; } = ImGuiDrawData.Empty;
     public DrawSubmission[] CurrentSubmissions { get; private set; } = Array.Empty<DrawSubmission>();
+    private PipelineKey _pipelineKey;
     public PipelineData PipelineData => _pipelineData;
     public DescriptorSet DescriptorSet => _descriptorSet;
     
@@ -291,6 +292,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
             BlendState = BlendState.AlphaBlending,
         };
 
+        _pipelineKey = key;
         _pipelineData = _master.PipelineFactory.GetOrCreate(key);
         
         if (_pipelineData.RenderPass.Handle == 0)
@@ -497,6 +499,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
             submissions.Add(new DrawSubmission
             {
                 PassType = RenderPassType.Ui,
+                PipelineKey = _pipelineKey,
                 PipelineData = _pipelineData,
                 DescriptorSet = _descriptorSet,
                 Topology = PrimitiveTopology.TriangleList,
@@ -516,7 +519,6 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
                 ViewportPolicy = SubmissionViewportPolicy.PassDefault,
                 Viewport = default,
                 PushConstants = PushConstantPayload.Empty,
-                ModelMatrix = CalculateImGuiProjection(),
                 
             });
         }
