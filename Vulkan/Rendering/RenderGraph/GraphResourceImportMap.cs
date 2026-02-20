@@ -7,6 +7,7 @@ internal enum ImportedResourceKind
     SceneDepth,
 }
 
+//TODO: I may move this into GraphResourceRuntimeManager.cs (that's a long fucking name), since it is only used there.
 internal sealed class GraphResourceImportMap
 {
     private readonly Dictionary<uint, ImportedResourceKind> _importKinds = new();

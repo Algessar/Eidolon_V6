@@ -3,7 +3,7 @@ using Silk.NET.Vulkan;
 
 namespace Eidolon.Vulkan;
 
-internal unsafe class CommandManager : IDisposable
+internal unsafe class CommandHandler : IDisposable
 {
     [Group("References")] private VulkanMaster _master;
 
@@ -12,7 +12,7 @@ internal unsafe class CommandManager : IDisposable
     private CommandPool _transientCommandPool;
 
 
-    public CommandManager(VulkanMaster master)
+    public CommandHandler(VulkanMaster master)
     {
         Debug.Log("Creating CommandManager" , VALIDATION_LAYERS.INFO);
         _master = master;

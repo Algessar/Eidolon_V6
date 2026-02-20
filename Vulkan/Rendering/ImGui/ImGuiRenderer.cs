@@ -173,6 +173,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     }
 
 
+    //TODO: This is wrong and should be handled by DescriptorFactory
     private void CreateDescriptorResources()
     {
         var layoutBinding = new DescriptorSetLayoutBinding
@@ -301,15 +302,15 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         }
     }
     
+    
+    //NOTE: This seems wrong to me. Why is it a fallbackKey? Why would I even need that?
     private RenderPass ResolveRenderPass(RenderPass renderPass)
     {
         if (renderPass.Handle != 0)
         {
-            Debug.Log($"ImGuiRenderer received valid render pass {renderPass.Handle}; using it.", VALIDATION_LAYERS.WARNING);
+            Debug.Log($"ImGuiRenderer has a valid RenderPass {renderPass.Handle}; using it.", VALIDATION_LAYERS.WARNING);
             return renderPass;
         }
-
-        Debug.Log("ImGuiRenderer received null render pass; creating fallback render pass from swapchain.", VALIDATION_LAYERS.WARNING);
 
         var swapchain = _master.SwapchainHandler;
         var fallbackKey = new RenderPassKey
@@ -344,13 +345,13 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         CreateFontImageView();
         CreateFontSampler();
 
-        var cmd = _master.CommandManager.AllocateTransientCommandBuffer();
+        var cmd = _master.CommandHandler.AllocateTransientCommandBuffer();
 
-        _master.CommandManager.TransitionImageLayout(cmd, _fontImage, ImageLayout.Undefined, ImageLayout.TransferDstOptimal);
-        _master.CommandManager.CopyBufferToImage(cmd, stagingBuffer, _fontImage, (uint)width, (uint)height);
-        _master.CommandManager.TransitionImageLayout(cmd, _fontImage, ImageLayout.TransferDstOptimal, ImageLayout.ShaderReadOnlyOptimal);
+        _master.CommandHandler.TransitionImageLayout(cmd, _fontImage, ImageLayout.Undefined, ImageLayout.TransferDstOptimal);
+        _master.CommandHandler.CopyBufferToImage(cmd, stagingBuffer, _fontImage, (uint)width, (uint)height);
+        _master.CommandHandler.TransitionImageLayout(cmd, _fontImage, ImageLayout.TransferDstOptimal, ImageLayout.ShaderReadOnlyOptimal);
 
-        _master.CommandManager.EndSubmitAndFreeTransientCommandBuffer(cmd);
+        _master.CommandHandler.EndSubmitAndFreeTransientCommandBuffer(cmd);
 
         _master.Vk.DestroyBuffer(_master.VulkanDevice.Device, stagingBuffer, null);
         _master.Vk.FreeMemory(_master.VulkanDevice.Device, stagingMemory, null);
@@ -499,7 +500,6 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
             submissions.Add(new DrawSubmission
             {
                 PassType = RenderPassType.Ui,
-                PipelineKey = _pipelineKey,
                 PipelineData = _pipelineData,
                 DescriptorSet = _descriptorSet,
                 Topology = PrimitiveTopology.TriangleList,

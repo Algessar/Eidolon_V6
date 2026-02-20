@@ -20,10 +20,7 @@ internal struct DrawSubmission
     public RenderPassType PassType;
 
     public PipelineData PipelineData;
-    public PipelineKey? PipelineKey;
-
     public DescriptorSet DescriptorSet;
-    public DescriptorKey? DescriptorKey;
 
     public PrimitiveTopology Topology;
 

@@ -2,7 +2,7 @@
 
 namespace Eidolon.Vulkan;
 
-internal sealed class ImGuiDrawData
+internal sealed class ImGuiDrawData //This is a fucking key isn't it?
 {
     public static readonly ImGuiDrawData Empty = new();
 

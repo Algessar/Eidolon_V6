@@ -259,16 +259,3 @@ internal unsafe class PipelineFactory
         Debug.Log("PipelineHandler disposed", VALIDATION_LAYERS.SUCCESS);
     }
 }
-
-// internal record struct PipelineData
-// {
-//     public RenderPass RenderPass { get; set; }
-//     public Pipeline VkPipeline { get; set; }
-//     public PipelineLayout VkLayout { get; set; }
-//     public DescriptorSetLayout DescriptorSetLayout { get; set; }
-//     
-//     public bool HasDepth;
-//     
-//     public bool IsValid => RenderPass.Handle != 0 && VkPipeline.Handle != 0 && VkLayout.Handle != 0;
-//
-// }

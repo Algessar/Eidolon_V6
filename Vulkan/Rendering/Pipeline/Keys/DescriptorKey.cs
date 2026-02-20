@@ -8,7 +8,6 @@ internal enum DescriptorAllocationStrategy
     PerFrame,
 }
 
-
 internal readonly record struct DescriptorKey
 {
     public required string LayoutBindingsSignature { get; init; }

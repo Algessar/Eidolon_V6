@@ -31,6 +31,8 @@ internal sealed unsafe class UiGeometryUploader : IDisposable
         var frameCount = (int)maxFramesInFlight;
         if (frameCount <= 0)
             throw new InvalidOperationException("MAX_FRAMES_IN_FLIGHT must be greater than zero.");
+        
+        Debug.Log($"Ensuring {frameCount} ImGui frame buffers are allocated.", VALIDATION_LAYERS.INFO);
 
         if (currentFrame >= Constants.MAX_FRAMES_IN_FLIGHT)
             throw new ArgumentOutOfRangeException(nameof(currentFrame));

@@ -18,7 +18,6 @@ internal unsafe class VulkanInstance
     
 
     [Group("Resource")]
-    public Surfaces Surfaces { get; private set; }
     private KhrSurface _khrSurface;
     private SurfaceKHR _surfaceKhr;
     public KhrSurface KhrSurface => _khrSurface;

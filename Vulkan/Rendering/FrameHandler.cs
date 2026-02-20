@@ -4,7 +4,7 @@ using Silk.NET.Maths;
 using Silk.NET.Vulkan;
 using Semaphore = Silk.NET.Vulkan.Semaphore;
 
-namespace Eidolon.Vulkan.Refactor;
+namespace Eidolon.Vulkan;
 
 
 internal unsafe class FrameHandler : IFrameContext, IDisposable
@@ -55,7 +55,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         _graphBarrierPlanner = new GraphBarrierPlanner(master, _graphResourceRuntimeManager, LOG_RENDER_GRAPH);
         
         Initialize();
-        _commandBuffer = _master.CommandManager.AllocateCommandBuffers(_maxFramesInFlight);
+        _commandBuffer = _master.CommandHandler.AllocateCommandBuffers(_maxFramesInFlight);
         
         _master.GetWindow.FramebufferResize += OnWindowResize;
         Debug.Log("FrameHandler created.", VALIDATION_LAYERS.SUCCESS);
@@ -128,7 +128,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         _master.Vk.CmdSetViewport(cmd, 0, 1, &passViewport);
         _master.Vk.CmdSetScissor(cmd, 0, 1, &passScissor);
 
-        var submissions = data.Submissions ?? Array.Empty<DrawSubmission>();
+        var submissions = data.Submissions ?? Array.Empty<DrawSubmission>(); // NOTE: Rider warns that left operand is never null.
 
         foreach (var pass in _compiledGraph.Passes)
         {
@@ -171,12 +171,15 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             }
             
             var execution = _passExecutionFactory.GetOrCreate(pass, _compiledGraph, _currentImageIndex);
-            var clearValues = stackalloc ClearValue[2];
+
+            var clearValues = stackalloc ClearValue[2]; //NOTE: CA2014: Potential stack overflow. Move the stackalloc out of the loop.
+
             clearValues[0] = execution.ClearColor
                 ? new ClearValue { Color = new ClearColorValue(1f, 1f, 1f, 1f) }
                 : new ClearValue();
-
+            
             uint clearValueCount = 1;
+            
             if (execution.HasDepth)
             {
                 clearValues[1] = execution.ClearDepth
@@ -184,7 +187,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                     : new ClearValue();
                 clearValueCount = 2;
             }
-
             var beginInfo = new RenderPassBeginInfo
             {
                 SType = StructureType.RenderPassBeginInfo,
@@ -204,7 +206,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                     if (submission.PassType != pass.Type)
                         continue;
 
-                    RecordSubmission(cmd, in submission, execution.RenderPass, passViewport, passScissor);
+                    RecordSubmission(cmd, in submission, passViewport, passScissor);
                 }
             }
 
@@ -212,13 +214,10 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         }
     }
     
-   private void RecordSubmission(CommandBuffer cmd, in DrawSubmission submission,  RenderPass activeRenderPass, in Viewport passViewport, in Rect2D passScissor)
+   private void RecordSubmission(CommandBuffer cmd, in DrawSubmission submission,  in Viewport passViewport, in Rect2D passScissor)
     {
-        
-        var pipelineData = ResolvePipelineForPass(in submission, activeRenderPass);
-        if (!pipelineData.IsValid)
+        if (!submission.PipelineData.IsValid)
             return;
-
 
         _master.Vk.CmdBindPipeline(cmd, PipelineBindPoint.Graphics, submission.PipelineData.VkPipeline);
 
@@ -228,7 +227,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             _master.Vk.CmdBindDescriptorSets(
                 cmd,
                 PipelineBindPoint.Graphics,
-                pipelineData.VkLayout,
+                submission.PipelineData.VkLayout,
                 0,
                 1,
                 &descriptorSet,
@@ -253,7 +252,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             {
                 _master.Vk.CmdPushConstants(
                     cmd,
-                    pipelineData.VkLayout,
+                    submission.PipelineData.VkLayout,
                     submission.PushConstants.StageFlags,
                     submission.PushConstants.Offset,
                     (uint)submission.PushConstants.Data.Length,
@@ -266,7 +265,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             var identity = Matrix4x4.Identity;
             _master.Vk.CmdPushConstants(
                 cmd,
-                pipelineData.VkLayout,
+                submission.PipelineData.VkLayout,
                 ShaderStageFlags.VertexBit,
                 0,
                 (uint)sizeof(Matrix4x4),
@@ -528,25 +527,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     
     
     #region Resolve
-    
-    private PipelineData ResolvePipelineForPass(in DrawSubmission submission, RenderPass activeRenderPass)
-    {
-        var pipelineData = submission.PipelineData;
-        if (!pipelineData.IsValid)
-            return pipelineData;
-
-        if (pipelineData.RenderPass.Handle == activeRenderPass.Handle)
-            return pipelineData;
-
-        if (submission.PipelineKey is not { } key)
-        {
-            Debug.Log($"Skipping submission with incompatible render pass. Submission pipeline RP={pipelineData.RenderPass.Handle}, active RP={activeRenderPass.Handle}", VALIDATION_LAYERS.WARNING);
-            return default;
-        }
-
-        var passSpecificKey = key with { RenderPass = activeRenderPass };
-        return _master.PipelineFactory.GetOrCreate(passSpecificKey);
-    }
     
     private PassAttachmentRuntime? ResolvePassAttachment(uint handle)
     {

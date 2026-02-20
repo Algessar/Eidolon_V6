@@ -32,17 +32,17 @@ internal class VulkanMaster
     #region Managers/Factories
 
     public ShaderManager ShaderManager { get; set; }
-    public BufferFactory BufferFactory { get; set; }
+    // public BufferFactory BufferFactory { get; set; }
     public GpuBufferFactory GpuBufferFactory { get; set; }
     public DescriptorFactory DescriptorFactory { get; set; }
     public RenderPassFactory RenderPassFactory { get; set; }
     public PipelineFactory PipelineFactory { get; set; }
-    public CommandManager CommandManager { get; set; }
+    public CommandHandler CommandHandler { get; set; }
 
     #endregion
     
     public SwapchainHandler SwapchainHandler { get; private set; }
-    private Eidolon.Vulkan.Refactor.FrameHandler FrameHandler { get; set; }
+    private FrameHandler FrameHandler { get; set; }
 
     
     private ImGuiRenderer? _imguiRenderer;
@@ -105,12 +105,12 @@ internal class VulkanMaster
             
         SwapchainHandler = new SwapchainHandler(this, SurfaceKhr, KhrSurface);
         ShaderManager = new ShaderManager(this);
-        BufferFactory = new BufferFactory(this);
+        // BufferFactory = new BufferFactory(this);
         GpuBufferFactory = new GpuBufferFactory(this);
         DescriptorFactory = new DescriptorFactory(this);
         RenderPassFactory = new RenderPassFactory(this);
-        CommandManager = new CommandManager(this);
-        FrameHandler = new Eidolon.Vulkan.Refactor.FrameHandler(this);
+        CommandHandler = new CommandHandler(this);
+        FrameHandler = new FrameHandler(this);
         PipelineFactory = new PipelineFactory(this);
         Debug.Log("Vulkan resources initialized.", VALIDATION_LAYERS.SUCCESS);
         
@@ -220,7 +220,7 @@ internal class VulkanMaster
                 {
                     PassType = RenderPassType.Geometry,
                     PipelineData = pipelineData,
-                    PipelineKey = pipelineKey,
+                    // PipelineKey = pipelineKey,
                     DescriptorSet = descriptorSet,
                     Topology = PrimitiveTopology.TriangleList,
                     VertexBuffer = default,
@@ -252,6 +252,6 @@ internal class VulkanMaster
         DescriptorFactory.Dispose();
         GpuBufferFactory.Dispose();
         PipelineFactory.Dispose();
-        CommandManager.Dispose();
+        CommandHandler.Dispose();
     }
 }

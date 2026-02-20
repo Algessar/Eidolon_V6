@@ -3,6 +3,7 @@ using Buffer = Silk.NET.Vulkan.Buffer;
 
 namespace Eidolon.Vulkan;
 
+//TODO: Decide if this should be renamed (GpuBufferHandler or BufferHandler)
 internal unsafe class GpuBufferFactory : IDisposable
 {
     private readonly VulkanMaster _master;

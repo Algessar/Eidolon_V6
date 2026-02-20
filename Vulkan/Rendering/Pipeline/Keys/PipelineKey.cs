@@ -13,13 +13,9 @@ internal record struct PipelineKey
 {
     public required string VertexShaderPath { get; init; }
     public required string FragmentShaderPath { get; init; }
-    
-    //NOTE: Do I actually need RenderPass here? I've asked that before haven't I? It's used in PipelineFactory.
-    // Can I shorten the path it takes?
     public required RenderPass RenderPass { get; init; }
     public ShaderModule Vert { get; set; }
     public ShaderModule Frag { get; set; }
-    
     public DescriptorSetLayout Layout { get; init; }
     public VertexFormat VertexFormat { get; init; }
     public required PrimitiveTopology Topology { get; init; }

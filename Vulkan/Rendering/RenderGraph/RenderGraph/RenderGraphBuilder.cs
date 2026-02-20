@@ -2,6 +2,7 @@
 
 namespace Eidolon.Vulkan;
 
+//TODO: Is this a Factory? It is the only class named Builder and breaks current naming scheme
 public sealed class RenderGraphBuilder
 {
     private readonly List<PassRecord> _passes = new();

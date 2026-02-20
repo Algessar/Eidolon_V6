@@ -236,7 +236,9 @@ internal unsafe class DescriptorFactory: IDisposable
             Count = Constants.MAX_FRAMES_IN_FLIGHT,
             AllocationStrategy = GpuBufferAllocationStrategy.PerFrame,
         };
-
+        
+        //NOTE: to self; this is *descriptor* buffer info, so it's valid here.
+        // For next time I think it should be in a BufferFactory.
         var uniformBuffers = _master.GpuBufferFactory.GetOrCreate(key);
         for (var i = 0; i < bundle.Sets.Length; i++)
         {
