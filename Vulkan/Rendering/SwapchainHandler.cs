@@ -59,7 +59,7 @@ internal unsafe class SwapchainHandler
         {
             Image = SwapchainImages[imageIndex],
             View = _imageViews[imageIndex],
-            Format = default,
+            Format = _swapchainImageFormat,
             Extent = Extent,
             Memory = default
         };

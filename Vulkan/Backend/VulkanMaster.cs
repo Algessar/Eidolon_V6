@@ -124,6 +124,13 @@ internal class VulkanMaster
 
         _sceneSubmissions = _drawData.Submissions ?? Array.Empty<DrawSubmission>();
         
+        if (_initialGraph is not null)
+        {
+            // Render-graph passes own their framebuffer formats; keep base demo submissions disabled
+            // until scene pipelines are authored per-pass.
+            _sceneSubmissions = Array.Empty<DrawSubmission>();
+        }
+        
         if (_drawData.PipelineData.RenderPass.Handle == 0)
         {
             throw new InvalidOperationException("Main pipeline render pass is null before ImGui initialization.");

@@ -27,7 +27,14 @@ internal sealed unsafe class GraphBarrierPlanner
                 continue;
 
             if (runtime.Imported)
+            {
+                if (pass.Type == RenderPassType.Present)
+                {
+                    EmitPresentBarrier(cmd, resource, ref runtime);
+                    _runtimeManager.SetRuntime(read.Handle, runtime);
+                }
                 continue;
+            }
 
             EmitShaderReadBarrier(cmd, resource, ref runtime);
             _runtimeManager.SetRuntime(read.Handle, runtime);

@@ -20,11 +20,7 @@ internal sealed unsafe class UiGeometryUploader : IDisposable
         _master = master;
     }
 
-
-
     public ref GpuBuffer GetCurrentFrameIndexBuffer(uint currentFrame) => ref _uiIndexBuffers[(int)currentFrame];
-
-
 
     public void EnsureCurrentFrameUiBuffers(ImGuiDrawData drawData, uint currentFrame, uint maxFramesInFlight)
     {
@@ -34,14 +30,14 @@ internal sealed unsafe class UiGeometryUploader : IDisposable
         
         Debug.Log($"Ensuring {frameCount} ImGui frame buffers are allocated.", VALIDATION_LAYERS.INFO);
 
-        if (currentFrame >= Constants.MAX_FRAMES_IN_FLIGHT)
+        if (currentFrame >= maxFramesInFlight)
             throw new ArgumentOutOfRangeException(nameof(currentFrame));
 
         var vertexBytes = Math.Max((ulong)(drawData.Vertices.Length * sizeof(ImGuiVertex)), 1UL);
         var indexBytes = Math.Max((ulong)(drawData.Indices.Length * sizeof(ushort)), 1UL);
 
-        EnsureVertexBuffers(vertexBytes, Constants.MAX_FRAMES_IN_FLIGHT);
-        EnsureIndexBuffers(indexBytes, Constants.MAX_FRAMES_IN_FLIGHT);
+        EnsureVertexBuffers(vertexBytes, maxFramesInFlight);
+        EnsureIndexBuffers(indexBytes, maxFramesInFlight);
     }
 
 
