@@ -145,7 +145,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                     LOG_RENDER_GRAPH);
             }
 
-            if (_currentFrame == 0)
+            if (_currentFrame == 0 && LOG_RENDER_GRAPH)
             {
                 Debug.Log($"RenderPass used in FrameHandler: {data.PipelineData.RenderPass.Handle}");
             }

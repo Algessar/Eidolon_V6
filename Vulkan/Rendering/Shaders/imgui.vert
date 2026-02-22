@@ -12,7 +12,7 @@ void main()
 {
     gl_Position = vec4(
     (inPos.x * 2.0) - 1.0,
-    1.0 - (inPos.y * 2.0),
+    (inPos.y * 2.0) - 1.0,
     0.0,
     1.0);
 

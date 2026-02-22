@@ -1,5 +1,6 @@
 
 using System.Numerics;
+using Eidolon.Editor;
 using EidolonCore.Math;
 using ImGuiNET;
 using Silk.NET.Vulkan;
@@ -38,6 +39,9 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     
     [Header("Debug")]
     bool _showDemoWindow = true;
+    
+    [Header("Input")]
+    ImGuiInputManager _inputManager;
 
 
     public ImGuiRenderer(VulkanMaster master)
@@ -67,6 +71,9 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         CreateFontAtlasTexture(pixels, width, height, bytesPerPixel);
         CreatePipeline(renderPass);
         
+        _inputManager = new ImGuiInputManager(_master.GetWindow);
+
+        
         Debug.Log("ImGuiRenderer initialized", VALIDATION_LAYERS.INFO);
     }
     
@@ -75,7 +82,9 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         var io = ImGui.GetIO();
         io.DisplaySize = size;
         io.DeltaTime = MathF.Max(1f / 1000f, delta);
+        _inputManager.UpdateInput(ImGui.GetIO());
         ImGui.NewFrame();
+        
     }
     
     public void BuildUI()
@@ -301,7 +310,6 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
             throw new Exception("ImGuiRenderer received null render pass; cannot create pipeline.");
         }
     }
-    
     
     //NOTE: This seems wrong to me. Why is it a fallbackKey? Why would I even need that?
     private RenderPass ResolveRenderPass(RenderPass renderPass)
