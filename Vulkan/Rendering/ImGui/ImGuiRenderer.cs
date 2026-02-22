@@ -25,13 +25,11 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     private Sampler _fontSampler;
     
     // Per-frame CPU state
-    // private DrawData _drawData; // Holds Vertex/IndexBuffers
+
     private readonly UiGeometryUploader _uiGeometryUploader;
-    public ImGuiDrawData CurrentDrawData { get; private set; } = ImGuiDrawData.Empty;
+    private ImGuiDrawData CurrentDrawData { get; set; } = ImGuiDrawData.Empty;
     public DrawSubmission[] CurrentSubmissions { get; private set; } = Array.Empty<DrawSubmission>();
-    private PipelineKey _pipelineKey;
-    public PipelineData PipelineData => _pipelineData;
-    public DescriptorSet DescriptorSet => _descriptorSet;
+
     
     public uint LastVertexCount { get; private set; }
     public uint LastIndexCount { get; private set; }
@@ -40,7 +38,8 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     [Header("Debug")]
     bool _showDemoWindow = true;
     
-    [Header("Input")]
+    [Header("UI and Input")]
+    EditorUI _editorUI;
     ImGuiInputManager _inputManager;
 
 
@@ -70,9 +69,9 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         CreateDescriptorResources();
         CreateFontAtlasTexture(pixels, width, height, bytesPerPixel);
         CreatePipeline(renderPass);
-        
-        _inputManager = new ImGuiInputManager(_master.GetWindow);
 
+        _editorUI = new EditorUI(_master.GetWindow);
+        _inputManager = new ImGuiInputManager(_master.GetWindow);
         
         Debug.Log("ImGuiRenderer initialized", VALIDATION_LAYERS.INFO);
     }
@@ -85,6 +84,11 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         _inputManager.UpdateInput(ImGui.GetIO());
         ImGui.NewFrame();
         
+        //NOTE: These should be here, not in VulkanMaster.
+        //BuildUI();
+        
+        //FinalizeFrame();
+        
     }
     
     public void BuildUI()
@@ -95,10 +99,10 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         ImGui.Checkbox("Show ImGui Demo Window", ref _showDemoWindow);
         ImGui.End();
 
-        if (_showDemoWindow)
-        {
-            ImGui.ShowDemoWindow(ref _showDemoWindow);
-        }
+        // if (_showDemoWindow)
+        // {
+        //     ImGui.ShowDemoWindow(ref _showDemoWindow);
+        // }
     }
 
     public void FinalizeFrame()
@@ -181,7 +185,6 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         };
     }
 
-
     //TODO: This is wrong and should be handled by DescriptorFactory
     private void CreateDescriptorResources()
     {
@@ -246,6 +249,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         
         //TODO: upload ImGui font atlas to GPU and write CombinedImageSampler descriptor at binding 0.
     }
+    
     private void UpdateFontDescriptorSet()
     {
         var imageInfo = new DescriptorImageInfo
@@ -302,7 +306,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
             BlendState = BlendState.AlphaBlending,
         };
 
-        _pipelineKey = key;
+        // _pipelineKey = key;
         _pipelineData = _master.PipelineFactory.GetOrCreate(key);
         
         if (_pipelineData.RenderPass.Handle == 0)

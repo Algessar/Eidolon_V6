@@ -39,8 +39,9 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     private Dictionary<ulong, string> _fenceNames = new();
 
     public bool _framebufferResized { get; set; }
-
     private readonly bool LOG_RENDER_GRAPH = false;
+
+    public event Action<bool> OnResize;
 
     public FrameHandler(VulkanMaster master)
     {
@@ -56,6 +57,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         _commandBuffer = _master.CommandHandler.AllocateCommandBuffers(_maxFramesInFlight);
 
         _master.GetWindow.FramebufferResize += OnWindowResize;
+        
+        
         Debug.Log("FrameHandler created.", VALIDATION_LAYERS.SUCCESS);
     }
 
@@ -565,6 +568,10 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         _graphResourceRuntimeManager.DestroyGraphResources();
         _passExecutionFactory.Reset();
+        
+        
+        
+        
         return true;
     }
 
