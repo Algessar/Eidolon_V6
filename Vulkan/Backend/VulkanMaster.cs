@@ -80,7 +80,7 @@ internal class VulkanMaster
             _imguiRenderer?.FinalizeFrame();
   
             
-            _imguiRenderer?.BuildDrawSubmissions(FrameHandler.CurrentFrameIndex, Constants.MAX_FRAMES_IN_FLIGHT);
+            _imguiRenderer?.BuildDrawSubmissions(FrameHandler.CurrentFrame, Constants.MAX_FRAMES_IN_FLIGHT);
 
             var baseSubmissions = _sceneSubmissions;   // ← reset to original scene submissions
             var uiSubmissions = _imguiRenderer?.CurrentSubmissions ?? Array.Empty<DrawSubmission>();

@@ -6,44 +6,42 @@ using Semaphore = Silk.NET.Vulkan.Semaphore;
 
 namespace Eidolon.Vulkan;
 
-
 internal unsafe class FrameHandler : IFrameContext, IDisposable
 {
     public VulkanMaster _master { get; }
     private SwapchainHandler _swapchainHandler;
-    
+
     private readonly PassExecutionFactory _passExecutionFactory;
     private readonly GraphResourceRuntimeManager _graphResourceRuntimeManager;
     private readonly GraphBarrierPlanner _graphBarrierPlanner;
-    
-    [Header("Resources")]
-    private CommandBuffer[] _commandBuffer;
+
+    [Header("Resources")] private CommandBuffer[] _commandBuffer;
 
     private CompiledRenderGraph? _compiledGraph;
     private readonly GraphResourceImportMap _importMap = new();
 
     private uint _maxFramesInFlight => Constants.MAX_FRAMES_IN_FLIGHT;
 
-    [Header("Sync Objects")]
-    private uint _imageCount;
+    [Header("Sync Objects")] private uint _imageCount;
     private Semaphore[] _waitSemaphore = Array.Empty<Semaphore>();
     private Semaphore[] _signalSemaphore = Array.Empty<Semaphore>();
     private Fence[] _inFlightFences = Array.Empty<Fence>();
     private Fence[] _imagesInFlight;
-    
+
     private uint _currentFrame;
+
     private bool _frameActive;
     private uint _currentImageIndex;
+    public uint CurrentFrame => _currentFrame;
 
     //NOTE: Only used for debug logging rn?
     private Dictionary<ulong, string> _semaphoreNames = new();
     private Dictionary<ulong, string> _fenceNames = new();
-    
+
     public bool _framebufferResized { get; set; }
-    public uint CurrentFrameIndex => _currentImageIndex;
 
     private readonly bool LOG_RENDER_GRAPH = false;
-    
+
     public FrameHandler(VulkanMaster master)
     {
         Debug.Log("Creating FrameHandler", VALIDATION_LAYERS.INFO);
@@ -53,21 +51,23 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         _passExecutionFactory = new PassExecutionFactory(master, ResolvePassAttachment);
         _graphResourceRuntimeManager = new GraphResourceRuntimeManager(master);
         _graphBarrierPlanner = new GraphBarrierPlanner(master, _graphResourceRuntimeManager, LOG_RENDER_GRAPH);
-        
+
         Initialize();
         _commandBuffer = _master.CommandHandler.AllocateCommandBuffers(_maxFramesInFlight);
-        
+
         _master.GetWindow.FramebufferResize += OnWindowResize;
         Debug.Log("FrameHandler created.", VALIDATION_LAYERS.SUCCESS);
     }
-    
+
+
+
     private void OnWindowResize(Vector2D<int> newSize)
     {
         if (newSize.X == 0 || newSize.Y == 0)
             return;
 
         _framebufferResized = true;
-	    
+
         var io = ImGui.GetIO();
         io.DisplaySize = new Vector2(newSize.X, newSize.Y);
     }
@@ -79,7 +79,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         _currentFrame = 0;
         _currentImageIndex = 0;
     }
-    
+
     public void SetCompiledGraph(CompiledRenderGraph graph)
     {
         _graphResourceRuntimeManager.DestroyGraphResources();
@@ -87,7 +87,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         _compiledGraph = graph ?? throw new ArgumentNullException(nameof(graph));
         _graphResourceRuntimeManager.ClearResourceLookup();
-        
+
         ConfigureImportedResourceMappings(graph);
     }
 
@@ -96,8 +96,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         foreach (var resource in graph.Resources)
         {
             _graphResourceRuntimeManager.RegisterResource(resource);
-            
-            if(!resource.Imported)
+
+            if (!resource.Imported)
                 continue;
 
             if ((resource.Description.Usage & FlagImageUsage.Present) != 0)
@@ -105,7 +105,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 _importMap.Register(resource.Handle, ImportedResourceKind.SwapchainColor);
             }
             else if ((resource.Description.Usage & FlagImageUsage.DepthStencilAttachment) != 0)
-            {            
+            {
                 _importMap.Register(resource.Handle, ImportedResourceKind.SceneDepth);
             }
         }
@@ -128,7 +128,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         _master.Vk.CmdSetViewport(cmd, 0, 1, &passViewport);
         _master.Vk.CmdSetScissor(cmd, 0, 1, &passScissor);
 
-        var submissions = data.Submissions ?? Array.Empty<DrawSubmission>(); // NOTE: Rider warns that left operand is never null.
+        var submissions =
+            data.Submissions ?? Array.Empty<DrawSubmission>(); // NOTE: Rider warns that left operand is never null.
 
         foreach (var pass in _compiledGraph.Passes)
         {
@@ -148,38 +149,27 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             {
                 Debug.Log($"RenderPass used in FrameHandler: {data.PipelineData.RenderPass.Handle}");
             }
-            
-            // var frameBuffer = _swapchainHandler.Framebuffers[_currentImageIndex];
-            // var beginInfo = new RenderPassBeginInfo
-            // {
-            //     SType = StructureType.RenderPassBeginInfo,
-            //     RenderPass = data.PipelineData.RenderPass,
-            //     Framebuffer = frameBuffer,
-            //     RenderArea = new Rect2D(new Offset2D(0, 0), _swapchainHandler.Extent),
-            //     ClearValueCount = 1
-            // };
-
-            // var clearColor = new ClearValue { Color = new ClearColorValue(1f, 1f, 1f, 1f) };
-            // beginInfo.PClearValues = &clearColor;
 
             _graphBarrierPlanner.TransitionLayouts(cmd, pass);
             if (pass.Type == RenderPassType.Present)
             {
+                // Note: this looks unnecessary tbh
                 // Transition to present layout (already done in TransitionLayouts)
                 // Do NOT begin a render pass.
                 continue; // skip the render pass block
             }
-            
+
             var execution = _passExecutionFactory.GetOrCreate(pass, _compiledGraph, _currentImageIndex);
 
-            var clearValues = stackalloc ClearValue[2]; //NOTE: CA2014: Potential stack overflow. Move the stackalloc out of the loop.
+            var clearValues =
+                stackalloc ClearValue[2]; //NOTE: CA2014: Potential stack overflow. Move the stackalloc out of the loop.
 
             clearValues[0] = execution.ClearColor
                 ? new ClearValue { Color = new ClearColorValue(1f, 1f, 1f, 1f) }
                 : new ClearValue();
-            
+
             uint clearValueCount = 1;
-            
+
             if (execution.HasDepth)
             {
                 clearValues[1] = execution.ClearDepth
@@ -187,6 +177,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                     : new ClearValue();
                 clearValueCount = 2;
             }
+
             var beginInfo = new RenderPassBeginInfo
             {
                 SType = StructureType.RenderPassBeginInfo,
@@ -196,7 +187,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 ClearValueCount = clearValueCount,
                 PClearValues = clearValues
             };
-            
+
             _master.Vk.CmdBeginRenderPass(cmd, in beginInfo, SubpassContents.Inline);
 
             if (pass.Type is not RenderPassType.Present)
@@ -213,8 +204,9 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             _master.Vk.CmdEndRenderPass(cmd);
         }
     }
-    
-   private void RecordSubmission(CommandBuffer cmd, in DrawSubmission submission,  in Viewport passViewport, in Rect2D passScissor)
+
+    private void RecordSubmission(CommandBuffer cmd, in DrawSubmission submission, in Viewport passViewport,
+        in Rect2D passScissor)
     {
         if (!submission.PipelineData.IsValid)
             return;
@@ -235,7 +227,9 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 null);
         }
 
-        var viewport = submission.ViewportPolicy == SubmissionViewportPolicy.Explicit ? submission.Viewport : passViewport;
+        var viewport = submission.ViewportPolicy == SubmissionViewportPolicy.Explicit
+            ? submission.Viewport
+            : passViewport;
         _master.Vk.CmdSetViewport(cmd, 0, 1, &viewport);
 
         var scissor = submission.ScissorPolicy == SubmissionScissorPolicy.Explicit ? submission.Scissor : passScissor;
@@ -243,9 +237,11 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         if (_currentFrame == 0)
         {
-            Debug.Log($"Submission vertex count: {submission.VertexCount}, index count: {submission.IndexCount}, instance count: {submission.InstanceCount}", VALIDATION_LAYERS.INFO, LOG_RENDER_GRAPH);
+            Debug.Log(
+                $"Submission vertex count: {submission.VertexCount}, index count: {submission.IndexCount}, instance count: {submission.InstanceCount}",
+                VALIDATION_LAYERS.INFO, LOG_RENDER_GRAPH);
         }
-        
+
         if (submission.PushConstants.HasData)
         {
             fixed (byte* pushData = submission.PushConstants.Data)
@@ -257,7 +253,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                     submission.PushConstants.Offset,
                     (uint)submission.PushConstants.Data.Length,
                     pushData
-                    );
+                );
             }
         }
         else
@@ -281,14 +277,17 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         if (submission.IndexBuffer.IsValid && submission.IndexCount > 0)
         {
-            _master.Vk.CmdBindIndexBuffer(cmd, submission.IndexBuffer.Buffer, submission.IndexOffset, submission.IndexType);
-            _master.Vk.CmdDrawIndexed(cmd, submission.IndexCount, Math.Max(submission.InstanceCount, 1), submission.FirstIndex, submission.VertexBase, 0);
+            _master.Vk.CmdBindIndexBuffer(cmd, submission.IndexBuffer.Buffer, submission.IndexOffset,
+                submission.IndexType);
+            _master.Vk.CmdDrawIndexed(cmd, submission.IndexCount, Math.Max(submission.InstanceCount, 1),
+                submission.FirstIndex, submission.VertexBase, 0);
             return;
         }
 
         if (submission.VertexCount > 0)
         {
-            _master.Vk.CmdDraw(cmd, submission.VertexCount, Math.Max(submission.InstanceCount, 1), submission.FirstVertex, 0);
+            _master.Vk.CmdDraw(cmd, submission.VertexCount, Math.Max(submission.InstanceCount, 1),
+                submission.FirstVertex, 0);
         }
     }
 
@@ -301,7 +300,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         BeginFrame(data);
         if (!_frameActive)
             return;
-        
+
         ExecutePasses(data);
         EndFrame(data);
     }
@@ -313,15 +312,15 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         var device = _master.VulkanDevice.Device;
         var vk = _master.Vk;
-       
+
         var cmd = _commandBuffer[_currentFrame];
 
         // Wait for this frame to finish
-        fixed (Fence* frameFence = &_inFlightFences[_currentImageIndex])
+        fixed (Fence* frameFence = &_inFlightFences[_currentFrame])
         {
             vk.WaitForFences(device, 1, frameFence, true, ulong.MaxValue);
         }
-        
+
         if (_framebufferResized && !RecreateSwapchain(data.PipelineData))
         {
             _frameActive = false;
@@ -329,9 +328,9 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         }
 
         // Acquire next image
-        
+
         var acquireResult = _swapchainHandler.AcquireNextImage(
-            _waitSemaphore[_currentFrame], 
+            _waitSemaphore[_currentFrame],
             default,
             out uint imageIndex);
 
@@ -351,6 +350,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                     _frameActive = false;
                     return;
                 }
+
                 break;
             }
         }
@@ -365,13 +365,14 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 true,
                 ulong.MaxValue);
         }
-        
+
         _imagesInFlight[imageIndex] = _inFlightFences[_currentFrame];
-   
+
         _currentImageIndex = imageIndex;
 
-        _graphResourceRuntimeManager.ResolveImportedGraphResources(_compiledGraph, _importMap, _swapchainHandler, _currentImageIndex);
-        
+        _graphResourceRuntimeManager.ResolveImportedGraphResources(_compiledGraph, _importMap, _swapchainHandler,
+            _currentImageIndex);
+
         fixed (Fence* frameFence = &_inFlightFences[_currentFrame])
         {
             vk.ResetFences(device, 1, frameFence);
@@ -379,7 +380,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         // var clearColor = new Vector4(0.0f, 0.0f, 0.0f, 1.0f);
         vk.ResetCommandBuffer(cmd, 0);
-        
+
         var beginInfo = new CommandBufferBeginInfo
         {
             SType = StructureType.CommandBufferBeginInfo
@@ -396,43 +397,43 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         {
             return;
         }
-        
+
         var cmd = _commandBuffer[_currentFrame];
-        
+
         // _master.Vk.CmdEndRenderPass(cmd);
-       
+
         if (_master.Vk.EndCommandBuffer(cmd) != Result.Success)
             throw new Exception("Failed to end command buffer!");
 
         Semaphore waitSemaphore = _waitSemaphore[_currentFrame];
         Semaphore signalSemaphore = _signalSemaphore[_currentImageIndex];
         Fence frameFence = _inFlightFences[_currentFrame];
-        
+
         _swapchainHandler.QueueSubmit(cmd, waitSemaphore, signalSemaphore, frameFence);
- 
+
 
         var presentResult = _swapchainHandler.Present(signalSemaphore, _currentImageIndex);
         if (presentResult == Result.ErrorOutOfDateKhr || presentResult == Result.SuboptimalKhr || _framebufferResized)
         {
             RecreateSwapchain(data.PipelineData);
         }
-        
+
         _currentFrame = (uint)((_currentFrame + 1) % _inFlightFences.Length);
 
         _frameActive = false;
     }
 
     #endregion
-    
+
     #region Creation
+
     public void CreateResources()
     {
-        
         if (_compiledGraph is null)
             return;
 
         _graphResourceRuntimeManager.EnsureGraphResources(_compiledGraph, _swapchainHandler, LOG_RENDER_GRAPH);
-        
+
         _commandBuffer = new CommandBuffer[_maxFramesInFlight];
 
         fixed (CommandBuffer* commandBufferPtr = _commandBuffer)
@@ -445,13 +446,14 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 CommandBufferCount = _maxFramesInFlight,
             };
 
-            if (_master.Vk.AllocateCommandBuffers(_master.VulkanDevice.Device, in allocInfo, commandBufferPtr) != Result.Success)
+            if (_master.Vk.AllocateCommandBuffers(_master.VulkanDevice.Device, in allocInfo, commandBufferPtr) !=
+                Result.Success)
             {
                 throw new Exception("Failed to allocate frame command buffers.");
             }
         }
     }
-    
+
     private void CreateSyncObjects()
     {
         //INFO: wait semaphores and in flight fences must be the same size as MaxFramesInFlight.
@@ -466,7 +468,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         for (int i = 0; i < _maxFramesInFlight; i++)
         {
             _waitSemaphore[i] = CreateSemaphore($"WaitSemaphore {i}");
-            
+
             Debug.Log($"Semaphore handles : {_waitSemaphore[i].Handle}", VALIDATION_LAYERS.INFO);
             _inFlightFences[i] = CreateFence($"InFlightFence {i}");
             Debug.Log($"In Flight Fences handles : {_inFlightFences[i].Handle}", VALIDATION_LAYERS.INFO);
@@ -477,7 +479,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             _signalSemaphore[i] = CreateSemaphore($"SignalFinishedSemaphore {i}");
 
             Debug.Log($"Signal semaphore handles : {_signalSemaphore[i].Handle}", VALIDATION_LAYERS.INFO);
-
         }
 
         if (_signalSemaphore.Length < _imageCount)
@@ -489,8 +490,10 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         {
             throw new Exception("Not enough in flight fences for in-flight frames.");
         }
-        
-        Debug.Log($"Created {_signalSemaphore.Length} signal semaphores, {_waitSemaphore.Length} wait semaphores and  {_inFlightFences.Length} in flight fences", VALIDATION_LAYERS.SUCCESS);
+
+        Debug.Log(
+            $"Created {_signalSemaphore.Length} signal semaphores, {_waitSemaphore.Length} wait semaphores and  {_inFlightFences.Length} in flight fences",
+            VALIDATION_LAYERS.SUCCESS);
     }
 
     private Semaphore CreateSemaphore(string name)
@@ -499,11 +502,12 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         {
             SType = StructureType.SemaphoreCreateInfo
         };
-        if (_master.Vk.CreateSemaphore(_master.VulkanDevice.Device, in semaphoreInfo, null, out var semaphore) != Result.Success)
+        if (_master.Vk.CreateSemaphore(_master.VulkanDevice.Device, in semaphoreInfo, null, out var semaphore) !=
+            Result.Success)
             throw new Exception("Failed to create semaphore!");
-    
+
         _semaphoreNames[semaphore.Handle] = name;
-		
+
         return semaphore;
     }
 
@@ -514,20 +518,20 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             SType = StructureType.FenceCreateInfo,
             Flags = FenceCreateFlags.SignaledBit
         };
-        
-        if(_master.Vk.CreateFence(_master.VulkanDevice.Device, in fenceInfo, null, out var fence) != Result.Success)
+
+        if (_master.Vk.CreateFence(_master.VulkanDevice.Device, in fenceInfo, null, out var fence) != Result.Success)
             throw new Exception("Failed to create fence!");
-        
+
         _fenceNames[fence.Handle] = name;
 
         return fence;
     }
-    
+
     #endregion
-    
-    
+
+
     #region Resolve
-    
+
     private PassAttachmentRuntime? ResolvePassAttachment(uint handle)
     {
         if (!_graphResourceRuntimeManager.TryGetRuntime(handle, out var runtime))
@@ -537,7 +541,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     }
 
     #endregion Resolve
-    
+
     #region Cleanup
 
     private bool RecreateSwapchain(in PipelineData pipelineData)
@@ -563,7 +567,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         _passExecutionFactory.Reset();
         return true;
     }
-    
+
     private void RecreateSignalSemaphores()
     {
         foreach (var semaphore in _signalSemaphore)
@@ -580,8 +584,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             _signalSemaphore[i] = CreateSemaphore($"SignalSemaphore {i}");
         }
     }
-    
-    
+
+
     public void Dispose()
     {
         _master.Vk.DeviceWaitIdle(_master.VulkanDevice.Device);
@@ -590,6 +594,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         _graphResourceRuntimeManager.DestroyGraphResources();
         _passExecutionFactory.Reset();
     }
-    
+
     #endregion Cleanup
 }

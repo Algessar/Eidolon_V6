@@ -46,6 +46,9 @@ internal sealed unsafe class UiGeometryUploader : IDisposable
         if (_uiVertexBuffers.Length != (int)maxFramesInFlight || _uiIndexBuffers.Length != (int)maxFramesInFlight)
             return;
 
+        if (currentFrame >= maxFramesInFlight || currentFrame >= (uint)_uiVertexBuffers.Length || currentFrame >= (uint)_uiIndexBuffers.Length)
+            return;
+        
         ref var vertexBuffer = ref _uiVertexBuffers[(int)currentFrame];
         ref var indexBuffer = ref _uiIndexBuffers[(int)currentFrame];
 
