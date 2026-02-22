@@ -76,18 +76,23 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         Debug.Log("ImGuiRenderer initialized", VALIDATION_LAYERS.INFO);
     }
     
-    public void NewFrame(float delta, Vector2 size)
+    public void NewFrame(float delta, Vector2 windowSize, Vector2 framebufferSize)
     {
         var io = ImGui.GetIO();
-        io.DisplaySize = size;
+        io.DisplaySize = windowSize;
+
+        var safeWindowWidth = MathF.Max(1f, windowSize.X);
+        var safeWindowHeight = MathF.Max(1f, windowSize.Y);
+        io.DisplayFramebufferScale = new Vector2(
+            framebufferSize.X / safeWindowWidth,
+            framebufferSize.Y / safeWindowHeight);
         io.DeltaTime = MathF.Max(1f / 1000f, delta);
         _inputManager.UpdateInput(ImGui.GetIO());
         ImGui.NewFrame();
         
-        //NOTE: These should be here, not in VulkanMaster.
-        //BuildUI();
-        
-        //FinalizeFrame();
+        _editorUI.Update();
+        BuildUI();
+        FinalizeFrame();
         
     }
     
@@ -182,6 +187,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
             Indices = indices,
             Commands = commands,
             DisplaySize = drawData.DisplaySize,
+            DisplayFramebufferScale = drawData.FramebufferScale,
         };
     }
 
@@ -493,19 +499,26 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         ref var indexBuffer = ref _uiGeometryUploader.GetCurrentFrameIndexBuffer(currentFrame);
 
         var submissions = new List<DrawSubmission>(CurrentDrawData.Commands.Length);
-        var displayWidth = MathF.Max(1f, CurrentDrawData.DisplaySize.X);
-        var displayHeight = MathF.Max(1f, CurrentDrawData.DisplaySize.Y);
-
+        // var displayWidth = MathF.Max(1f, CurrentDrawData.DisplaySize.X);
+        // var displayHeight = MathF.Max(1f, CurrentDrawData.DisplaySize.Y);
+        var framebufferScale = CurrentDrawData.DisplayFramebufferScale;
+        var displayWidth = MathF.Max(1f, CurrentDrawData.DisplaySize.X * framebufferScale.X);
+        var displayHeight = MathF.Max(1f, CurrentDrawData.DisplaySize.Y * framebufferScale.Y);
+        
         foreach (var drawCommand in CurrentDrawData.Commands)
         {
             if (drawCommand.ElementCount == 0)
                 continue;
 
             var clipRect = drawCommand.ClipRect;
-            var minX = Math.Clamp((int)clipRect.X, 0, (int)displayWidth);
-            var minY = Math.Clamp((int)clipRect.Y, 0, (int)displayHeight);
-            var maxX = Math.Clamp((int)clipRect.Z, minX, (int)displayWidth);
-            var maxY = Math.Clamp((int)clipRect.W, minY, (int)displayHeight);
+            // var minX = Math.Clamp((int)clipRect.X, 0, (int)displayWidth);
+            // var minY = Math.Clamp((int)clipRect.Y, 0, (int)displayHeight);
+            // var maxX = Math.Clamp((int)clipRect.Z, minX, (int)displayWidth);
+            // var maxY = Math.Clamp((int)clipRect.W, minY, (int)displayHeight);
+            var minX = Math.Clamp((int)(clipRect.X * framebufferScale.X), 0, (int)displayWidth);
+            var minY = Math.Clamp((int)(clipRect.Y * framebufferScale.Y), 0, (int)displayHeight);
+            var maxX = Math.Clamp((int)(clipRect.Z * framebufferScale.X), minX, (int)displayWidth);
+            var maxY = Math.Clamp((int)(clipRect.W * framebufferScale.Y), minY, (int)displayHeight);
             if (maxX <= minX || maxY <= minY)
                 continue;
 

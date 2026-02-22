@@ -15,12 +15,7 @@ internal class EditorUI
         InitialSetup();
 
     }
-
-    private void OnResize()
-    {
-        
-    }
-
+    
     void InitialSetup()
     {
         var io = ImGui.GetIO();
@@ -52,8 +47,44 @@ internal class EditorUI
         style.ScaleAllSizes(dpiScale);
     }
     
-    void Update()
+    public void Update()
     {
+        DrawDockSpace();
+    }
+    
+    private void DrawDockSpace()
+    {
+        var io = ImGui.GetIO();
+        var viewport = ImGui.GetMainViewport();
+        
+        // Use WorkPos / WorkSize instead of DisplaySize
+        ImGui.SetNextWindowPos(viewport.WorkPos, ImGuiCond.Always);
+        ImGui.SetNextWindowSize(viewport.WorkSize, ImGuiCond.Always);
+        ImGui.SetNextWindowViewport(viewport.ID);
+
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowRounding, 0);
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 0);
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
+
+        ImGui.Begin(
+            "##DockSpaceRoot",
+            ImGuiWindowFlags.NoTitleBar |
+            ImGuiWindowFlags.NoCollapse |
+            ImGuiWindowFlags.NoResize |
+            ImGuiWindowFlags.NoMove |
+            ImGuiWindowFlags.NoBringToFrontOnFocus |
+            ImGuiWindowFlags.NoNavFocus |
+            ImGuiWindowFlags.NoBackground |
+            ImGuiWindowFlags.NoDecoration 
+            //| ImGuiWindowFlags.MenuBar
+            
+        );
+        ImGui.PopStyleVar(3);
+        
+        uint dockspaceId = ImGui.GetID("MainDockSpace");
+        ImGui.DockSpace(dockspaceId, Vector2.Zero);
+        ImGui.End();
+        
         
     }
 }

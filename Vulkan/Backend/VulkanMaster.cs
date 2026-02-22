@@ -75,9 +75,13 @@ internal class VulkanMaster
                 return;
             }
             
-            _imguiRenderer?.NewFrame((float) delta, new Vector2(_window.Size.X, _window.Size.Y)); // Wonder if my Vec2 works ^^ I doubt it, no implicit operator for Vector2D<T>
-            _imguiRenderer?.BuildUI();
-            _imguiRenderer?.FinalizeFrame();
+            Extent2D swapchainExtent = SwapchainHandler.Extent;
+            _imguiRenderer?.NewFrame(
+                (float)delta,
+                new Vector2(_window.Size.X, _window.Size.Y),
+                new Vector2(_window.FramebufferSize.X, _window.FramebufferSize.Y));
+            // var framebufferSize = _window.FramebufferSize;
+            // _imguiRenderer?.NewFrame((float) delta, new Vector2(framebufferSize.X, framebufferSize.Y));
   
             
             _imguiRenderer?.BuildDrawSubmissions(FrameHandler.CurrentFrame, Constants.MAX_FRAMES_IN_FLIGHT);

@@ -41,8 +41,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     public bool _framebufferResized { get; set; }
     private readonly bool LOG_RENDER_GRAPH = false;
 
-    public event Action<bool> OnResize;
-
     public FrameHandler(VulkanMaster master)
     {
         Debug.Log("Creating FrameHandler", VALIDATION_LAYERS.INFO);
@@ -66,13 +64,13 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
     private void OnWindowResize(Vector2D<int> newSize)
     {
-        if (newSize.X == 0 || newSize.Y == 0)
-            return;
+        // if (newSize.X == 0 || newSize.Y == 0)
+        //     return;
 
         _framebufferResized = true;
 
-        var io = ImGui.GetIO();
-        io.DisplaySize = new Vector2(newSize.X, newSize.Y);
+        // var io = ImGui.GetIO();
+        // io.DisplaySize = new Vector2(newSize.X, newSize.Y);
     }
 
     public void Initialize()

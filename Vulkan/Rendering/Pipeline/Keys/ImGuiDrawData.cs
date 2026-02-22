@@ -2,7 +2,7 @@
 
 namespace Eidolon.Vulkan;
 
-internal sealed class ImGuiDrawData //This is a fucking key isn't it?
+internal sealed class ImGuiDrawData
 {
     public static readonly ImGuiDrawData Empty = new();
 
@@ -10,6 +10,7 @@ internal sealed class ImGuiDrawData //This is a fucking key isn't it?
     public ushort[] Indices { get; init; } = Array.Empty<ushort>();
     public ImGuiDrawCommand[] Commands { get; init; } = Array.Empty<ImGuiDrawCommand>();
     public Vector2 DisplaySize { get; init; }
+    public Vector2 DisplayFramebufferScale { get; init; }
 
     public int TotalVertexCount => Vertices.Length;
     public int TotalIndexCount => Indices.Length;
