@@ -24,8 +24,8 @@ public class EidolonEditor
                 FlagImageUsage.ColorAttachment | FlagImageUsage.Sampled));
 
         var postColor = graph.CreateImage("PostColor",
-            GraphImageDescription.Create(ImageFormat.Rgba16Float,
-                FlagImageUsage.ColorAttachment | FlagImageUsage.Sampled));
+        GraphImageDescription.Create(ImageFormat.Rgba16Float,
+        FlagImageUsage.ColorAttachment | FlagImageUsage.Sampled));
 
         var backbuffer = graph.ImportImage("Backbuffer",
             GraphImageDescription.Create(ImageFormat.Bgra8Unorm,
@@ -33,13 +33,13 @@ public class EidolonEditor
 
         graph.AddPass("Geometry", RenderPassType.Geometry)
             .Write(sceneColor);
-        
+
         graph.AddPass("PostProcess", RenderPassType.PostProcess)
             .Read(sceneColor)
             .Write(postColor);
 
 
-        graph.AddImGuiPass(postColor, backbuffer);
+        graph.AddPass("ImGui", RenderPassType.Ui).Read(postColor).Write(backbuffer);
        
         graph.AddPass("Present", RenderPassType.Present)
             .Read(backbuffer);

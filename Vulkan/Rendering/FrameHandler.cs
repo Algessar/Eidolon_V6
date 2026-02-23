@@ -38,7 +38,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     private Dictionary<ulong, string> _fenceNames = new();
 
     public bool _framebufferResized { get; set; }
-    private bool LOG_RENDER_GRAPH = true;
+    private bool LOG_RENDER_GRAPH = false;
 
     public FrameHandler(VulkanMaster master)
     {
@@ -198,29 +198,23 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             // Debug.Log($"UI Pass ClearColor: {execution.ClearColor}, Color value: {clearValues[0].Color.Float32_0},{clearValues[0].Color.Float32_1},{clearValues[0].Color.Float32_2},{clearValues[0].Color.Float32_3}");
             _master.Vk.CmdBeginRenderPass(cmd, in beginInfo, SubpassContents.Inline);
 
-            //NOTE: DEBUG
-            LOG_RENDER_GRAPH = true;
-            if(LOG_RENDER_GRAPH)
+            // Inside ExecutePasses, after CmdBeginRenderPass for the UI pass:
+            if (pass.Type == RenderPassType.Ui)
             {
-                Debug.Log("Clearing color attachment in UI pass for debugging", VALIDATION_LAYERS.WARNING);
-                if (pass.Type == RenderPassType.Ui)
+                var clearRect = new ClearRect
                 {
-                    var clearRect = new ClearRect
-                    {
-                        Rect = new Rect2D(new Offset2D(0, 0), execution.Extent),
-                        BaseArrayLayer = 0,
-                        LayerCount = 1
-                    };
-                    var clearAttachment = new ClearAttachment
-                    {
-                        AspectMask = ImageAspectFlags.ColorBit,
-                        ColorAttachment = 0,
-                        ClearValue = new ClearValue { Color = new ClearColorValue(1f, 0f, 0f, 1f) }
-                    };
-                    _master.Vk.CmdClearAttachments(cmd, 1, &clearAttachment, 1, &clearRect);
-                }
+                    Rect = new Rect2D(new Offset2D(0, 0), execution.Extent),
+                    BaseArrayLayer = 0,
+                    LayerCount = 1
+                };
+                var clearAttachment = new ClearAttachment
+                {
+                    AspectMask = ImageAspectFlags.ColorBit,
+                    ColorAttachment = 0,
+                    ClearValue = new ClearValue { Color = new ClearColorValue(0.1f, 0.1f, 0.1f, 1f) } // dark gray
+                };
+                _master.Vk.CmdClearAttachments(cmd, 1, &clearAttachment, 1, &clearRect);
             }
-            // LOG_RENDER_GRAPH = false;
             
             if (pass.Type is not RenderPassType.Present)
             {
@@ -267,7 +261,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         var scissor = submission.ScissorPolicy == SubmissionScissorPolicy.Explicit ? submission.Scissor : passScissor;
         _master.Vk.CmdSetScissor(cmd, 0, 1, &scissor);
 
-        if (_currentFrame == 0)
+        if (_currentFrame == 0 && LOG_RENDER_GRAPH)
         {
             Debug.Log(
                 $"Submission vertex count: {submission.VertexCount}, index count: {submission.IndexCount}, instance count: {submission.InstanceCount}",
@@ -342,6 +336,14 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         if (_frameActive)
             throw new Exception("BeginFrame called while frame active.");
 
+        var framebufferSize = _master.GetWindow.FramebufferSize;
+        if (framebufferSize.X > 0 && framebufferSize.Y > 0 &&
+            ((uint)framebufferSize.X != _swapchainHandler.Extent.Width ||
+             (uint)framebufferSize.Y != _swapchainHandler.Extent.Height))
+        {
+            _framebufferResized = true;
+        }
+        
         var device = _master.VulkanDevice.Device;
         var vk = _master.Vk;
 
@@ -365,7 +367,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             _waitSemaphore[_currentFrame],
             default,
             out uint imageIndex);
-
+        
         switch (acquireResult)
         {
             case Result.ErrorOutOfDateKhr:
@@ -404,8 +406,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         _graphResourceRuntimeManager.ResolveImportedGraphResources(_compiledGraph, _importMap, _swapchainHandler,
             _currentImageIndex);
-        
-        
 
         fixed (Fence* frameFence = &_inFlightFences[_currentFrame])
         {
@@ -414,7 +414,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         // var clearColor = new Vector4(0.0f, 0.0f, 0.0f, 1.0f);
         vk.ResetCommandBuffer(cmd, 0);
-
+        
         var beginInfo = new CommandBufferBeginInfo
         {
             SType = StructureType.CommandBufferBeginInfo
@@ -580,15 +580,30 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
     private bool RecreateSwapchain(in PipelineData pipelineData)
     {
+        Debug.Log("Recreating swapchain", VALIDATION_LAYERS.INFO);
+        
         if (!_swapchainHandler.RecreateSwapchain(pipelineData.RenderPass, pipelineData.HasDepth))
         {
             _framebufferResized = true;
             return false;
         }
 
-        _framebufferResized = false;
+        // _framebufferResized = false;
 
         _swapchainHandler = _master.SwapchainHandler;
+        
+        var fb = _master.GetWindow.FramebufferSize;
+        if (fb is { X: > 0, Y: > 0 } &&
+            ((uint)fb.X != _swapchainHandler.Extent.Width || (uint)fb.Y != _swapchainHandler.Extent.Height))
+        {
+            _framebufferResized = true;
+            Debug.Log(
+                $"Swapchain recreate deferred: window fb {fb.X}x{fb.Y} vs swapchain {_swapchainHandler.Extent.Width}x{_swapchainHandler.Extent.Height}",
+                VALIDATION_LAYERS.INFO);
+            return false;
+        }
+
+        _framebufferResized = false;
 
         _imageCount = _swapchainHandler.ImageCount;
         _imagesInFlight = new Fence[_imageCount];

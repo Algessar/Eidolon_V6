@@ -20,6 +20,8 @@ internal sealed unsafe class GraphResourceRuntimeManager
     private readonly Dictionary<uint, GraphImageRuntime> _graphImages = new();
     private readonly Dictionary<uint, CompiledResource> _resourceLookup = new();
 
+    private readonly bool DEBUG = false;
+
     public GraphResourceRuntimeManager(VulkanMaster master)
     {
         _master = master;
@@ -32,13 +34,16 @@ internal sealed unsafe class GraphResourceRuntimeManager
 
     public void ClearResourceLookup() => _resourceLookup.Clear();
 
-    public bool TryGetResource(uint handle, out CompiledResource resource) => _resourceLookup.TryGetValue(handle, out resource);
+    public bool TryGetResource(uint handle, out CompiledResource resource) =>
+        _resourceLookup.TryGetValue(handle, out resource);
 
-    public bool TryGetRuntime(uint handle, out GraphImageRuntime runtime) => _graphImages.TryGetValue(handle, out runtime);
+    public bool TryGetRuntime(uint handle, out GraphImageRuntime runtime) =>
+        _graphImages.TryGetValue(handle, out runtime);
 
     public void SetRuntime(uint handle, in GraphImageRuntime runtime) => _graphImages[handle] = runtime;
 
-    public void EnsureGraphResources(CompiledRenderGraph graph, in SwapchainHandler swapchainHandler, bool logRenderGraph)
+    public void EnsureGraphResources(CompiledRenderGraph graph, in SwapchainHandler swapchainHandler,
+        bool logRenderGraph)
     {
         foreach (var resource in graph.Resources)
         {
@@ -89,11 +94,8 @@ internal sealed unsafe class GraphResourceRuntimeManager
         _graphImages.Clear();
     }
 
-    public void ResolveImportedGraphResources(
-        CompiledRenderGraph? compiledGraph,
-        GraphResourceImportMap importMap,
-        in SwapchainHandler swapchainHandler,
-        uint currentImageIndex)
+    public void ResolveImportedGraphResources(CompiledRenderGraph? compiledGraph, GraphResourceImportMap importMap,
+        in SwapchainHandler swapchainHandler, uint currentImageIndex)
     {
         if (compiledGraph is null)
             return;
@@ -106,14 +108,18 @@ internal sealed unsafe class GraphResourceRuntimeManager
             if (!importMap.TryResolve(resource, swapchainHandler, currentImageIndex, out var imageData))
                 continue;
 
-            // var initialLayout = (resource.Description.Usage & FlagImageUsage.Present) != 0
-            //     ? ImageLayout.PresentSrcKhr
-            //     : ImageLayout.ColorAttachmentOptimal;
-            var initialLayout = ImageLayout.Undefined; // ✅ matches reality after recreation
-            
-            Debug.Log($"Initial layout for imported resource '{resource.Name}' is {initialLayout}.");
-            
-            Debug.Log($"Resolved imported resource '{resource.Name}' ({imageData.Extent.Width}x{imageData.Extent.Height}) format={imageData.Format} usage={resource.Description.Usage}");
+            var initialLayout = (resource.Description.Usage & FlagImageUsage.Present) != 0
+                ? ImageLayout.PresentSrcKhr
+                : ImageLayout.ColorAttachmentOptimal;
+
+            if (DEBUG)
+            {
+                Debug.Log($"Initial layout for imported resource '{resource.Name}' is {initialLayout}.");
+            Debug.Log($"Resolved imported resource '{resource.Name}' ({imageData.Extent.Width}x{imageData.Extent.Height}) " +
+                      $"format={imageData.Format} usage={resource.Description.Usage}");
+            }
+
+
 
             _graphImages[resource.Handle.Handle] = new GraphImageRuntime
             {
@@ -126,8 +132,11 @@ internal sealed unsafe class GraphResourceRuntimeManager
                 Usage = resource.Description.Usage,
                 CurrentLayout = initialLayout,
             };
-            
-            Debug.Log($"GraphImageRuntime CurrentLayout: {_graphImages[resource.Handle.Handle].CurrentLayout}");
+
+            if (DEBUG)
+            {
+                Debug.Log($"GraphImageRuntime CurrentLayout: {_graphImages[resource.Handle.Handle].CurrentLayout}");
+            }
         }
     }
 
@@ -161,10 +170,12 @@ internal sealed unsafe class GraphResourceRuntimeManager
         {
             SType = StructureType.MemoryAllocateInfo,
             AllocationSize = memRequirements.Size,
-            MemoryTypeIndex = _master.VulkanDevice.FindMemoryType(memRequirements.MemoryTypeBits, MemoryPropertyFlags.DeviceLocalBit),
+            MemoryTypeIndex =
+                _master.VulkanDevice.FindMemoryType(memRequirements.MemoryTypeBits, MemoryPropertyFlags.DeviceLocalBit),
         };
 
-        if (_master.Vk.AllocateMemory(_master.VulkanDevice.Device, in allocInfo, null, out var memory) != Result.Success)
+        if (_master.Vk.AllocateMemory(_master.VulkanDevice.Device, in allocInfo, null, out var memory) !=
+            Result.Success)
         {
             _master.Vk.DestroyImage(_master.VulkanDevice.Device, image, null);
             throw new Exception($"Failed to allocate graph image memory for resource '{resource.Name}'.");
@@ -200,7 +211,10 @@ internal sealed unsafe class GraphResourceRuntimeManager
             throw new Exception($"Failed to create graph image view for resource '{resource.Name}'.");
         }
 
-        Debug.Log($"[RG] Allocated runtime image '{resource.Name}' ({extent.Width}x{extent.Height}) format={format} usage={usage}");
+        if (DEBUG)
+        {
+            Debug.Log($"[RG] Allocated runtime image '{resource.Name}' ({extent.Width}x{extent.Height}) format={format} usage={usage}");
+        }
 
         return new GraphImageRuntime
         {
@@ -223,7 +237,8 @@ internal sealed unsafe class GraphResourceRuntimeManager
             ImageFormat.Rgba16Float => Format.R16G16B16A16Sfloat,
             ImageFormat.D24UnormS8Uint => Format.D24UnormS8Uint,
             ImageFormat.D32Float => Format.D32Sfloat,
-            _ => throw new ArgumentOutOfRangeException(nameof(format), format, "Unsupported render-graph image format."),
+            _ => throw new ArgumentOutOfRangeException(nameof(format), format,
+                "Unsupported render-graph image format."),
         };
     }
 

@@ -7,7 +7,7 @@ internal unsafe class PassExecutionFactory(VulkanMaster master, Func<uint, PassA
     private readonly Dictionary<PassExecutionKey, RenderPass> _renderPassCache = new();
     private readonly Dictionary<FramebufferCacheKey, Framebuffer> _framebufferCache = new();
 
-    private bool DEBUG;
+    private bool DEBUG = false;
 
     public PassExecutionContext GetOrCreate(in CompiledPass pass, in CompiledRenderGraph compiledGraph, uint currentImageIndex)
     {
@@ -20,8 +20,11 @@ internal unsafe class PassExecutionFactory(VulkanMaster master, Func<uint, PassA
         var resources = compiledGraph.Resources.ToDictionary(r => r.Handle.Handle, r => r);
 
         var colorTarget = ResolveColorTarget(pass, resources);
-        
-        Debug.Log($"Pass '{pass.Name}': colorTarget {colorTarget.Name} :: ColorTarget Handle: {colorTarget.Handle.Handle}");
+
+        if (DEBUG)
+        {
+            Debug.Log($"Pass '{pass.Name}': colorTarget {colorTarget.Name} :: ColorTarget Handle: {colorTarget.Handle.Handle}");
+        }
         
         var depthTarget = ResolveDepthTarget(pass, resources);
 
@@ -32,12 +35,10 @@ internal unsafe class PassExecutionFactory(VulkanMaster master, Func<uint, PassA
             ? resolveAttachment(depthTarget.Handle.Handle)
             : null;
 
-        DEBUG = false;
         if(DEBUG)
         {
             Debug.Log($"Pass '{pass.Name}': FirstUsePass={colorTarget.FirstUsePass}, ExecutionIndex={pass.ExecutionIndex}, IsFirstUse={colorTarget.FirstUsePass == pass.ExecutionIndex}");
         }
-        DEBUG = true;
         
         var key = BuildKey(pass, colorTarget, colorRuntime, depthTarget, depthRuntime);
         var renderPass = GetOrCreateRenderPass(key);
@@ -118,12 +119,14 @@ internal unsafe class PassExecutionFactory(VulkanMaster master, Func<uint, PassA
         {
             throw new Exception($"Failed to create framebuffer for pass '{pass.Name}'.");
         }
+
+        if(DEBUG)
+        {
+            Debug.Log($"Created framebuffer {framebuffer.Handle} for pass '{pass.Name}'", VALIDATION_LAYERS.WARNING);
+            //IMAGE HANDLE
+            Debug.Log($"Framebuffer color attachment handle: {colorRuntime.View.Handle}", VALIDATION_LAYERS.WARNING);
+        }
         
-        DEBUG = true;
-        Debug.Log($"Created framebuffer {framebuffer.Handle} for pass '{pass.Name}'", VALIDATION_LAYERS.WARNING);
-        //IMAGE HANDLE
-        Debug.Log($"Framebuffer color attachment handle: {colorRuntime.View.Handle}", VALIDATION_LAYERS.WARNING);
-        DEBUG = false;
 
         _framebufferCache[framebufferKey] = framebuffer;
         return framebuffer;

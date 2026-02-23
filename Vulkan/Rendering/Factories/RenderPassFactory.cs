@@ -32,8 +32,8 @@ internal unsafe class RenderPassFactory(VulkanMaster master)
             Samples = samples,
             LoadOp = key.LoadOp,
             StoreOp = key.StoreOp,
-            StencilLoadOp = AttachmentLoadOp.DontCare,
-            StencilStoreOp = AttachmentStoreOp.DontCare,
+            StencilLoadOp = key.StencilLoadOp,
+            StencilStoreOp = key.StencilStoreOp,
             InitialLayout = key.InitialLayout,
             FinalLayout = key.FinalLayout
         };

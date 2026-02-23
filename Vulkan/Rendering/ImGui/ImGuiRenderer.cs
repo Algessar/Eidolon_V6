@@ -511,16 +511,15 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
                 continue;
 
             var clipRect = drawCommand.ClipRect;
-            // var minX = Math.Clamp((int)clipRect.X, 0, (int)displayWidth);
-            // var minY = Math.Clamp((int)clipRect.Y, 0, (int)displayHeight);
-            // var maxX = Math.Clamp((int)clipRect.Z, minX, (int)displayWidth);
-            // var maxY = Math.Clamp((int)clipRect.W, minY, (int)displayHeight);
+
             var minX = Math.Clamp((int)(clipRect.X * framebufferScale.X), 0, (int)displayWidth);
             var minY = Math.Clamp((int)(clipRect.Y * framebufferScale.Y), 0, (int)displayHeight);
             var maxX = Math.Clamp((int)(clipRect.Z * framebufferScale.X), minX, (int)displayWidth);
             var maxY = Math.Clamp((int)(clipRect.W * framebufferScale.Y), minY, (int)displayHeight);
             if (maxX <= minX || maxY <= minY)
                 continue;
+            
+            // Debug.Log($"[ImGui] scissor: ({minX},{minY})-({maxX},{maxY})  displaySize: {displayWidth}x{displayHeight}", VALIDATION_LAYERS.WARNING);
 
             submissions.Add(new DrawSubmission
             {

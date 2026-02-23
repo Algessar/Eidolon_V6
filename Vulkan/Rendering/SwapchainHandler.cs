@@ -12,6 +12,7 @@ internal unsafe class SwapchainHandler
     
     private SurfaceKHR _surfaceKhr;
     private SwapchainKHR _swapchainKhr;
+    public SwapchainKHR SwapchainKhr => _swapchainKhr;
     private KhrSwapchain _khrSwapchain;
     private KhrSurface _khrSurface;
     private Format _swapchainImageFormat;

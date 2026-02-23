@@ -7,7 +7,7 @@ internal sealed unsafe class GraphBarrierHandler
 {
     private readonly VulkanMaster _master;
     private readonly GraphResourceRuntimeManager _runtimeManager;
-    private readonly bool _logRenderGraph;
+    private readonly bool _logRenderGraph = true;
 
     public GraphBarrierHandler(VulkanMaster master, GraphResourceRuntimeManager runtimeManager, bool logRenderGraph)
     {
@@ -104,8 +104,9 @@ internal sealed unsafe class GraphBarrierHandler
             &barrier);
 
         if (_logRenderGraph)
+        {
             Debug.Log($"[RG] Barrier: {resource.Name} {barrier.OldLayout} -> ColorAttachmentOptimal");
-
+        }
         runtime.CurrentLayout = ImageLayout.ColorAttachmentOptimal;
     }
 
@@ -147,8 +148,9 @@ internal sealed unsafe class GraphBarrierHandler
             &barrier);
 
         if (_logRenderGraph)
+        {
             Debug.Log($"[RG] Barrier: {resource.Name} ColorAttachmentOptimal -> ShaderReadOnlyOptimal");
-
+        }
         runtime.CurrentLayout = ImageLayout.ShaderReadOnlyOptimal;
     }
 
@@ -192,8 +194,9 @@ internal sealed unsafe class GraphBarrierHandler
             &barrier);
 
         if (_logRenderGraph)
+        {
             Debug.Log($"[RG] Barrier: {resource.Name} ColorAttachmentOptimal -> PresentSrcKHR");
-
+        }
         runtime.CurrentLayout = ImageLayout.PresentSrcKhr;
     }
 
@@ -222,7 +225,11 @@ internal sealed unsafe class GraphBarrierHandler
             },
         };
 
-        Debug.Log($"[Barrier] Imported {resource.Name}: transitioning from {runtime.CurrentLayout} to ColorAttachmentOptimal");
+        if (_logRenderGraph)
+        {
+            Debug.Log($"[Barrier] Imported {resource.Name}: transitioning from {runtime.CurrentLayout} to ColorAttachmentOptimal");
+        }        
+        
         _master.Vk.CmdPipelineBarrier(
             cmd,
             runtime.CurrentLayout == ImageLayout.PresentSrcKhr
@@ -238,8 +245,9 @@ internal sealed unsafe class GraphBarrierHandler
             &barrier);
 
         if (_logRenderGraph)
+        {
             Debug.Log($"[RG] Barrier: {resource.Name} {barrier.OldLayout} -> ColorAttachmentOptimal (imported)");
-
+        }
         runtime.CurrentLayout = ImageLayout.ColorAttachmentOptimal;
     }
 }

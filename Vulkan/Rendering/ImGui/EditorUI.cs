@@ -74,18 +74,16 @@ internal class EditorUI
             ImGuiWindowFlags.NoMove |
             ImGuiWindowFlags.NoBringToFrontOnFocus |
             ImGuiWindowFlags.NoNavFocus |
-            ImGuiWindowFlags.NoBackground |
-            ImGuiWindowFlags.NoDecoration 
+            ImGuiWindowFlags.AlwaysAutoResize 
+            // | ImGuiWindowFlags.NoDecoration 
             //| ImGuiWindowFlags.MenuBar
             
         );
         ImGui.PopStyleVar(3);
         
         uint dockspaceId = ImGui.GetID("MainDockSpace");
-        ImGui.DockSpace(dockspaceId, Vector2.Zero);
+        ImGui.DockSpace(dockspaceId, Vector2.Zero, ImGuiDockNodeFlags.PassthruCentralNode);
         ImGui.End();
-        
-        
     }
 }
 
