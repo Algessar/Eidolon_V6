@@ -157,6 +157,7 @@ internal class VulkanMaster
             ShouldSwapAutomatically = true,
             VSync = true,
             WindowBorder = WindowBorder.Resizable,
+            WindowState = WindowState.Maximized
         };
         
         _window = Window.Create(opts);
