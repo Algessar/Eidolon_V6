@@ -95,8 +95,8 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         FinalizeFrame();
         
     }
-    
-    public void BuildUI()
+
+    private void BuildUI()
     {
         ImGui.Begin("Eidolon / Render Graph");
         ImGui.Text("ImGui is integrated in the frame lifecycle.");
@@ -110,7 +110,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         // }
     }
 
-    public void FinalizeFrame()
+    private void FinalizeFrame()
     {
         ImGui.Render();
         var drawData = ImGui.GetDrawData();
@@ -122,7 +122,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         CurrentDrawData = ConvertDrawData(drawData);
     }
 
-    private static ImGuiDrawData ConvertDrawData(ImDrawDataPtr drawData)
+    private ImGuiDrawData ConvertDrawData(ImDrawDataPtr drawData)
     {
         if (!drawData.Valid || drawData.CmdListsCount == 0 || drawData.TotalVtxCount <= 0 || drawData.TotalIdxCount <= 0)
         {

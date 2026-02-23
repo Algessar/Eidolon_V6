@@ -179,8 +179,8 @@ public sealed class RenderGraphBuilder
                 
                 var executionPass = executionIndexByOriginal[originalPass];
                 
-                firstUse = System.Math.Min(firstUse, executionPass);
-                lastUse = System.Math.Max(lastUse, executionPass);
+                firstUse = Math.Min(firstUse, executionPass);
+                lastUse = Math.Max(lastUse, executionPass);
             }
 
             if (firstUse == int.MaxValue)

@@ -4,26 +4,41 @@ namespace Eidolon.Vulkan;
 
 internal unsafe class PassExecutionFactory(VulkanMaster master, Func<uint, PassAttachmentRuntime?> resolveAttachment)
 {
-    private readonly VulkanMaster _master = master;
-    private readonly Func<uint, PassAttachmentRuntime?> _resolveAttachment = resolveAttachment;
-
     private readonly Dictionary<PassExecutionKey, RenderPass> _renderPassCache = new();
     private readonly Dictionary<FramebufferCacheKey, Framebuffer> _framebufferCache = new();
 
+    private bool DEBUG;
+
     public PassExecutionContext GetOrCreate(in CompiledPass pass, in CompiledRenderGraph compiledGraph, uint currentImageIndex)
     {
+        DEBUG = false;
+        if(DEBUG)
+        {
+            Debug.Log($"Calling GetOrCreate for pass {pass.Name}");
+        }        
+        DEBUG = true;
         var resources = compiledGraph.Resources.ToDictionary(r => r.Handle.Handle, r => r);
 
         var colorTarget = ResolveColorTarget(pass, resources);
+        
+        Debug.Log($"Pass '{pass.Name}': colorTarget {colorTarget.Name} :: ColorTarget Handle: {colorTarget.Handle.Handle}");
+        
         var depthTarget = ResolveDepthTarget(pass, resources);
 
-        var colorRuntime = _resolveAttachment(colorTarget.Handle.Handle)
+        var colorRuntime = resolveAttachment(colorTarget.Handle.Handle)
             ?? throw new InvalidOperationException($"Missing runtime attachment for color target {colorTarget.Name}.");
 
         var depthRuntime = depthTarget is not null
-            ? _resolveAttachment(depthTarget.Handle.Handle)
+            ? resolveAttachment(depthTarget.Handle.Handle)
             : null;
 
+        DEBUG = false;
+        if(DEBUG)
+        {
+            Debug.Log($"Pass '{pass.Name}': FirstUsePass={colorTarget.FirstUsePass}, ExecutionIndex={pass.ExecutionIndex}, IsFirstUse={colorTarget.FirstUsePass == pass.ExecutionIndex}");
+        }
+        DEBUG = true;
+        
         var key = BuildKey(pass, colorTarget, colorRuntime, depthTarget, depthRuntime);
         var renderPass = GetOrCreateRenderPass(key);
 
@@ -34,6 +49,7 @@ internal unsafe class PassExecutionFactory(VulkanMaster master, Func<uint, PassA
             pass,
             currentImageIndex);
 
+        
         return new PassExecutionContext(
             renderPass,
             framebuffer,
@@ -49,10 +65,10 @@ internal unsafe class PassExecutionFactory(VulkanMaster master, Func<uint, PassA
         {
             if (framebuffer.Handle != 0)
             {
-                _master.Vk.DestroyFramebuffer(_master.VulkanDevice.Device, framebuffer, null);
+                master.Vk.DestroyFramebuffer(master.VulkanDevice.Device, framebuffer, null);
             }
         }
-
+        
         _framebufferCache.Clear();
     }
 
@@ -98,10 +114,16 @@ internal unsafe class PassExecutionFactory(VulkanMaster master, Func<uint, PassA
             Layers = 1
         };
 
-        if (_master.Vk.CreateFramebuffer(_master.VulkanDevice.Device, in framebufferInfo, null, out var framebuffer) != Result.Success)
+        if (master.Vk.CreateFramebuffer(master.VulkanDevice.Device, in framebufferInfo, null, out var framebuffer) != Result.Success)
         {
             throw new Exception($"Failed to create framebuffer for pass '{pass.Name}'.");
         }
+        
+        DEBUG = true;
+        Debug.Log($"Created framebuffer {framebuffer.Handle} for pass '{pass.Name}'", VALIDATION_LAYERS.WARNING);
+        //IMAGE HANDLE
+        Debug.Log($"Framebuffer color attachment handle: {colorRuntime.View.Handle}", VALIDATION_LAYERS.WARNING);
+        DEBUG = false;
 
         _framebufferCache[framebufferKey] = framebuffer;
         return framebuffer;
@@ -114,12 +136,12 @@ internal unsafe class PassExecutionFactory(VulkanMaster master, Func<uint, PassA
             return existing;
         }
 
-        var renderPass = _master.RenderPassFactory.CreateRenderPass(key);
+        var renderPass = master.RenderPassFactory.CreateRenderPass(key);
         _renderPassCache[key] = renderPass;
         return renderPass;
     }
 
-    private static PassExecutionKey BuildKey(
+    private PassExecutionKey BuildKey(
         in CompiledPass pass,
         in CompiledResource colorTarget,
         in PassAttachmentRuntime colorRuntime,
@@ -147,7 +169,7 @@ internal unsafe class PassExecutionFactory(VulkanMaster master, Func<uint, PassA
             SampleCountFlags.Count1Bit);
     }
 
-    private static CompiledResource ResolveColorTarget(in CompiledPass pass, IReadOnlyDictionary<uint, CompiledResource> resources)
+    private CompiledResource ResolveColorTarget(in CompiledPass pass, IReadOnlyDictionary<uint, CompiledResource> resources)
     {
         foreach (var write in pass.Writes)
         {
@@ -169,8 +191,9 @@ internal unsafe class PassExecutionFactory(VulkanMaster master, Func<uint, PassA
 
         throw new InvalidOperationException($"Pass '{pass.Name}' has no graph-driven color target.");
     }
-
-    private static CompiledResource? ResolveDepthTarget(in CompiledPass pass, IReadOnlyDictionary<uint, CompiledResource> resources)
+    
+    // NOTE: Why is this static?
+    private CompiledResource? ResolveDepthTarget(in CompiledPass pass, IReadOnlyDictionary<uint, CompiledResource> resources)
     {
         foreach (var write in pass.Writes)
         {
@@ -184,7 +207,8 @@ internal unsafe class PassExecutionFactory(VulkanMaster master, Func<uint, PassA
         return null;
     }
 
-    private static Format ResolveVkFormat(ImageFormat format)
+    // NOTE: Why is this static? And why is it unused? 
+    private Format ResolveVkFormat(ImageFormat format)
     {
         return format switch
         {

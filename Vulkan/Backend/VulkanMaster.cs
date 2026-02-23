@@ -68,7 +68,7 @@ internal class VulkanMaster
             SetupFrameChain();
         };
 
-        _window.Render += (double delta) =>
+        _window.Render += delta =>
         {
             if (FrameHandler is null)
             {

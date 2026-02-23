@@ -1,5 +1,4 @@
 ﻿using System.Numerics;
-using ImGuiNET;
 using Silk.NET.Maths;
 using Silk.NET.Vulkan;
 using Semaphore = Silk.NET.Vulkan.Semaphore;
@@ -13,7 +12,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
     private readonly PassExecutionFactory _passExecutionFactory;
     private readonly GraphResourceRuntimeManager _graphResourceRuntimeManager;
-    private readonly GraphBarrierPlanner _graphBarrierPlanner;
+    private readonly GraphBarrierHandler _graphBarrierHandler;
 
     [Header("Resources")] private CommandBuffer[] _commandBuffer;
 
@@ -39,7 +38,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     private Dictionary<ulong, string> _fenceNames = new();
 
     public bool _framebufferResized { get; set; }
-    private readonly bool LOG_RENDER_GRAPH = false;
+    private bool LOG_RENDER_GRAPH = true;
 
     public FrameHandler(VulkanMaster master)
     {
@@ -49,7 +48,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         _imageCount = _swapchainHandler.ImageCount;
         _passExecutionFactory = new PassExecutionFactory(master, ResolvePassAttachment);
         _graphResourceRuntimeManager = new GraphResourceRuntimeManager(master);
-        _graphBarrierPlanner = new GraphBarrierPlanner(master, _graphResourceRuntimeManager, LOG_RENDER_GRAPH);
+        _graphBarrierHandler = new GraphBarrierHandler(master, _graphResourceRuntimeManager, LOG_RENDER_GRAPH);
 
         Initialize();
         _commandBuffer = _master.CommandHandler.AllocateCommandBuffers(_maxFramesInFlight);
@@ -116,6 +115,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
     private void ExecutePasses(in DrawData data)
     {
+        // Debug.Log($"Swapchain Extent: {_swapchainHandler.Extent.Width}x{_swapchainHandler.Extent.Height}");
         if (_compiledGraph is null)
             throw new Exception("Draw called without compiled graph.");
 
@@ -129,8 +129,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         _master.Vk.CmdSetViewport(cmd, 0, 1, &passViewport);
         _master.Vk.CmdSetScissor(cmd, 0, 1, &passScissor);
 
-        var submissions =
-            data.Submissions ?? Array.Empty<DrawSubmission>(); // NOTE: Rider warns that left operand is never null.
+        var submissions = data.Submissions; // ?? Array.Empty<DrawSubmission>(); // NOTE: Rider warns that left operand is never null.
 
         foreach (var pass in _compiledGraph.Passes)
         {
@@ -151,7 +150,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 Debug.Log($"RenderPass used in FrameHandler: {data.PipelineData.RenderPass.Handle}");
             }
 
-            _graphBarrierPlanner.TransitionLayouts(cmd, pass);
+            _graphBarrierHandler.TransitionLayouts(cmd, pass);
             if (pass.Type == RenderPassType.Present)
             {
                 // Note: this looks unnecessary tbh
@@ -161,12 +160,13 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             }
 
             var execution = _passExecutionFactory.GetOrCreate(pass, _compiledGraph, _currentImageIndex);
+            Debug.Log($"Pass {pass.Name} render area: {execution.Extent.Width}x{execution.Extent.Height}");
 
             var clearValues =
                 stackalloc ClearValue[2]; //NOTE: CA2014: Potential stack overflow. Move the stackalloc out of the loop.
 
             clearValues[0] = execution.ClearColor
-                ? new ClearValue { Color = new ClearColorValue(1f, 1f, 1f, 1f) }
+                ? new ClearValue { Color = new ClearColorValue(1f, 0f, 0f, 0f) }
                 : new ClearValue();
 
             uint clearValueCount = 1;
@@ -188,9 +188,40 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 ClearValueCount = clearValueCount,
                 PClearValues = clearValues
             };
-
+            
+            uint swapchainHandle = _importMap.GetHandleForKind(ImportedResourceKind.SwapchainColor);
+            if (swapchainHandle != 0 && _graphResourceRuntimeManager.TryGetRuntime(swapchainHandle, out var runtime))
+            {
+                Debug.Log($"[UI Pre-RP] Swapchain tracked layout = {runtime.CurrentLayout}");
+            }
+            
+            // Debug.Log($"UI Pass ClearColor: {execution.ClearColor}, Color value: {clearValues[0].Color.Float32_0},{clearValues[0].Color.Float32_1},{clearValues[0].Color.Float32_2},{clearValues[0].Color.Float32_3}");
             _master.Vk.CmdBeginRenderPass(cmd, in beginInfo, SubpassContents.Inline);
 
+            //NOTE: DEBUG
+            LOG_RENDER_GRAPH = true;
+            if(LOG_RENDER_GRAPH)
+            {
+                Debug.Log("Clearing color attachment in UI pass for debugging", VALIDATION_LAYERS.WARNING);
+                if (pass.Type == RenderPassType.Ui)
+                {
+                    var clearRect = new ClearRect
+                    {
+                        Rect = new Rect2D(new Offset2D(0, 0), execution.Extent),
+                        BaseArrayLayer = 0,
+                        LayerCount = 1
+                    };
+                    var clearAttachment = new ClearAttachment
+                    {
+                        AspectMask = ImageAspectFlags.ColorBit,
+                        ColorAttachment = 0,
+                        ClearValue = new ClearValue { Color = new ClearColorValue(1f, 0f, 0f, 1f) }
+                    };
+                    _master.Vk.CmdClearAttachments(cmd, 1, &clearAttachment, 1, &clearRect);
+                }
+            }
+            // LOG_RENDER_GRAPH = false;
+            
             if (pass.Type is not RenderPassType.Present)
             {
                 foreach (var submission in submissions)
@@ -373,6 +404,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
         _graphResourceRuntimeManager.ResolveImportedGraphResources(_compiledGraph, _importMap, _swapchainHandler,
             _currentImageIndex);
+        
+        
 
         fixed (Fence* frameFence = &_inFlightFences[_currentFrame])
         {
@@ -567,9 +600,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         _graphResourceRuntimeManager.DestroyGraphResources();
         _passExecutionFactory.Reset();
         
-        
-        
-        
         return true;
     }
 
@@ -589,7 +619,6 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             _signalSemaphore[i] = CreateSemaphore($"SignalSemaphore {i}");
         }
     }
-
 
     public void Dispose()
     {

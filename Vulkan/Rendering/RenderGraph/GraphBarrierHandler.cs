@@ -3,13 +3,13 @@
 namespace Eidolon.Vulkan;
 
 //TODO: rename to GraphBarrierHandler
-internal sealed unsafe class GraphBarrierPlanner
+internal sealed unsafe class GraphBarrierHandler
 {
     private readonly VulkanMaster _master;
     private readonly GraphResourceRuntimeManager _runtimeManager;
     private readonly bool _logRenderGraph;
 
-    public GraphBarrierPlanner(VulkanMaster master, GraphResourceRuntimeManager runtimeManager, bool logRenderGraph)
+    public GraphBarrierHandler(VulkanMaster master, GraphResourceRuntimeManager runtimeManager, bool logRenderGraph)
     {
         _master = master;
         _runtimeManager = runtimeManager;
@@ -222,6 +222,7 @@ internal sealed unsafe class GraphBarrierPlanner
             },
         };
 
+        Debug.Log($"[Barrier] Imported {resource.Name}: transitioning from {runtime.CurrentLayout} to ColorAttachmentOptimal");
         _master.Vk.CmdPipelineBarrier(
             cmd,
             runtime.CurrentLayout == ImageLayout.PresentSrcKhr

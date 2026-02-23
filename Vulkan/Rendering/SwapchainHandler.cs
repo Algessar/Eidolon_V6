@@ -116,10 +116,11 @@ internal unsafe class SwapchainHandler
             {
                 throw new Exception($"Failed to create image view {i}!");
             }
+            
+            Debug.Log($"Image view handle[{i}]: {_imageViews[i].Handle}", VALIDATION_LAYERS.INFO);
         }
     }
-
-
+    
      private void CreateDepthResources()
     {
         _depthFormat = Format.D32Sfloat;
@@ -474,21 +475,6 @@ internal unsafe class SwapchainHandler
     {
         if (_window.FramebufferSize.X == 0 || _window.FramebufferSize.Y == 0)
             return false;
-        
-        _khrSurface.GetPhysicalDeviceSurfaceCapabilities(_master.VulkanDevice.PhysicalDevice, _surfaceKhr,
-            out var surfaceCapabilities);
-
-        if (surfaceCapabilities.CurrentExtent.Width != uint.MaxValue)
-        {
-            var fbWidth = (uint)_window.FramebufferSize.X;
-            var fbHeight = (uint)_window.FramebufferSize.Y;
-
-            if (surfaceCapabilities.CurrentExtent.Width != fbWidth ||
-                surfaceCapabilities.CurrentExtent.Height != fbHeight)
-            {
-                return false;
-            }
-        }
 
         _master.Vk.DeviceWaitIdle(_master.VulkanDevice.Device);
 

@@ -106,9 +106,14 @@ internal sealed unsafe class GraphResourceRuntimeManager
             if (!importMap.TryResolve(resource, swapchainHandler, currentImageIndex, out var imageData))
                 continue;
 
-            var initialLayout = (resource.Description.Usage & FlagImageUsage.Present) != 0
-                ? ImageLayout.Undefined
-                : ImageLayout.PresentSrcKhr;
+            // var initialLayout = (resource.Description.Usage & FlagImageUsage.Present) != 0
+            //     ? ImageLayout.PresentSrcKhr
+            //     : ImageLayout.ColorAttachmentOptimal;
+            var initialLayout = ImageLayout.Undefined; // ✅ matches reality after recreation
+            
+            Debug.Log($"Initial layout for imported resource '{resource.Name}' is {initialLayout}.");
+            
+            Debug.Log($"Resolved imported resource '{resource.Name}' ({imageData.Extent.Width}x{imageData.Extent.Height}) format={imageData.Format} usage={resource.Description.Usage}");
 
             _graphImages[resource.Handle.Handle] = new GraphImageRuntime
             {
@@ -121,6 +126,8 @@ internal sealed unsafe class GraphResourceRuntimeManager
                 Usage = resource.Description.Usage,
                 CurrentLayout = initialLayout,
             };
+            
+            Debug.Log($"GraphImageRuntime CurrentLayout: {_graphImages[resource.Handle.Handle].CurrentLayout}");
         }
     }
 

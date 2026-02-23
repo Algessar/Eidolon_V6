@@ -114,6 +114,11 @@ internal unsafe class RenderPassFactory(VulkanMaster master)
 
             if (_master.Vk.CreateRenderPass(_master.VulkanDevice.Device, &renderPassInfo, null, out renderPass) != Result.Success)
                 throw new Exception("Failed to create render pass!");
+            
+            Debug.Log($"[RenderPass] Color format={attachments[0].Format}, " +
+                      $"loadOp={attachments[0].LoadOp}, " +
+                      $"initialLayout={attachments[0].InitialLayout}, " +
+                      $"finalLayout={attachments[0].FinalLayout}", VALIDATION_LAYERS.INFO);
         }
         else
         {
@@ -133,6 +138,11 @@ internal unsafe class RenderPassFactory(VulkanMaster master)
 
             if (_master.Vk.CreateRenderPass(_master.VulkanDevice.Device, &renderPassInfo, null, out renderPass) != Result.Success)
                 throw new Exception("Failed to create render pass!");
+            
+            Debug.Log($"[RenderPass] Color format={attachments[0].Format}, " +
+                      $"loadOp={attachments[0].LoadOp}, " +
+                      $"initialLayout={attachments[0].InitialLayout}," +
+                      $" finalLayout={attachments[0].FinalLayout}", VALIDATION_LAYERS.INFO);
         }
         
         _renderPassCache.Add(key, renderPass);
