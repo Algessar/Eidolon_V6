@@ -344,6 +344,12 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             _framebufferResized = true;
         }
         
+        if (IsWindowMinimized())
+        {
+            _frameActive = false;
+            return;
+        }
+        
         var device = _master.VulkanDevice.Device;
         var vk = _master.Vk;
 
@@ -371,7 +377,8 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         switch (acquireResult)
         {
             case Result.ErrorOutOfDateKhr:
-                RecreateSwapchain(data.PipelineData);
+                if (!IsWindowMinimized())
+                    RecreateSwapchain(data.PipelineData);
                 _frameActive = false;
                 return;
             case Result.SuboptimalKhr:
@@ -577,10 +584,18 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     #endregion Resolve
 
     #region Cleanup
+    
+    private bool IsWindowMinimized() => _master.GetWindow.FramebufferSize.X == 0 || _master.GetWindow.FramebufferSize.Y == 0;
 
     private bool RecreateSwapchain(in PipelineData pipelineData)
     {
         Debug.Log("Recreating swapchain", VALIDATION_LAYERS.INFO);
+        if (_swapchainHandler.Extent.Width <= 0 && _swapchainHandler.Extent.Height <= 0)
+        {
+            _framebufferResized = true;
+            return false;
+        }
+        
         
         if (!_swapchainHandler.RecreateSwapchain(pipelineData.RenderPass, pipelineData.HasDepth))
         {
