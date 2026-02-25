@@ -36,7 +36,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     public int LastCommandListCount { get; private set; }
     
     [Header("Debug")]
-    bool _showDemoWindow = true;
+    bool _showDemoWindow = false;
     
     [Header("UI and Input")]
     EditorUI _editorUI;
@@ -104,10 +104,10 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         ImGui.Checkbox("Show ImGui Demo Window", ref _showDemoWindow);
         ImGui.End();
 
-        // if (_showDemoWindow)
-        // {
-        //     ImGui.ShowDemoWindow(ref _showDemoWindow);
-        // }
+        if (_showDemoWindow)
+        {
+            ImGui.ShowDemoWindow(ref _showDemoWindow);
+        }
     }
 
     private void FinalizeFrame()
@@ -280,7 +280,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
 
     private void CreatePipeline(RenderPass renderPass)
     {
-        var resolvedRenderPass = ResolveRenderPass(renderPass);
+        var resolvedRenderPass = CreateRenderPassKey(renderPass);
 
         if (renderPass.Handle == 0)
         {
@@ -322,7 +322,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     }
     
     //NOTE: This seems wrong to me. Why is it a fallbackKey? Why would I even need that?
-    private RenderPass ResolveRenderPass(RenderPass renderPass)
+    private RenderPass CreateRenderPassKey(RenderPass renderPass)
     {
         if (renderPass.Handle != 0)
         {
@@ -331,7 +331,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         }
 
         var swapchain = _master.SwapchainHandler;
-        var fallbackKey = new RenderPassKey
+        var renderPassKey  = new RenderPassKey
         {
             ColorFormat = swapchain.SwapchainImageFormat,
             DepthFormat = Format.D32Sfloat,
@@ -345,7 +345,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
             FinalDepthLayout = ImageLayout.DepthStencilAttachmentOptimal,
         };
 
-        return _master.RenderPassFactory.CreateRenderPass(fallbackKey);
+        return _master.RenderPassFactory.CreateRenderPass(renderPassKey);
     }
     
     private void CreateFontAtlasTexture(byte* pixels, int width, int height, int bytesPerPixel)
@@ -523,10 +523,10 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
 
             submissions.Add(new DrawSubmission
             {
-                PassType = RenderPassType.Ui,
+                PassType = RenderPassType.UI,
                 PipelineData = _pipelineData,
                 DescriptorSet = _descriptorSet,
-                Topology = PrimitiveTopology.TriangleList,
+                // Topology = PrimitiveTopology.TriangleList,
                 VertexBuffer = vertexBuffer,
                 VertexOffset = 0,
                 IndexBuffer = indexBuffer,

@@ -50,6 +50,15 @@ internal class EditorUI
     public void Update()
     {
         DrawDockSpace();
+        DrawGameViewWindow();
+    }
+    
+    public uint DockspaceId { get; private set; }
+
+    private void DrawGameViewWindow()
+    {
+        ImGui.Begin("Eidolon / Game View");
+        ImGui.End();
     }
     
     private void DrawDockSpace()
@@ -57,11 +66,11 @@ internal class EditorUI
         var io = ImGui.GetIO();
         var viewport = ImGui.GetMainViewport();
         
-        // Use WorkPos / WorkSize instead of DisplaySize
         ImGui.SetNextWindowPos(viewport.WorkPos, ImGuiCond.Always);
         ImGui.SetNextWindowSize(viewport.WorkSize, ImGuiCond.Always);
         ImGui.SetNextWindowViewport(viewport.ID);
 
+        ImGui.PushStyleColor(ImGuiCol.WindowBg, new Vector4(0,0,0,1));
         ImGui.PushStyleVar(ImGuiStyleVar.WindowRounding, 0);
         ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 0);
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
@@ -74,12 +83,10 @@ internal class EditorUI
             ImGuiWindowFlags.NoMove |
             ImGuiWindowFlags.NoBringToFrontOnFocus |
             ImGuiWindowFlags.NoNavFocus |
-            ImGuiWindowFlags.AlwaysAutoResize 
-            // | ImGuiWindowFlags.NoDecoration 
-            //| ImGuiWindowFlags.MenuBar
-            
+            ImGuiWindowFlags.AlwaysAutoResize
         );
         ImGui.PopStyleVar(3);
+        ImGui.PopStyleColor();
         
         uint dockspaceId = ImGui.GetID("MainDockSpace");
         ImGui.DockSpace(dockspaceId, Vector2.Zero, ImGuiDockNodeFlags.PassthruCentralNode);

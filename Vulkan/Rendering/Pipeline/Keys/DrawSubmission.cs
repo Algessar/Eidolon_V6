@@ -22,13 +22,14 @@ internal struct DrawSubmission
     public PipelineData PipelineData;
     public DescriptorSet DescriptorSet;
 
-    public PrimitiveTopology Topology;
+    // public PrimitiveTopology Topology; //This doesn't belong here?
 
     public GpuBuffer VertexBuffer;
-    public ulong VertexOffset;
-
     public GpuBuffer IndexBuffer;
+    
+    public ulong VertexOffset;
     public ulong IndexOffset;
+
     public IndexType IndexType;
 
     public uint VertexCount;

@@ -12,7 +12,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     public VulkanMaster _master { get; }
     private SwapchainHandler _swapchainHandler;
 
-    private readonly PassExecutionFactory _passExecutionFactory;
+    private readonly PassExecutionHandler _passExecutionHandler;
     private readonly GraphResourceRuntimeManager _graphResourceRuntimeManager;
     private readonly GraphBarrierHandler _graphBarrierHandler;
 
@@ -48,7 +48,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         _master = master;
         _swapchainHandler = master.SwapchainHandler;
         _imageCount = _swapchainHandler.ImageCount;
-        _passExecutionFactory = new PassExecutionFactory(master, ResolvePassAttachment);
+        _passExecutionHandler = new PassExecutionHandler(master, ResolvePassAttachment);
         _graphResourceRuntimeManager = new GraphResourceRuntimeManager(master);
         _graphBarrierHandler = new GraphBarrierHandler(master, _graphResourceRuntimeManager, LOG_RENDER_GRAPH);
 
@@ -61,17 +61,9 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         Debug.Log("FrameHandler created.", VALIDATION_LAYERS.SUCCESS);
     }
 
-
-
     private void OnWindowResize(Vector2D<int> newSize)
     {
-        // if (newSize.X == 0 || newSize.Y == 0)
-        //     return;
-
         _framebufferResized = true;
-
-        // var io = ImGui.GetIO();
-        // io.DisplaySize = new Vector2(newSize.X, newSize.Y);
     }
 
     public void Initialize()
@@ -85,7 +77,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
     public void SetCompiledGraph(CompiledRenderGraph graph)
     {
         _graphResourceRuntimeManager.DestroyGraphResources();
-        _passExecutionFactory.Reset();
+        _passExecutionHandler.Reset();
 
         _compiledGraph = graph ?? throw new ArgumentNullException(nameof(graph));
         _graphResourceRuntimeManager.ClearResourceLookup();
@@ -161,7 +153,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
                 continue; // skip the render pass block
             }
 
-            var execution = _passExecutionFactory.GetOrCreate(pass, _compiledGraph, _currentImageIndex);
+            var execution = _passExecutionHandler.GetOrCreate(pass, _compiledGraph, _currentImageIndex);
             Debug.Log($"Pass {pass.Name} render area: {execution.Extent.Width}x{execution.Extent.Height}");
 
             var clearValues =
@@ -201,7 +193,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             _master.Vk.CmdBeginRenderPass(cmd, in beginInfo, SubpassContents.Inline);
 
             // Inside ExecutePasses, after CmdBeginRenderPass for the UI pass:
-            if (pass.Type == RenderPassType.Ui)
+            if (pass.Type == RenderPassType.UI)
             {
                 var clearRect = new ClearRect
                 {
@@ -630,7 +622,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
         _currentImageIndex = 0;
 
         _graphResourceRuntimeManager.DestroyGraphResources();
-        _passExecutionFactory.Reset();
+        _passExecutionHandler.Reset();
         
         return true;
     }
@@ -658,7 +650,7 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
 
 
         _graphResourceRuntimeManager.DestroyGraphResources();
-        _passExecutionFactory.Reset();
+        _passExecutionHandler.Reset();
     }
 
     #endregion Cleanup

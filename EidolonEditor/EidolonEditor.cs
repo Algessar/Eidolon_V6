@@ -1,14 +1,13 @@
 ﻿using Eidolon.Vulkan;
 using EidolonCore.Rendering;
+using EidolonEngine;
 
 namespace Eidolon.Editor;
 
-public class EidolonEditor
+public static class EidolonEditor
 {
     public static void Main()
     {
-        // ShaderCompiler.CompileShaders(@"G:\Coding\Eidolon_V6\Vulkan\Rendering\Shaders");
-
         Debug.Log("Starting from EidolonEditor", VALIDATION_LAYERS.INFO);
         var initialGraph = BuildInitialGraph(1920, 1080);
         VulkanHost.Run(initialGraph);
@@ -27,6 +26,10 @@ public class EidolonEditor
         GraphImageDescription.Create(ImageFormat.Rgba16Float,
         FlagImageUsage.ColorAttachment | FlagImageUsage.Sampled));
 
+        var gameView = graph.CreateImage("GameView", GraphImageDescription.Create(
+            ImageFormat.Rgba16Float, //NOTE: Should this not be Rgba32Float?
+            FlagImageUsage.ColorAttachment | FlagImageUsage.Sampled));
+
         var backbuffer = graph.ImportImage("Backbuffer",
             GraphImageDescription.Create(ImageFormat.Bgra8Unorm,
                 FlagImageUsage.ColorAttachment | FlagImageUsage.Present));
@@ -37,9 +40,13 @@ public class EidolonEditor
         graph.AddPass("PostProcess", RenderPassType.PostProcess)
             .Read(sceneColor)
             .Write(postColor);
+        
+        graph.AddPass("GameView", RenderPassType.GameView) //Codex suggests GameView, which means adding that to RenderPassType
+                                                          //and changing PassExecutionKey to account for that.
+            .Read(postColor)
+            .Write(gameView);
 
-
-        graph.AddPass("ImGui", RenderPassType.Ui).Read(postColor).Write(backbuffer);
+        graph.AddPass("ImGui", RenderPassType.UI).Read(postColor).Write(backbuffer);
        
         graph.AddPass("Present", RenderPassType.Present)
             .Read(backbuffer);

@@ -1,6 +1,5 @@
 ﻿using System.Numerics;
 using Eidolon.Vulkan.Rendering;
-using EidolonCore.Rendering;
 using ImGuiNET;
 using Silk.NET.Maths;
 using Silk.NET.Vulkan;
@@ -60,6 +59,8 @@ internal class VulkanMaster
 
         Vk = Vk.GetApi();
         
+        //TODO: Consider moving window handling out of Vulkan and into Editor.
+        
         CreateOSWindow();
         
         _window.Load += () =>
@@ -75,14 +76,10 @@ internal class VulkanMaster
                 return;
             }
             
-            Extent2D swapchainExtent = SwapchainHandler.Extent;
             _imguiRenderer?.NewFrame(
                 (float)delta,
                 new Vector2(_window.Size.X, _window.Size.Y),
                 new Vector2(_window.FramebufferSize.X, _window.FramebufferSize.Y));
-            // var framebufferSize = _window.FramebufferSize;
-            // _imguiRenderer?.NewFrame((float) delta, new Vector2(framebufferSize.X, framebufferSize.Y));
-  
             
             _imguiRenderer?.BuildDrawSubmissions(FrameHandler.CurrentFrame, Constants.MAX_FRAMES_IN_FLIGHT);
 
@@ -109,7 +106,6 @@ internal class VulkanMaster
             
         SwapchainHandler = new SwapchainHandler(this, SurfaceKhr, KhrSurface);
         ShaderManager = new ShaderManager(this);
-        // BufferFactory = new BufferFactory(this);
         GpuBufferFactory = new GpuBufferFactory(this);
         DescriptorFactory = new DescriptorFactory(this);
         RenderPassFactory = new RenderPassFactory(this);
@@ -200,13 +196,7 @@ internal class VulkanMaster
             {
                 Stride = 0,
                 Attributes = Array.Empty<VertexAttribute>()
-            //     Stride = (uint)Marshal.SizeOf<Vertex>(),
-            //     Attributes =
-            //     [
-            //         new VertexAttribute(0, Format.R32G32B32Sfloat, 0),  // Position
-            //         new VertexAttribute(1, Format.R32G32B32Sfloat, 12), // Normal
-            //         new VertexAttribute(2, Format.R32G32Sfloat, 24)     // UV
-            //     ]
+
             },
             Topology = PrimitiveTopology.TriangleList,
             CullMode = CullModeBits.None,
@@ -232,9 +222,7 @@ internal class VulkanMaster
                 {
                     PassType = RenderPassType.Geometry,
                     PipelineData = pipelineData,
-                    // PipelineKey = pipelineKey,
                     DescriptorSet = descriptorSet,
-                    Topology = PrimitiveTopology.TriangleList,
                     VertexBuffer = default,
                     VertexOffset = 0,
                     IndexBuffer = default,
@@ -254,9 +242,8 @@ internal class VulkanMaster
                 }
             ]
         };
-        
     }
-
+    
     public void Dispose()
     {
         Vk.Dispose();

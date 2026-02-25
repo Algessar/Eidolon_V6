@@ -3,6 +3,11 @@ MUST NOT  — absolute prohibition
 SHOULD    — recommended; exceptions require justification
 MAY       — optional
 
+# Eidolon Engine
+
+Eidolon Engine is a Vulkan backend specific engine. It will never
+have any other rendering backend, and building abstraction for that is a 
+waste of time.
 
 # Incremental Safety
 
