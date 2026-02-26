@@ -8,7 +8,8 @@ internal class GameViewRenderer : IDisposable
     
     private DrawSubmission[] _drawSubmissions = Array.Empty<DrawSubmission>();
     public DrawSubmission[] DrawSubmissions => _drawSubmissions;
-   
+    
+    
 
     private RenderPassKey CreateRenderPassKey(Format colorFormat, bool hasDepth)
     {

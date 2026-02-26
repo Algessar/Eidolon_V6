@@ -7,6 +7,11 @@ public static class VulkanHost
 {
     public static void Run(CompiledRenderGraph? initialGraph = null)
     {
-        _ = new VulkanMaster(initialGraph);
+       var master = new VulkanMaster(initialGraph);
+
+       // if (!master.BackendIsRunning)
+       // {
+       //     master.Dispose();
+       // }
     }
 }

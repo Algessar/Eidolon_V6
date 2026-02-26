@@ -10,6 +10,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\EidolonCore\EidolonCore.csproj" />
+      <ProjectReference Include="..\EidolonEngine\EidolonEngine.csproj" />
       <ProjectReference Include="..\Vulkan\Vulkan.csproj" />
     </ItemGroup>
 
@@ -22,6 +23,7 @@
 
     <ItemGroup>
       <Folder Include="bin\Debug\net10.0\" />
+      <Folder Include="RunEngine\" />
     </ItemGroup>
 
 </Project>

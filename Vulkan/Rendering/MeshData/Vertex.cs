@@ -7,23 +7,43 @@ namespace Eidolon.Vulkan;
 public struct Vertex
 {
     public Vector3 Position;
-    public Vector3 Normal;
-    public Vector3 Color;
-    public Vector2 UV;
-    
-        
-    public Vertex(Vector3 position, Vector3 normal, Vector3 color)
+    public Vector2 Normal;
+    public Vector3 Color; // This should be Vector4 for Alpha
+    public Vector2 TexCoord;
+    public float Distance;
+
+    public Vertex(Vector3 position, Vector3 color, Vector2 texCoord, Vector2 normal)
     {
         Position = position;
-        Normal = normal;
         Color = color;
+        TexCoord = texCoord;
+        Normal = normal;
+        
     }
     
-    public Vertex(Vector3 position, Vector3 normal, Vector2 uv)
+    // Constructor for vertex with distance
+    public Vertex(Vector3 position, Vector3 color, Vector2 texCoord, Vector2 normal, float distance)
+        : this(position, color, texCoord, normal)
     {
         Position = position;
+        Color = color;
+        TexCoord = texCoord;
         Normal = normal;
-        UV = uv;
+        Distance = distance;
+    }
+
+    // Simple constructor for position + color only
+    public Vertex(Vector3 position, Vector3 color, Vector2 normal)
+        : this(position, color, Vector2.Zero, normal)
+    {
+        Position = position;
+        Color = color;
+    }
+
+    public Vertex(Vector3 position, Vector3 color)
+    {
+        Position = position;
+        Color = color;
     }
 }
 

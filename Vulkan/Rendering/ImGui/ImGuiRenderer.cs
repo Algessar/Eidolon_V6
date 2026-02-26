@@ -50,7 +50,6 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     }
     public void Initialize( RenderPass renderPass)
     {
-        
         Debug.Log("Creating ImGuiRenderer", VALIDATION_LAYERS.INFO);
         var io = ImGui.GetIO();
         if (io.Fonts.Fonts.Size == 0)
@@ -93,7 +92,8 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         _editorUI.Update();
         BuildUI();
         FinalizeFrame();
-        
+
+        Debug.Log("Running ImGui.NewFrame()", VALIDATION_LAYERS.WARNING);
     }
 
     private void BuildUI()
@@ -499,8 +499,6 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         ref var indexBuffer = ref _uiGeometryUploader.GetCurrentFrameIndexBuffer(currentFrame);
 
         var submissions = new List<DrawSubmission>(CurrentDrawData.Commands.Length);
-        // var displayWidth = MathF.Max(1f, CurrentDrawData.DisplaySize.X);
-        // var displayHeight = MathF.Max(1f, CurrentDrawData.DisplaySize.Y);
         var framebufferScale = CurrentDrawData.DisplayFramebufferScale;
         var displayWidth = MathF.Max(1f, CurrentDrawData.DisplaySize.X * framebufferScale.X);
         var displayHeight = MathF.Max(1f, CurrentDrawData.DisplaySize.Y * framebufferScale.Y);
@@ -526,7 +524,6 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
                 PassType = RenderPassType.UI,
                 PipelineData = _pipelineData,
                 DescriptorSet = _descriptorSet,
-                // Topology = PrimitiveTopology.TriangleList,
                 VertexBuffer = vertexBuffer,
                 VertexOffset = 0,
                 IndexBuffer = indexBuffer,

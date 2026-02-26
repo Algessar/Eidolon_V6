@@ -2,8 +2,8 @@ using Silk.NET.Vulkan;
 
 namespace Eidolon.Vulkan;
 
-//TODO: rename to DescriptorData
-internal readonly record struct DescriptorBundle
+
+internal readonly record struct DescriptorData
 {
     public DescriptorSetLayout Layout { get; init; }
     public DescriptorPool Pool { get; init; }
@@ -21,13 +21,14 @@ internal readonly record struct DescriptorBundle
     }
 }
 
-
+//TODO: This has suddenly gone unused; the only place it is called is in VulkanMaster
+// for a placeholder descriptor. Great.
 internal unsafe class DescriptorFactory: IDisposable
 {
     private readonly VulkanMaster _master;
     
     
-    private readonly Dictionary<DescriptorKey, DescriptorBundle> _cache = new();
+    private readonly Dictionary<DescriptorKey, DescriptorData> _cache = new();
     private readonly Dictionary<DescriptorKey, DescriptorSetLayoutBinding[]> _bindingsByKey = new();
     
     private readonly DescriptorKey _defaultKey;
@@ -35,9 +36,7 @@ internal unsafe class DescriptorFactory: IDisposable
     
     private DescriptorPool _descriptorPool;
     
-    private GpuBuffer[]  _uniformGpuBuffers = Array.Empty<GpuBuffer>() ;
     private DescriptorSetLayout _descriptorSetLayout;
-    DescriptorSet[] _descriptorSets = Array.Empty<DescriptorSet>();
     
     public DescriptorSetLayout Layout => GetOrCreate(_defaultKey).Layout;
     
@@ -94,7 +93,7 @@ internal unsafe class DescriptorFactory: IDisposable
         return GetOrCreate(_defaultKey).GetSet(frameIndex);
     }
 
-    public DescriptorBundle GetOrCreate(DescriptorKey key)
+    public DescriptorData GetOrCreate(DescriptorKey key)
     {
         if (_cache.TryGetValue(key, out var existing))
             return existing;
@@ -106,7 +105,7 @@ internal unsafe class DescriptorFactory: IDisposable
         var pool = CreateDescriptorPool(bindings, key.SetCount);
         var sets = AllocateDescriptorSets(layout, pool, key.SetCount);
 
-        var bundle = new DescriptorBundle
+        var bundle = new DescriptorData
         {
             Layout = layout,
             Pool = pool,
@@ -225,7 +224,7 @@ internal unsafe class DescriptorFactory: IDisposable
         }
     }
     
-    private void CreateAndWriteDefaultUniformDescriptors(DescriptorBundle bundle)
+    private void CreateAndWriteDefaultUniformDescriptors(DescriptorData data)
     {
         var key = new GpuBufferKey
         {
@@ -240,7 +239,7 @@ internal unsafe class DescriptorFactory: IDisposable
         //NOTE: to self; this is *descriptor* buffer info, so it's valid here.
         // For next time I think it should be in a BufferFactory.
         var uniformBuffers = _master.GpuBufferFactory.GetOrCreate(key);
-        for (var i = 0; i < bundle.Sets.Length; i++)
+        for (var i = 0; i < data.Sets.Length; i++)
         {
             var bufferInfo = new DescriptorBufferInfo
             {
@@ -252,7 +251,7 @@ internal unsafe class DescriptorFactory: IDisposable
             var write = new WriteDescriptorSet
             {
                 SType = StructureType.WriteDescriptorSet,
-                DstSet = bundle.Sets[i],
+                DstSet = data.Sets[i],
                 DstBinding = 0,
                 DstArrayElement = 0,
                 DescriptorType = DescriptorType.UniformBuffer,
@@ -263,97 +262,6 @@ internal unsafe class DescriptorFactory: IDisposable
             _master.Vk.UpdateDescriptorSets(_master.VulkanDevice.Device, 1, &write, 0, null);
         }
     }
-    
-    // public void CreateDescriptorPool()
-    // {
-    //     DescriptorPoolSize* poolSizes = stackalloc DescriptorPoolSize[2];
-    //
-    //     poolSizes[0] = new DescriptorPoolSize
-    //     {
-    //         Type = DescriptorType.UniformBuffer,
-    //         DescriptorCount = Constants.MAX_FRAMES_IN_FLIGHT
-    //     };
-    //
-    //     poolSizes[1] = new DescriptorPoolSize
-    //     {
-    //         Type = DescriptorType.CombinedImageSampler,
-    //         DescriptorCount = 4 // ImGui font + some headroom
-    //     };
-    //
-    //     var poolInfo = new DescriptorPoolCreateInfo
-    //     {
-    //         SType = StructureType.DescriptorPoolCreateInfo,
-    //         PoolSizeCount = 2,
-    //         PPoolSizes = poolSizes,
-    //         MaxSets = Constants.MAX_FRAMES_IN_FLIGHT + 4
-    //     };
-    //
-    //     if (_master.Vk.CreateDescriptorPool(
-    //             _master.VulkanDevice.Device,
-    //             &poolInfo,
-    //             null,
-    //             out _descriptorPool) != Result.Success)
-    //     {
-    //         throw new Exception("Failed to create descriptor pool!");
-    //     }
-    // }
-    // private void CreateDescriptorSets()
-    // {
-    //
-    //     _uniformGpuBuffers = _master.BufferFactory.CreateUniformGpuBuffers(Constants.MAX_FRAMES_IN_FLIGHT);
-    //     
-    //     if ( _uniformGpuBuffers.Any(b => !b.IsValid))
-    //     {
-    //         throw new Exception("Uniform buffers are not properly created!");
-    //     }
-    //     
-    //     var layouts = new DescriptorSetLayout[Constants.MAX_FRAMES_IN_FLIGHT];
-    //     Array.Fill(layouts, _descriptorSetLayout);
-    //
-    //     fixed (DescriptorSetLayout* layoutsPtr = layouts)
-    //     {
-    //         var allocInfo = new DescriptorSetAllocateInfo
-    //         {
-    //             SType = StructureType.DescriptorSetAllocateInfo,
-    //             DescriptorPool = _descriptorPool,
-    //             DescriptorSetCount = Constants.MAX_FRAMES_IN_FLIGHT,
-    //             PSetLayouts = layoutsPtr
-    //         };
-    //
-    //         _descriptorSets = new DescriptorSet[Constants.MAX_FRAMES_IN_FLIGHT];
-    //         if (_master.Vk.AllocateDescriptorSets(_master.VulkanDevice.Device, &allocInfo, _descriptorSets) != Result.Success)
-    //             throw new Exception("Failed to allocate descriptor sets!");
-    //         
-    //         for (int i = 0; i < Constants.MAX_FRAMES_IN_FLIGHT; i++)
-    //         {
-    //             var bufferInfo = new DescriptorBufferInfo
-    //             {
-    //                 Buffer = _uniformGpuBuffers[i].Buffer,
-    //                 Offset = 0,
-    //                 Range = _uniformGpuBuffers[i].Size
-    //             };
-    //
-    //             var write = new WriteDescriptorSet
-    //             {
-    //                 SType = StructureType.WriteDescriptorSet,
-    //                 DstSet = _descriptorSets[i],
-    //                 DstBinding = 0,
-    //                 DstArrayElement = 0,
-    //                 DescriptorType = DescriptorType.UniformBuffer,
-    //                 DescriptorCount = 1,
-    //                 PBufferInfo = &bufferInfo
-    //             };
-    //
-    //             _master.Vk.UpdateDescriptorSets(
-    //                 _master.VulkanDevice.Device,
-    //                 1,
-    //                 &write,
-    //                 0,
-    //                 null);
-    //         }
-    //     }
-    //     
-    // }
 
     public void Dispose()
     {

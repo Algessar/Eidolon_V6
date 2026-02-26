@@ -1,5 +1,6 @@
 ﻿using System.Numerics;
 using Eidolon.Vulkan.Rendering;
+using EidolonEngine;
 using ImGuiNET;
 using Silk.NET.Maths;
 using Silk.NET.Vulkan;
@@ -13,8 +14,6 @@ internal class VulkanMaster
     #region Vulkan Core
 
     public Vk Vk;
-    
-    public static VulkanMaster Instance { get; private set; }
     
     private IWindow _window;
     
@@ -31,7 +30,6 @@ internal class VulkanMaster
     #region Managers/Factories
 
     public ShaderManager ShaderManager { get; set; }
-    // public BufferFactory BufferFactory { get; set; }
     public GpuBufferFactory GpuBufferFactory { get; set; }
     public DescriptorFactory DescriptorFactory { get; set; }
     public RenderPassFactory RenderPassFactory { get; set; }
@@ -41,14 +39,24 @@ internal class VulkanMaster
     #endregion
     
     public SwapchainHandler SwapchainHandler { get; private set; }
-    private FrameHandler FrameHandler { get; set; }
 
+    #region Rendering
+   
+    public FrameHandler? FrameHandler { get; set; }
     
-    private ImGuiRenderer? _imguiRenderer;
     private readonly CompiledRenderGraph? _initialGraph;
     
     private DrawData _drawData;
     private DrawSubmission[] _sceneSubmissions = Array.Empty<DrawSubmission>();
+
+    private Scene _scene;
+    
+    private ImGuiRenderer? _imguiRenderer;
+    private GameViewRenderer? _gameViewRenderer;
+    private MainRenderer? _mainRenderer;
+    #endregion
+
+
     
     public VulkanMaster(CompiledRenderGraph? initialGraph = null)
     {
@@ -62,37 +70,16 @@ internal class VulkanMaster
         //TODO: Consider moving window handling out of Vulkan and into Editor.
         
         CreateOSWindow();
-        
+
+        _mainRenderer = new MainRenderer(this);
         _window.Load += () =>
         {
             InitializeManagers();
-            SetupFrameChain();
+            _mainRenderer.CreateRenderers(initialGraph);
         };
 
-        _window.Render += delta =>
-        {
-            if (FrameHandler is null)
-            {
-                return;
-            }
-            
-            _imguiRenderer?.NewFrame(
-                (float)delta,
-                new Vector2(_window.Size.X, _window.Size.Y),
-                new Vector2(_window.FramebufferSize.X, _window.FramebufferSize.Y));
-            
-            _imguiRenderer?.BuildDrawSubmissions(FrameHandler.CurrentFrame, Constants.MAX_FRAMES_IN_FLIGHT);
 
-            var baseSubmissions = _sceneSubmissions;   // ← reset to original scene submissions
-            var uiSubmissions = _imguiRenderer?.CurrentSubmissions ?? Array.Empty<DrawSubmission>();
-            var mergedSubmissions = new DrawSubmission[baseSubmissions.Length + uiSubmissions.Length];
-            baseSubmissions.CopyTo(mergedSubmissions, 0);
-            uiSubmissions.CopyTo(mergedSubmissions, baseSubmissions.Length);
-            _drawData.Submissions = mergedSubmissions;
-            FrameHandler.Draw(in _drawData);
-        };
-        
-        _window.Run();
+        _mainRenderer?.Run(_window);
     }
 
     private void InitializeManagers()
@@ -116,34 +103,6 @@ internal class VulkanMaster
         
     }
 
-    private void SetupFrameChain()
-    {
-        var id = ImGui.CreateContext(); //NOTE: Had missed completely that CreateContext() returns an ID.
-        
-        _drawData = BuildDrawData(SwapchainHandler);
-
-        _sceneSubmissions = _drawData.Submissions ?? Array.Empty<DrawSubmission>();
-        
-        if (_initialGraph is not null)
-        {
-            // Render-graph passes own their framebuffer formats; keep base demo submissions disabled
-            // until scene pipelines are authored per-pass.
-            _sceneSubmissions = Array.Empty<DrawSubmission>();
-        }
-        
-        if (_drawData.PipelineData.RenderPass.Handle == 0)
-        {
-            throw new InvalidOperationException("Main pipeline render pass is null before ImGui initialization.");
-        }
-        _imguiRenderer = new ImGuiRenderer(this);
-        _imguiRenderer.Initialize(_drawData.PipelineData.RenderPass);
-        
-        if (_initialGraph is not null)
-        {
-            FrameHandler.SetCompiledGraph(_initialGraph);
-        }
-    }
-
     private void CreateOSWindow()
     {
         var opts = WindowOptions.DefaultVulkan with
@@ -158,8 +117,10 @@ internal class VulkanMaster
         
         _window = Window.Create(opts);
     }
+
+
     
-    //NOTE: TEMP
+    //NOTE: TEMP (??)
     private DrawData BuildDrawData(SwapchainHandler swapchain)
     {
         //Descriptor
@@ -244,13 +205,18 @@ internal class VulkanMaster
         };
     }
     
-    public void Dispose()
+    private void Dispose()
     {
+        Debug.Log("Disposing VulkanMaster", VALIDATION_LAYERS.WARNING);
+        
         Vk.Dispose();
         VulkanDevice.Dispose();
         DescriptorFactory.Dispose();
         GpuBufferFactory.Dispose();
         PipelineFactory.Dispose();
         CommandHandler.Dispose();
+        
+        
+        Debug.Log("Disposed VulkanMaster", VALIDATION_LAYERS.INFO);
     }
 }

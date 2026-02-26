@@ -303,7 +303,10 @@ internal unsafe class CommandHandler : IDisposable
     }
     public void Dispose()
     {
+        _master.Vk.DeviceWaitIdle(_master.VulkanDevice.Device);
         
+        _master.Vk.DestroyCommandPool(_master.VulkanDevice.Device, _transientCommandPool, null);
+        _master.Vk.DestroyCommandPool(_master.VulkanDevice.Device, _graphicsCommandPool, null);
     }
 
 }

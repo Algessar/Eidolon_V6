@@ -7,7 +7,7 @@ namespace Eidolon.Vulkan;
 
 //TODO: Resizing the window creates black bands. Put on hold for now, but should be fixed eventually.
 
-internal unsafe class FrameHandler : IFrameContext, IDisposable
+internal unsafe class FrameHandler : IDisposable
 {
     public VulkanMaster _master { get; }
     private SwapchainHandler _swapchainHandler;
@@ -154,10 +154,12 @@ internal unsafe class FrameHandler : IFrameContext, IDisposable
             }
 
             var execution = _passExecutionHandler.GetOrCreate(pass, _compiledGraph, _currentImageIndex);
-            Debug.Log($"Pass {pass.Name} render area: {execution.Extent.Width}x{execution.Extent.Height}");
+            if (LOG_RENDER_GRAPH)
+            {
+                Debug.Log($"Pass {pass.Name} render area: {execution.Extent.Width}x{execution.Extent.Height}");
+            }
 
-            var clearValues =
-                stackalloc ClearValue[2]; //NOTE: CA2014: Potential stack overflow. Move the stackalloc out of the loop.
+            var clearValues = stackalloc ClearValue[2]; //NOTE: CA2014: Potential stack overflow. Move the stackalloc out of the loop.
 
             clearValues[0] = execution.ClearColor
                 ? new ClearValue { Color = new ClearColorValue(1f, 0f, 0f, 0f) }

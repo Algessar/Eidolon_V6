@@ -2,6 +2,15 @@ using Silk.NET.Vulkan;
 
 namespace Eidolon.Vulkan;
 
+/*
+ * More variants:
+ * ShadowPass
+ * PostProcess
+ * MSAA
+ * Depth Prepass
+ * 
+ */
+
 internal record struct RenderPassKey
 {
     public Format ColorFormat { get; set; }
