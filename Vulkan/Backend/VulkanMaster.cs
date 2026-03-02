@@ -48,9 +48,7 @@ internal class VulkanMaster
     private DrawData _drawData;
 
     private Scene _scene;
-    
-    private ImGuiRenderer? _imguiRenderer;
-    private GameViewRenderer? _gameViewRenderer;
+ 
     private MainRenderer? _mainRenderer;
     #endregion
 
@@ -112,94 +110,6 @@ internal class VulkanMaster
         };
         
         _window = Window.Create(opts);
-    }
-
-
-    
-    //NOTE: TEMP (??)
-    private DrawData BuildDrawData(SwapchainHandler swapchain)
-    {
-        //Descriptor
-
-        var layout = DescriptorFactory.Layout;
-        
-        //RenderPass
-        
-        var renderPassKey = new RenderPassKey
-        {
-            ColorFormat = swapchain.SwapchainImageFormat,
-            DepthFormat = Format.D32Sfloat,
-            HasDepth = false,
-            HasAlpha = true,
-            LoadOp = AttachmentLoadOp.Clear,
-            StoreOp = AttachmentStoreOp.Store,
-            InitialLayout = ImageLayout.Undefined,
-            FinalLayout = ImageLayout.PresentSrcKhr,
-            InitialDepthLayout = ImageLayout.Undefined,
-            FinalDepthLayout =  ImageLayout.DepthStencilAttachmentOptimal,
-        };
-        
-        var renderPass = RenderPassFactory.CreateRenderPass(renderPassKey);
-        
-        //Pipeline
-        
-        var pipelineKey = new PipelineKey
-        {
-            VertexShaderPath = "basic.vert.spv",
-            FragmentShaderPath = "basic.frag.spv",
-            RenderPass = renderPass,
-            Layout = layout,
-            VertexFormat = new VertexFormat
-            {
-                Stride = 0,
-                Attributes = Array.Empty<VertexAttribute>()
-
-            },
-            Topology = PrimitiveTopology.TriangleList,
-            CullMode = CullModeBits.None,
-            FrontFace = FrontFace.CounterClockwise,
-            HasDepth = false,
-            DepthTestEnable = false,
-            DepthWriteEnable = false,
-            EnableBlending = false,   // Usually no blending for opaque geometry
-            BlendState = BlendState.NoBlending,
-        };
-        var pipelineData = PipelineFactory.GetOrCreate(pipelineKey);
-        swapchain.CreateFramebuffers(pipelineData.RenderPass, pipelineData.HasDepth);
-
-        var descriptorSet = DescriptorFactory.GetDescriptorSet(0);
-        
-        return new DrawData
-        {
-            PipelineData = pipelineData,
-            
-            Submissions =
-            [
-                new DrawSubmission
-                {
-                    PassType = RenderPassType.Geometry,
-                    PipelineData = pipelineData,
-                    DescriptorSet = descriptorSet,
-                    VertexBuffer = default,
-                    VertexOffset = 0,
-                    IndexBuffer = default,
-                    IndexOffset = 0,
-                    IndexType = IndexType.Uint16,
-                    VertexCount = 3,
-                    IndexCount = 0,
-                    InstanceCount = 1,
-                    FirstVertex = 0,
-                    FirstIndex = 0,
-                    VertexBase = 0,
-                    ScissorPolicy = SubmissionScissorPolicy.PassDefault,
-                    Scissor = default,
-                    ViewportPolicy = SubmissionViewportPolicy.PassDefault,
-                    Viewport = default,
-                    ModelMatrix = Matrix4x4.Identity,
-                    PushConstants = PushConstantPayload.Empty
-                }
-            ]
-        };
     }
     
     private void Dispose()

@@ -141,7 +141,7 @@ internal unsafe class FrameHandler : IDisposable
 
             if (_currentFrame == 0 && LOG_RENDER_GRAPH)
             {
-                Debug.Log($"RenderPass used in FrameHandler: {data.PipelineData.RenderPass.Handle}");
+                // Debug.Log($"RenderPass used in FrameHandler: {data.PipelineData.RenderPass.Handle}");
             }
 
             _graphBarrierHandler.TransitionLayouts(cmd, pass);
@@ -319,7 +319,7 @@ internal unsafe class FrameHandler : IDisposable
         if (_compiledGraph is null)
             throw new Exception("Draw called without compiled graph.");
 
-        BeginFrame(data);
+        BeginFrame(); //used DrawData before
         if (!_frameActive)
             return;
 
@@ -327,7 +327,7 @@ internal unsafe class FrameHandler : IDisposable
         EndFrame(data);
     }
 
-    public void BeginFrame(in DrawData data)
+    public void BeginFrame()//public void BeginFrame(in DrawData data)
     {
         if (_frameActive)
             throw new Exception("BeginFrame called while frame active.");
@@ -357,7 +357,7 @@ internal unsafe class FrameHandler : IDisposable
             vk.WaitForFences(device, 1, frameFence, true, ulong.MaxValue);
         }
 
-        if (_framebufferResized && !RecreateSwapchain(data.PipelineData))
+        if (_framebufferResized && !RecreateSwapchain())
         {
             _frameActive = false;
             return;
@@ -374,7 +374,7 @@ internal unsafe class FrameHandler : IDisposable
         {
             case Result.ErrorOutOfDateKhr:
                 if (!IsWindowMinimized())
-                    RecreateSwapchain(data.PipelineData);
+                    RecreateSwapchain();
                 _frameActive = false;
                 return;
             case Result.SuboptimalKhr:
@@ -452,7 +452,7 @@ internal unsafe class FrameHandler : IDisposable
         var presentResult = _swapchainHandler.Present(signalSemaphore, _currentImageIndex);
         if (presentResult == Result.ErrorOutOfDateKhr || presentResult == Result.SuboptimalKhr || _framebufferResized)
         {
-            RecreateSwapchain(data.PipelineData);
+            RecreateSwapchain();
         }
 
         _currentFrame = (uint)((_currentFrame + 1) % _inFlightFences.Length);
@@ -583,7 +583,7 @@ internal unsafe class FrameHandler : IDisposable
     
     private bool IsWindowMinimized() => _master.GetWindow.FramebufferSize.X == 0 || _master.GetWindow.FramebufferSize.Y == 0;
 
-    private bool RecreateSwapchain(in PipelineData pipelineData)
+    private bool RecreateSwapchain()
     {
         Debug.Log("Recreating swapchain", VALIDATION_LAYERS.INFO);
         if (_swapchainHandler.Extent.Width <= 0 && _swapchainHandler.Extent.Height <= 0)
@@ -593,7 +593,7 @@ internal unsafe class FrameHandler : IDisposable
         }
         
         
-        if (!_swapchainHandler.RecreateSwapchain(pipelineData.RenderPass, pipelineData.HasDepth))
+        if (!_swapchainHandler.RecreateSwapchain())
         {
             _framebufferResized = true;
             return false;

@@ -7,7 +7,7 @@ internal struct DrawData
 {
     public IRenderTarget? RenderTarget;
     
-    public PipelineData PipelineData;
+    // public PipelineData PipelineData;
     public DrawSubmission[] Submissions;
 }
 

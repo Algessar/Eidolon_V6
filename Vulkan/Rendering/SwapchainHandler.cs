@@ -471,8 +471,8 @@ internal unsafe class SwapchainHandler
             }
         }
     }
-
-    public bool RecreateSwapchain(RenderPass renderPass, bool renderPassHasDepth)
+    
+    public bool RecreateSwapchain()
     {
         if (_window.FramebufferSize.X == 0 || _window.FramebufferSize.Y == 0)
             return false;
@@ -484,9 +484,34 @@ internal unsafe class SwapchainHandler
         CreateSwapchain();
         CreateImageViews();
         CreateDepthResources();
+        return true;
+    }
+
+    public bool RecreateSwapchain(RenderPass renderPass, bool renderPassHasDepth)
+    {
+        var recreated = RecreateSwapchain();
+        if (!recreated)
+            return false;
+
         CreateFramebuffers(renderPass, renderPassHasDepth);
         return true;
     }
+
+    // public bool RecreateSwapchain(RenderPass renderPass, bool renderPassHasDepth)
+    // {
+    //     if (_window.FramebufferSize.X == 0 || _window.FramebufferSize.Y == 0)
+    //         return false;
+    //
+    //     _master.Vk.DeviceWaitIdle(_master.VulkanDevice.Device);
+    //
+    //     CleanupSwapchainResources();
+    //
+    //     CreateSwapchain();
+    //     CreateImageViews();
+    //     CreateDepthResources();
+    //     CreateFramebuffers(renderPass, renderPassHasDepth);
+    //     return true;
+    // }
 
     private void CleanupSwapchainResources()
     {
