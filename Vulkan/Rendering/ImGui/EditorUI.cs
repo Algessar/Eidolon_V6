@@ -8,6 +8,7 @@ namespace Eidolon.Editor;
 internal class EditorUI
 {
     private readonly IWindow _window;
+    private nint _gameViewTextureID;
     
     public EditorUI(IWindow window)
     {
@@ -60,9 +61,24 @@ internal class EditorUI
         ImGui.End();
     }
 
+    public void SetGameViewTexture(nint textureId)
+    {
+        _gameViewTextureID = textureId;
+    }
+
     private void DrawBrowserWindow()
     {
         ImGui.Begin("Browser");
+
+        var available = ImGui.GetContentRegionAvail();
+        if (_gameViewTextureID != 0 && available.X > 1f && available.Y > 1f)
+        {
+            ImGui.Image((nint)_gameViewTextureID, available, new Vector2(0, 1), new Vector2(1, 0));
+        }
+        else
+        {
+            ImGui.Text("GameView texture unavailable");
+        }
         
         ImGui.End();
     }

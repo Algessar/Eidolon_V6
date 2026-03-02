@@ -324,7 +324,7 @@ internal unsafe class FrameHandler : IDisposable
             return;
 
         ExecutePasses(data);
-        EndFrame(data);
+        EndFrame();
     }
 
     public void BeginFrame()//public void BeginFrame(in DrawData data)
@@ -428,7 +428,7 @@ internal unsafe class FrameHandler : IDisposable
         _frameActive = true;
     }
 
-    public void EndFrame(in DrawData data)
+    public void EndFrame()
     {
         if (!_frameActive)
         {
@@ -578,6 +578,32 @@ internal unsafe class FrameHandler : IDisposable
     }
 
     #endregion Resolve
+    
+    public bool TryGetResourceView(string resourceName, out ImageView view)
+    {
+        view = default;
+
+        if (_compiledGraph is null || string.IsNullOrWhiteSpace(resourceName))
+            return false;
+
+        foreach (var resource in _compiledGraph.Resources)
+        {
+            if (!string.Equals(resource.Name, resourceName, StringComparison.Ordinal))
+                continue;
+
+            if (!_graphResourceRuntimeManager.TryGetRuntime(resource.Handle.Handle, out var runtime))
+                return false;
+
+            if (runtime.View.Handle == 0)
+                return false;
+
+            view = runtime.View;
+            return true;
+        }
+
+        return false;
+    }
+
 
     #region Cleanup
     

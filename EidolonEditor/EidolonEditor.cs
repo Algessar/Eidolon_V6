@@ -46,8 +46,7 @@ public static class EidolonEditor
             .Read(postColor)
             .Write(gameView);
 
-        graph.AddPass("ImGui", RenderPassType.UI).Read(postColor).Write(backbuffer);
-       
+        graph.AddPass("ImGui", RenderPassType.UI).Read(gameView).Write(backbuffer);
         graph.AddPass("Present", RenderPassType.Present)
             .Read(backbuffer);
         
