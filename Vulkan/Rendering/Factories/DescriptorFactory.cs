@@ -140,8 +140,6 @@ internal unsafe class DescriptorFactory: IDisposable
         }
     }
     
-    
-    
     public DescriptorSetLayout CreateDescriptorSetLayout()
     {
         var uboLayoutBinding = new DescriptorSetLayoutBinding

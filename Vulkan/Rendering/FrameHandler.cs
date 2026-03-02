@@ -188,7 +188,7 @@ internal unsafe class FrameHandler : IDisposable
             uint swapchainHandle = _importMap.GetHandleForKind(ImportedResourceKind.SwapchainColor);
             if (swapchainHandle != 0 && _graphResourceRuntimeManager.TryGetRuntime(swapchainHandle, out var runtime))
             {
-                Debug.Log($"[UI Pre-RP] Swapchain tracked layout = {runtime.CurrentLayout}");
+                Debug.Log($"[UI Pre-RenderPass] Swapchain tracked layout = {runtime.CurrentLayout}");
             }
             
             // Debug.Log($"UI Pass ClearColor: {execution.ClearColor}, Color value: {clearValues[0].Color.Float32_0},{clearValues[0].Color.Float32_1},{clearValues[0].Color.Float32_2},{clearValues[0].Color.Float32_3}");
@@ -280,7 +280,7 @@ internal unsafe class FrameHandler : IDisposable
         }
         else
         {
-            var identity = Matrix4x4.Identity;
+            var identity = submission.ModelMatrix;
             _master.Vk.CmdPushConstants(
                 cmd,
                 submission.PipelineData.VkLayout,

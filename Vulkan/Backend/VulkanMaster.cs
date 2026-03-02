@@ -44,10 +44,8 @@ internal class VulkanMaster
    
     public FrameHandler? FrameHandler { get; set; }
     
-    private readonly CompiledRenderGraph? _initialGraph;
     
     private DrawData _drawData;
-    private DrawSubmission[] _sceneSubmissions = Array.Empty<DrawSubmission>();
 
     private Scene _scene;
     
@@ -62,7 +60,6 @@ internal class VulkanMaster
     {
         ShaderCompiler.CompileShaders(@"G:\Coding\Eidolon_V6\Vulkan\Rendering\Shaders");
         
-        _initialGraph = initialGraph;
         Debug.Log("::: Initializing Vulkan resources :::", VALIDATION_LAYERS.WARNING);
 
         Vk = Vk.GetApi();
@@ -77,8 +74,7 @@ internal class VulkanMaster
             InitializeManagers();
             _mainRenderer.CreateRenderers(initialGraph);
         };
-
-
+        
         _mainRenderer?.Run(_window);
     }
 
@@ -176,7 +172,7 @@ internal class VulkanMaster
         return new DrawData
         {
             PipelineData = pipelineData,
-            ModelMatrix = Matrix4x4.Identity,
+            
             Submissions =
             [
                 new DrawSubmission
@@ -199,6 +195,7 @@ internal class VulkanMaster
                     Scissor = default,
                     ViewportPolicy = SubmissionViewportPolicy.PassDefault,
                     Viewport = default,
+                    ModelMatrix = Matrix4x4.Identity,
                     PushConstants = PushConstantPayload.Empty
                 }
             ]

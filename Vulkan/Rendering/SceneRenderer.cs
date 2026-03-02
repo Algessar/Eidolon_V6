@@ -8,5 +8,17 @@ internal class SceneRenderer
     
     // Create and add geometry to scenes
     
+    // Build submissions
     
+    // PipelineKeys are individual depending on shaders
+
+    public void NewFrame()
+    {
+        Debug.Log("Running NewFrame in SceneRenderer", VALIDATION_LAYERS.INFO);
+    }
+
+    public void BuildDrawSubmissions()
+    {
+        
+    }
 }

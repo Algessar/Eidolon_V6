@@ -51,19 +51,24 @@ internal class EditorUI
     {
         DrawDockSpace();
         DrawGameViewWindow();
+        DrawBrowserWindow();
     }
-    
-    public uint DockspaceId { get; private set; }
 
     private void DrawGameViewWindow()
     {
         ImGui.Begin("Eidolon / Game View");
         ImGui.End();
     }
+
+    private void DrawBrowserWindow()
+    {
+        ImGui.Begin("Browser");
+        
+        ImGui.End();
+    }
     
     private void DrawDockSpace()
     {
-        var io = ImGui.GetIO();
         var viewport = ImGui.GetMainViewport();
         
         ImGui.SetNextWindowPos(viewport.WorkPos, ImGuiCond.Always);

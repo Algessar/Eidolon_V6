@@ -1,7 +1,6 @@
 ﻿using System.Numerics;
 using Eidolon.Vulkan;
 using ImGuiNET;
-using Silk.NET.Maths;
 using Silk.NET.Vulkan;
 using Silk.NET.Windowing;
 
@@ -16,15 +15,9 @@ internal class MainRenderer
     private ImGuiRenderer _imguiRenderer;
     private SceneRenderer _sceneRenderer;
 
-    public DrawSubmission[] CurrentSubmissions;
     private DrawSubmission[] _sceneSubmissions;
 
     private DrawData _drawData;
-
-    /*
-	 *
-     */
-
     
     public MainRenderer(VulkanMaster master)
     {
@@ -40,8 +33,7 @@ internal class MainRenderer
     {
 	    
 	    ImGui.CreateContext();
-	    _drawData = BuildDrawData(_master.SwapchainHandler);
-
+	    _drawData = BuildInitialDrawData(_master.SwapchainHandler);
 	    
 	    _sceneSubmissions = _drawData.Submissions ?? Array.Empty<DrawSubmission>();
 		
@@ -82,6 +74,7 @@ internal class MainRenderer
 		        return;
 	        }
 
+	        _sceneRenderer?.NewFrame();
 	        _imguiRenderer?.NewFrame(
 		        (float)delta,
 		        new Vector2(window.Size.X, window.Size.Y),
@@ -110,7 +103,7 @@ internal class MainRenderer
         window.Run();
     }
     
-    private DrawData BuildDrawData(SwapchainHandler swapchain)
+    private DrawData BuildInitialDrawData(SwapchainHandler swapchain)
     {
         //Descriptor
 
@@ -165,7 +158,7 @@ internal class MainRenderer
         return new DrawData
         {
             PipelineData = pipelineData,
-            ModelMatrix = Matrix4x4.Identity,
+            
             Submissions =
             [
                 new DrawSubmission
@@ -188,7 +181,8 @@ internal class MainRenderer
                     Scissor = default,
                     ViewportPolicy = SubmissionViewportPolicy.PassDefault,
                     Viewport = default,
-                    PushConstants = PushConstantPayload.Empty
+                    PushConstants = PushConstantPayload.Empty,
+                    ModelMatrix = Matrix4x4.Identity,
                 }
             ]
         };

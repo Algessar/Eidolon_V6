@@ -1,3 +1,5 @@
+using System.Numerics;
+using System.Runtime.InteropServices;
 using Eidolon.Vulkan;
 using Silk.NET.Vulkan;
 
@@ -5,11 +7,37 @@ namespace EidolonEngine;
 
 internal class GameViewRenderer : IDisposable
 {
+    private VulkanMaster _master;
     
     private DrawSubmission[] _drawSubmissions = Array.Empty<DrawSubmission>();
     public DrawSubmission[] DrawSubmissions => _drawSubmissions;
+
+    private PipelineData _pipelineData;
+    private DescriptorSetLayout _descriptorSetLayout;
+    private DescriptorSet _descriptorSet;
+
+    private GpuBuffer _buffer;
     
+
+    public GameViewRenderer(VulkanMaster master)
+    {
+        _master = master;
+    }
     
+    private void Initialize()
+    {
+        var descriptorLayout = _master.DescriptorFactory.CreateDescriptorSetLayout();
+
+        var descriptorKey = _master.DescriptorFactory.GetDefaultKey();
+
+        var renderPassKey = CreateRenderPassKey(Format.B8G8R8A8Unorm, true);
+
+
+        var descriptorSet = _master.DescriptorFactory.GetOrCreate(descriptorKey);
+       
+
+
+    }
 
     private RenderPassKey CreateRenderPassKey(Format colorFormat, bool hasDepth)
     {
@@ -30,45 +58,55 @@ internal class GameViewRenderer : IDisposable
         };
     }
     
-    private PipelineKey DefinePipelineKey(RenderPass renderPass, DescriptorSetLayout layout,
-        string vertexShaderPath, string fragmentShaderPath, VertexFormat vertexFormat)
+    private PipelineKey CreatePipelineKey(RenderPass renderPass)
     {
         return new PipelineKey
         {
-            VertexShaderPath = vertexShaderPath,
-            FragmentShaderPath = fragmentShaderPath,
+            VertexShaderPath = "basic.vert.spv",
+            FragmentShaderPath = "basic.frag.spv",
             RenderPass = renderPass,
-            Layout = layout,
-            VertexFormat = vertexFormat,
+            VertexFormat = new VertexFormat
+            {
+                Stride = (uint)Marshal.SizeOf<Vertex>(),
+                Attributes =
+                [
+                    new VertexAttribute(0, Format.R32G32B32Sfloat, 0),  // Position
+                    new VertexAttribute(1, Format.R32G32B32Sfloat, 12), // Normal
+                    new VertexAttribute(2, Format.R32G32Sfloat, 24)     // UV
+                ]
+            },
             Topology = PrimitiveTopology.TriangleList,
-            CullMode = CullModeBits.Back,
-            FrontFace = FrontFace.CounterClockwise,
+            CullMode = CullModeBits.Back,  // Backface culling for 3D
+            FrontFace = FrontFace.CounterClockwise,  // Standard for right-handed coords
             HasDepth = true,
-            DepthTestEnable = true,
-            DepthWriteEnable = true,
-            EnableBlending = false,
+            DepthTestEnable = true,   // ✅ Enable depth testing
+            DepthWriteEnable = true,  // ✅ Write to depth buffer
+            EnableBlending = false,   // Usually no blending for opaque geometry
             BlendState = BlendState.NoBlending,
         };
-    }
+    }    
 
     private DrawData BuildDrawData(PipelineData pipelineData, DescriptorSet descriptorSet, DrawSubmission[] submissions)
     {
         return new DrawData
         {
             PipelineData = pipelineData,
-            ModelMatrix = null,
             Submissions = submissions,
         };
     }
 
-    private DrawSubmission BuildDrawSubmission(PipelineData pipelineData, DescriptorSet descriptorSet)
+    private unsafe DrawSubmission BuildDrawSubmission(PipelineData pipelineData, DescriptorSet descriptorSet)
     {
+
+        
+        var vertexBuffer = _master.GpuBufferFactory.GetOrCreate();
+        
         return new DrawSubmission
         {
             PassType = RenderPassType.GameView,
             PipelineData = pipelineData,
             DescriptorSet = descriptorSet,
-            VertexBuffer = default,
+            VertexBuffer = _buffer,
             VertexOffset = 0,
             IndexBuffer = default,
             IndexOffset = 0,
@@ -84,6 +122,7 @@ internal class GameViewRenderer : IDisposable
             ViewportPolicy = SubmissionViewportPolicy.PassDefault,
             Viewport = default,
             PushConstants = PushConstantPayload.Empty,
+            ModelMatrix = Matrix4x4.Identity,
         };
     }
 

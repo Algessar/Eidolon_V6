@@ -46,6 +46,7 @@ internal struct DrawSubmission
     public Viewport Viewport;
     
     public PushConstantPayload PushConstants;
+    public Matrix4x4 ModelMatrix;
 }
 
 internal struct PushConstantPayload

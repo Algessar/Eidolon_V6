@@ -5,11 +5,10 @@ namespace Eidolon.Vulkan;
 
 internal struct DrawData
 {
-    public PipelineData PipelineData;
     public IRenderTarget? RenderTarget;
-    public DrawSubmission[] Submissions;
     
-    public Matrix4x4? ModelMatrix;
+    public PipelineData PipelineData;
+    public DrawSubmission[] Submissions;
 }
 
 
