@@ -46,6 +46,7 @@ internal unsafe class FrameHandler : IDisposable
 
     public bool _framebufferResized { get; set; }
     private bool LOG_RENDER_GRAPH = false;
+    private bool DEBUG = true;
 
     public FrameHandler(VulkanMaster master)
     {
@@ -114,6 +115,10 @@ internal unsafe class FrameHandler : IDisposable
 
     public void Draw(in DrawData data)
     {
+        if (DEBUG)
+        {
+            Debug.Log("Running Draw()");
+        }
         if (_compiledGraph is null)
             throw new Exception("Draw called without compiled graph.");
 
@@ -439,9 +444,18 @@ internal unsafe class FrameHandler : IDisposable
 
     public void EndFrame()
     {
+        if (DEBUG)
+        {
+            Debug.Log("Running EndFrame() before frame active check");
+        }
         if (!_frameActive)
         {
             return;
+        }
+        
+        if (DEBUG)
+        {
+            Debug.Log("Running EndFrame() after frame active check");
         }
 
         var cmd = _commandBuffer[_currentFrame];
@@ -616,12 +630,16 @@ internal unsafe class FrameHandler : IDisposable
 
     #region Cleanup
     
-    private bool IsWindowMinimized() => _master.GetWindow.FramebufferSize.X == 0 || _master.GetWindow.FramebufferSize.Y == 0;
+    private bool IsWindowMinimized()
+    {
+        // Debug.Log("Window was minimized");
+        return _master.GetWindow.FramebufferSize.X == 0 || _master.GetWindow.FramebufferSize.Y == 0;
+    }
 
     private bool RecreateSwapchain()
     {
         Debug.Log("Recreating swapchain", VALIDATION_LAYERS.INFO);
-        if (_swapchainHandler.Extent.Width <= 0 && _swapchainHandler.Extent.Height <= 0)
+        if (_swapchainHandler.Extent.Width <= 0 || _swapchainHandler.Extent.Height <= 0)
         {
             _framebufferResized = true;
             return false;

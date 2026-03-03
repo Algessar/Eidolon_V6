@@ -30,27 +30,27 @@ public static class Debug
         if (validation == VALIDATION_LAYERS.SUCCESS)
         {
             Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"{file}({line})[{member}]: {message}");
+            Console.WriteLine($"[{DateTime.Now}]{file}({line})[{member}]: {message}");
             
         }
 
         if (validation == VALIDATION_LAYERS.WARNING)
         {
             Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine($"{file}({line})[{member}]: {message}");
+            Console.WriteLine($"[{DateTime.Now}]{file}({line})[{member}]: {message}");
         }
 
         if (validation == VALIDATION_LAYERS.ERROR)
         {
             Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine($"{file}({line})[{member}]: {message}");
+            Console.WriteLine($"[{DateTime.Now}]{file}({line})[{member}]: {message}");
             throw new Exception("Debug Exception");
         }
 
         if (validation == VALIDATION_LAYERS.INFO)
         {
             Console.ForegroundColor = ConsoleColor.Blue;
-            Console.WriteLine($"{file}({line})[{member}]: {message}");
+            Console.WriteLine($"[{DateTime.Now}]{file}({line})[{member}]: {message}");
         }
 
         Console.ResetColor();
