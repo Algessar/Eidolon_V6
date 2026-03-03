@@ -15,6 +15,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     VulkanMaster _master;
     
     // // Lifetime (created once)
+    
     private PipelineData _pipelineData;
     private DescriptorSetLayout _descriptorSetLayout;
     private DescriptorPool _descriptorPool; // Not sure what this is doing here. Shouldn't this be in DescriptorFactory?
@@ -49,11 +50,13 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     EditorUI _editorUI;
     ImGuiInputManager _inputManager;
 
-
+    private RenderPass _renderPass;
+    
     public ImGuiRenderer(VulkanMaster master)
     {
         _master = master;
         _uiGeometryUploader = new UiGeometryUploader(master);
+        _master.FrameHandler.OnSwapchainRecreated += OnSwapchainRecreated;
     }
     public void Initialize( RenderPass renderPass)
     {
@@ -81,9 +84,14 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         
         Debug.Log("ImGuiRenderer initialized", VALIDATION_LAYERS.INFO);
     }
+
     
     public void NewFrame(float delta, Vector2 windowSize, Vector2 framebufferSize)
     {
+        if (_fontDescriptorSet.Handle == 0)
+        {
+            Debug.Log($"Font DescriptorSet handle is 0: {_fontDescriptorSet.Handle} ", VALIDATION_LAYERS.INFO);
+        }
         var io = ImGui.GetIO();
         io.DisplaySize = windowSize;
 
@@ -93,17 +101,20 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
             framebufferSize.X / safeWindowWidth,
             framebufferSize.Y / safeWindowHeight);
         io.DeltaTime = MathF.Max(1f / 1000f, delta);
+
+        
         _inputManager.UpdateInput(ImGui.GetIO());
         ImGui.NewFrame();
         
-        UpdateGameViewTextureBinding();
-        _editorUI.SetGameViewTexture(_textureDescriptorSets.ContainsKey(GameViewTextureId) ? GameViewTextureId : 0);
+        var hasGameViewTexture = UpdateGameViewTextureBinding();
+        _editorUI.SetGameViewTexture(hasGameViewTexture ? GameViewTextureId : 0);
         
         _editorUI.Update();
         BuildUI();
         FinalizeFrame();
 
         Debug.Log("Running ImGui.NewFrame()", VALIDATION_LAYERS.WARNING);
+
     }
 
     private void BuildUI()
@@ -130,6 +141,37 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         LastCommandListCount = !drawData.Valid ? 0 : drawData.CmdListsCount;
         
         CurrentDrawData = ConvertDrawData(drawData);
+    }
+
+    public void OnSwapchainRecreated()
+    {
+        // Destroy old pool and layout
+        if (_descriptorPool.Handle != 0)
+        {
+            _master.Vk.DestroyDescriptorPool(_master.VulkanDevice.Device, _descriptorPool, null);
+            _descriptorPool = default;
+        }
+        if (_descriptorSetLayout.Handle != 0)
+        {
+            _master.Vk.DestroyDescriptorSetLayout(_master.VulkanDevice.Device, _descriptorSetLayout, null);
+            _descriptorSetLayout = default;
+        }
+
+        // Recreate descriptor resources – this allocates new sets
+        CreateDescriptorResources();
+        UpdateFontDescriptorSet();  // Updates _fontDescriptorSet with font image
+
+        
+        // Force game view to be re-evaluated
+        _lastGameViewHandle = 0;
+
+        // Recreate the pipeline with the new layout and stored render pass
+        CreatePipeline(_renderPass);
+
+        // Immediately update the game view binding so the set is ready
+        UpdateGameViewTextureBinding();
+
+        Debug.Log($"[ImGui] After recreation: font set = {_fontDescriptorSet.Handle}, game view set = {_gameViewDescriptorSet.Handle}");
     }
 
     private ImGuiDrawData ConvertDrawData(ImDrawDataPtr drawData)
@@ -248,9 +290,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
 
         _fontDescriptorSet = AllocateDescriptorSet();
         _gameViewDescriptorSet = AllocateDescriptorSet();
-        _textureDescriptorSets[FontTextureId] = _fontDescriptorSet;
-
-        //TODO: upload ImGui font atlas to GPU and write CombinedImageSampler descriptor at binding 0.
+        // _textureDescriptorSets[FontTextureId] = _fontDescriptorSet;
     }
 
     private DescriptorSet AllocateDescriptorSet()
@@ -297,16 +337,29 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         ImGui.GetIO().Fonts.SetTexID(FontTextureId);
     }
     
-    private void UpdateGameViewTextureBinding()
+    private bool UpdateGameViewTextureBinding()
     {
         if (_master.FrameHandler is null)
-            return;
+            return false;
 
         if (!_master.FrameHandler.TryGetResourceView("GameView", out var gameView))
-            return;
+        {
+            _lastGameViewHandle = 0;
+            return false;
+        }
 
-        if (gameView.Handle == 0 || gameView.Handle == _lastGameViewHandle)
-            return;
+        if (gameView.Handle == 0)
+        {
+            _lastGameViewHandle = 0;
+            return false;
+        }
+
+        if (gameView.Handle == _lastGameViewHandle)
+            return true;
+
+        // Ensure the descriptor set is valid (it should be, as allocated in CreateDescriptorResources)
+        if (_gameViewDescriptorSet.Handle == 0)
+            _gameViewDescriptorSet = AllocateDescriptorSet();
 
         var imageInfo = new DescriptorImageInfo
         {
@@ -326,10 +379,12 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         };
 
         _master.Vk.UpdateDescriptorSets(_master.VulkanDevice.Device, 1, &write, 0, null);
-        _textureDescriptorSets[GameViewTextureId] = _gameViewDescriptorSet;
         _lastGameViewHandle = gameView.Handle;
+
+        return true;
     }
 
+    
     private void CreatePipeline(RenderPass renderPass)
     {
         var resolvedRenderPass = CreateRenderPassKey(renderPass);
@@ -364,8 +419,9 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
             BlendState = BlendState.AlphaBlending,
         };
 
-        // _pipelineKey = key;
-        _pipelineData = _master.PipelineFactory.GetOrCreate(key);
+        
+        _renderPass = renderPass;
+        _pipelineData = _master.PipelineFactory.GetOrCreate(key);   
         
         if (_pipelineData.RenderPass.Handle == 0)
         {
@@ -599,29 +655,20 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         CurrentSubmissions = submissions.ToArray();
     }
     
+    // private DescriptorSet ResolveDescriptorSet(nint textureId)
+    // {
+    //     if (textureId == GameViewTextureId)
+    //         return _gameViewDescriptorSet;
+    //     // Fallback to font set for any other texture ID (including FontTextureId)
+    //     return _fontDescriptorSet;
+    // }
+    
     private DescriptorSet ResolveDescriptorSet(nint textureId)
     {
         if (textureId != 0 && _textureDescriptorSets.TryGetValue(textureId, out var descriptorSet))
             return descriptorSet;
-
+    
         return _fontDescriptorSet;
-    }
-
-    private Matrix4x4 CalculateImGuiProjection()
-    {
-        var io = ImGui.GetIO();
-        float width = io.DisplaySize.X;
-        float height = io.DisplaySize.Y;
-        
-        // Standard orthographic projection for Vulkan (Y down, depth 0 to 1)
-        // Maps pixel coordinates (0,0 at top-left) to Vulkan Normalized Device Coordinates
-        // NDC: X = -1 (left), 1 (right). Y = -1 (top), 1 (bottom). Z = 0 (near), 1 (far).
-        return new Matrix4x4(
-            2.0f / width, 0.0f,           0.0f, 0.0f, //xyzw
-            0.0f,         2.0f / height,  0.0f, 0.0f, //xyzw
-            0.0f,         0.0f,           1.0f, 0.0f, // Depth range 0->1
-            -1.0f,        -1.0f,          0.0f, 1.0f  // Translation
-        );
     }
     
     public void Dispose()

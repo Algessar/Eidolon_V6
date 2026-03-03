@@ -14,7 +14,7 @@ internal class SceneRenderer
 
     public void NewFrame()
     {
-        Debug.Log("Running NewFrame in SceneRenderer", VALIDATION_LAYERS.INFO);
+        Debug.Log("Running NewFrame in SceneRenderer. Nothing called here yet.", VALIDATION_LAYERS.INFO);
     }
 
     public void BuildDrawSubmissions()

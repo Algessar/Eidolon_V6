@@ -22,8 +22,6 @@ internal sealed class GameViewRenderer
         CurrentSubmissions = submissions ?? Array.Empty<DrawSubmission>();
     }
 
-    
-
     public void Dispose()
     {
         // TODO release managed resources here

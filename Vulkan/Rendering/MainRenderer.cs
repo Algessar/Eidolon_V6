@@ -36,7 +36,6 @@ internal class MainRenderer
     {
 	    
 	    ImGui.CreateContext();
-	    // _drawData = BuildInitialDrawData(_master.SwapchainHandler);
 	    _bootstrapPipelineData = BuildBootstrapPipelineData(_master.SwapchainHandler);
 	    _drawData = BuildInitialDrawData(_bootstrapPipelineData);
 	    _sceneSubmissions = _drawData.Submissions ?? Array.Empty<DrawSubmission>();
@@ -108,6 +107,8 @@ internal class MainRenderer
 	        _drawData.Submissions = mergedSubmissions;
 
 	        _master.FrameHandler.Draw(in _drawData);
+	        
+	        
         };
         
         window.Run();

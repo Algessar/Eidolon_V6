@@ -9,6 +9,8 @@ namespace Eidolon.Vulkan;
 
 internal unsafe class FrameHandler : IDisposable
 {
+    public event Action OnSwapchainRecreated;
+    
     public VulkanMaster _master { get; }
     private SwapchainHandler _swapchainHandler;
 
@@ -32,6 +34,9 @@ internal unsafe class FrameHandler : IDisposable
     private uint _currentFrame;
 
     private bool _frameActive;
+
+    public bool FrameActive => _frameActive;
+
     private uint _currentImageIndex;
     public uint CurrentFrame => _currentFrame;
 
@@ -107,6 +112,19 @@ internal unsafe class FrameHandler : IDisposable
 
     #region Drawing
 
+    public void Draw(in DrawData data)
+    {
+        if (_compiledGraph is null)
+            throw new Exception("Draw called without compiled graph.");
+
+        BeginFrame();
+        if (!_frameActive)
+            return;
+
+        ExecutePasses(data);
+        EndFrame();
+    }
+    
     private void ExecutePasses(in DrawData data)
     {
         // Debug.Log($"Swapchain Extent: {_swapchainHandler.Extent.Width}x{_swapchainHandler.Extent.Height}");
@@ -184,14 +202,7 @@ internal unsafe class FrameHandler : IDisposable
                 ClearValueCount = clearValueCount,
                 PClearValues = clearValues
             };
-            
-            // uint swapchainHandle = _importMap.GetHandleForKind(ImportedResourceKind.SwapchainColor);
-            // if (swapchainHandle != 0 && _graphResourceRuntimeManager.TryGetRuntime(swapchainHandle, out var runtime))
-            // {
-            //     Debug.Log($"[UI Pre-RenderPass] Swapchain tracked layout = {runtime.CurrentLayout}");
-            // }
-            
-            // Debug.Log($"UI Pass ClearColor: {execution.ClearColor}, Color value: {clearValues[0].Color.Float32_0},{clearValues[0].Color.Float32_1},{clearValues[0].Color.Float32_2},{clearValues[0].Color.Float32_3}");
+  
             _master.Vk.CmdBeginRenderPass(cmd, in beginInfo, SubpassContents.Inline);
 
             // Inside ExecutePasses, after CmdBeginRenderPass for the UI pass:
@@ -211,14 +222,17 @@ internal unsafe class FrameHandler : IDisposable
                 };
                 _master.Vk.CmdClearAttachments(cmd, 1, &clearAttachment, 1, &clearRect);
             }
-            
+
+            Debug.Log($"pass.Type = {pass.Type}", VALIDATION_LAYERS.INFO);
             if (pass.Type is not RenderPassType.Present)
             {
+                
                 foreach (var submission in submissions)
                 {
                     if (submission.PassType != pass.Type)
                         continue;
 
+                    Debug.Log($"Recording submissions", VALIDATION_LAYERS.WARNING);
                     RecordSubmission(cmd, in submission, passViewport, passScissor);
                 }
             }
@@ -238,6 +252,7 @@ internal unsafe class FrameHandler : IDisposable
         var descriptorSet = submission.DescriptorSet;
         if (descriptorSet.Handle != 0)
         {
+            Debug.Log($"DescriptorSet handle before bind: {descriptorSet.Handle}", VALIDATION_LAYERS.INFO);
             _master.Vk.CmdBindDescriptorSets(
                 cmd,
                 PipelineBindPoint.Graphics,
@@ -299,6 +314,8 @@ internal unsafe class FrameHandler : IDisposable
 
         if (submission.IndexBuffer.IsValid && submission.IndexCount > 0)
         {
+            Debug.Log(
+                $"Binding indexBuffer with handle: {submission.IndexBuffer.Buffer.Handle}, indexCount : {submission.IndexCount}", VALIDATION_LAYERS.INFO);
             _master.Vk.CmdBindIndexBuffer(cmd, submission.IndexBuffer.Buffer, submission.IndexOffset,
                 submission.IndexType);
             _master.Vk.CmdDrawIndexed(cmd, submission.IndexCount, Math.Max(submission.InstanceCount, 1),
@@ -314,26 +331,13 @@ internal unsafe class FrameHandler : IDisposable
     }
 
 
-    public void Draw(in DrawData data)
-    {
-        if (_compiledGraph is null)
-            throw new Exception("Draw called without compiled graph.");
-
-        BeginFrame(); //used DrawData before
-        if (!_frameActive)
-            return;
-
-        ExecutePasses(data);
-        EndFrame();
-    }
-
-    public void BeginFrame()//public void BeginFrame(in DrawData data)
+    private void BeginFrame()
     {
         if (_frameActive)
             throw new Exception("BeginFrame called while frame active.");
 
         var framebufferSize = _master.GetWindow.FramebufferSize;
-        if (framebufferSize.X > 0 && framebufferSize.Y > 0 &&
+        if (framebufferSize is { X: > 0, Y: > 0 } &&
             ((uint)framebufferSize.X != _swapchainHandler.Extent.Width ||
              (uint)framebufferSize.Y != _swapchainHandler.Extent.Height))
         {
@@ -343,6 +347,7 @@ internal unsafe class FrameHandler : IDisposable
         if (IsWindowMinimized())
         {
             _frameActive = false;
+            Debug.Log($"IsWindowMinized check: {IsWindowMinimized()}, FrameActive: {_frameActive}", VALIDATION_LAYERS.INFO);
             return;
         }
         
@@ -357,7 +362,7 @@ internal unsafe class FrameHandler : IDisposable
             vk.WaitForFences(device, 1, frameFence, true, ulong.MaxValue);
         }
 
-        if (_framebufferResized && !RecreateSwapchain())
+        if (_framebufferResized)
         {
             _frameActive = false;
             return;
@@ -376,18 +381,21 @@ internal unsafe class FrameHandler : IDisposable
                 if (!IsWindowMinimized())
                     RecreateSwapchain();
                 _frameActive = false;
+                Debug.Log("Recreated swapchain, OutOfDateKhr", VALIDATION_LAYERS.INFO);
                 return;
             case Result.SuboptimalKhr:
                 _framebufferResized = true;
+                Debug.Log($"Framebuffer resize: {_framebufferResized}", VALIDATION_LAYERS.INFO);
                 break;
             default:
             {
+                Debug.Log("acquireResult default triggered", VALIDATION_LAYERS.INFO);
+
                 if (acquireResult != Result.Success)
                 {
                     _frameActive = false;
                     return;
                 }
-
                 break;
             }
         }
@@ -421,7 +429,7 @@ internal unsafe class FrameHandler : IDisposable
         var beginInfo = new CommandBufferBeginInfo
         {
             SType = StructureType.CommandBufferBeginInfo,
-            Flags = CommandBufferUsageFlags.SimultaneousUseBit
+            // Flags = CommandBufferUsageFlags.SimultaneousUseBit
         };
 
         vk.BeginCommandBuffer(cmd, in beginInfo);
@@ -618,42 +626,62 @@ internal unsafe class FrameHandler : IDisposable
             _framebufferResized = true;
             return false;
         }
-        
-        
+
+        // Wait for the device to be completely idle
+        _master.Vk.DeviceWaitIdle(_master.VulkanDevice.Device);
+
         if (!_swapchainHandler.RecreateSwapchain())
         {
             _framebufferResized = true;
             return false;
         }
 
-        // _framebufferResized = false;
+        // Recreate per‑frame wait semaphores
+        RecreateWaitSemaphores();
 
-        _swapchainHandler = _master.SwapchainHandler;
-        
-        var fb = _master.GetWindow.FramebufferSize;
-        if (fb is { X: > 0, Y: > 0 } &&
-            ((uint)fb.X != _swapchainHandler.Extent.Width || (uint)fb.Y != _swapchainHandler.Extent.Height))
+        // Reset per‑frame fences (they are already signaled after DeviceWaitIdle)
+        for (int i = 0; i < _inFlightFences.Length; i++)
         {
-            _framebufferResized = true;
-            Debug.Log(
-                $"Swapchain recreate deferred: window fb {fb.X}x{fb.Y} vs swapchain {_swapchainHandler.Extent.Width}x{_swapchainHandler.Extent.Height}",
-                VALIDATION_LAYERS.INFO);
-            return false;
+            _master.Vk.ResetFences(_master.VulkanDevice.Device, 1, in _inFlightFences[i]);
         }
 
-        _framebufferResized = false;
+        // Reset command buffers (they are no longer in use)
+        for(int i = 0; i < _commandBuffer.Length; i++)
+        {
+            _master.Vk.ResetCommandBuffer(_commandBuffer[i], 0);
+        }
 
+        // Update image count and per‑image structures
         _imageCount = _swapchainHandler.ImageCount;
         _imagesInFlight = new Fence[_imageCount];
-
         RecreateSignalSemaphores();
 
         _currentImageIndex = 0;
-
         _graphResourceRuntimeManager.DestroyGraphResources();
         _passExecutionHandler.Reset();
-        
+
+        _framebufferResized = false;
+        OnSwapchainRecreated?.Invoke();
         return true;
+    }
+    
+    private void RecreateWaitSemaphores()
+    {
+        // Destroy existing wait semaphores
+        foreach (var semaphore in _waitSemaphore)
+        {
+            if (semaphore.Handle != 0)
+            {
+                _master.Vk.DestroySemaphore(_master.VulkanDevice.Device, semaphore, null);
+            }
+        }
+
+        // Recreate with the same per‑frame count
+        _waitSemaphore = new Semaphore[Constants.MAX_FRAMES_IN_FLIGHT];
+        for (int i = 0; i < Constants.MAX_FRAMES_IN_FLIGHT; i++)
+        {
+            _waitSemaphore[i] = CreateSemaphore($"WaitSemaphore {i}");
+        }
     }
 
     private void RecreateSignalSemaphores()

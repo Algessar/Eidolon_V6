@@ -34,7 +34,7 @@ internal unsafe class DescriptorFactory: IDisposable
     private readonly DescriptorKey _defaultKey;
     private readonly DescriptorKey _imguiKey;
     
-    private DescriptorPool _descriptorPool;
+    private DescriptorPool _descriptorPool; //NOTE: Currently created in ImGuiRenderer, which I'm not a fan of. 
     
     private DescriptorSetLayout _descriptorSetLayout;
     
@@ -83,10 +83,7 @@ internal unsafe class DescriptorFactory: IDisposable
         
         Debug.Log("DescriptorFactory created!", VALIDATION_LAYERS.SUCCESS);
     }
-    
-    public DescriptorKey GetDefaultKey() => _defaultKey;
 
-    public DescriptorKey GetImGuiKey() => _imguiKey;
 
     public DescriptorSet GetDescriptorSet(uint frameIndex)
     {
@@ -139,6 +136,8 @@ internal unsafe class DescriptorFactory: IDisposable
             return layout;
         }
     }
+    
+    
     
     public DescriptorSetLayout CreateDescriptorSetLayout()
     {
