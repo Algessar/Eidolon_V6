@@ -1,5 +1,4 @@
-﻿using System.Numerics;
-using EidolonCore.Rendering.Interfaces;
+﻿using EidolonCore.Rendering.Interfaces;
 
 namespace Eidolon.Vulkan;
 

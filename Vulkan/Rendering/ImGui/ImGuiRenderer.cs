@@ -265,7 +265,8 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
                 PSetLayouts = descriptorSetLayoutPtr
             };
 
-            if (_master.Vk.AllocateDescriptorSets(_master.VulkanDevice.Device, &descriptorSetAllocateInfo, out var descriptorSet) != Result.Success)
+            if (_master.Vk.AllocateDescriptorSets(_master.VulkanDevice.Device, &descriptorSetAllocateInfo,
+                    out var descriptorSet) != Result.Success)
                 throw new Exception("Failed to allocate ImGui descriptor set.");
 
             return descriptorSet;

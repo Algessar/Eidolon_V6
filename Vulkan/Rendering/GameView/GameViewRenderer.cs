@@ -5,11 +5,12 @@ using Silk.NET.Vulkan;
 
 namespace EidolonEngine;
 
-internal class GameViewRenderer : IDisposable
+/// <summary>
+/// Produces game-view draw submissions. Render-pass/framebuffer ownership stays in render-graph execution.
+/// </summary>
+internal sealed class GameViewRenderer
 {
-
     public DrawSubmission[] CurrentSubmissions { get; private set; } = Array.Empty<DrawSubmission>();
-
     public void NewFrame()
     {
         CurrentSubmissions = Array.Empty<DrawSubmission>();

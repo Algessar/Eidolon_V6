@@ -90,16 +90,20 @@ internal class MainRenderer
 	        var baseSubmissions = _sceneSubmissions; 
 
 	        var sceneSubmissions = _sceneRenderer?.CurrentSubmissions ?? Array.Empty<DrawSubmission>();
+	        var gameViewSubmissions = _gameViewRenderer?.CurrentSubmissions ?? Array.Empty<DrawSubmission>();
 	        var uiSubmissions = _imguiRenderer?.CurrentSubmissions ?? Array.Empty<DrawSubmission>();
 
 	        var mergedSubmissions = new DrawSubmission[
 		        baseSubmissions.Length +
-		        uiSubmissions.Length +
-		        sceneSubmissions.Length];
-	        
+		        sceneSubmissions.Length +
+		        gameViewSubmissions.Length +
+		        uiSubmissions.Length];
+
 	        baseSubmissions.CopyTo(mergedSubmissions, 0);
 	        sceneSubmissions.CopyTo(mergedSubmissions, baseSubmissions.Length);
-	        uiSubmissions.CopyTo(mergedSubmissions, baseSubmissions.Length + sceneSubmissions.Length);
+	        
+	        gameViewSubmissions.CopyTo(mergedSubmissions, baseSubmissions.Length + sceneSubmissions.Length);
+	        uiSubmissions.CopyTo(mergedSubmissions, baseSubmissions.Length + sceneSubmissions.Length + gameViewSubmissions.Length);
 
 	        _drawData.Submissions = mergedSubmissions;
 

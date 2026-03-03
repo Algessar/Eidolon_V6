@@ -185,11 +185,11 @@ internal unsafe class FrameHandler : IDisposable
                 PClearValues = clearValues
             };
             
-            uint swapchainHandle = _importMap.GetHandleForKind(ImportedResourceKind.SwapchainColor);
-            if (swapchainHandle != 0 && _graphResourceRuntimeManager.TryGetRuntime(swapchainHandle, out var runtime))
-            {
-                Debug.Log($"[UI Pre-RenderPass] Swapchain tracked layout = {runtime.CurrentLayout}");
-            }
+            // uint swapchainHandle = _importMap.GetHandleForKind(ImportedResourceKind.SwapchainColor);
+            // if (swapchainHandle != 0 && _graphResourceRuntimeManager.TryGetRuntime(swapchainHandle, out var runtime))
+            // {
+            //     Debug.Log($"[UI Pre-RenderPass] Swapchain tracked layout = {runtime.CurrentLayout}");
+            // }
             
             // Debug.Log($"UI Pass ClearColor: {execution.ClearColor}, Color value: {clearValues[0].Color.Float32_0},{clearValues[0].Color.Float32_1},{clearValues[0].Color.Float32_2},{clearValues[0].Color.Float32_3}");
             _master.Vk.CmdBeginRenderPass(cmd, in beginInfo, SubpassContents.Inline);
@@ -420,7 +420,8 @@ internal unsafe class FrameHandler : IDisposable
         
         var beginInfo = new CommandBufferBeginInfo
         {
-            SType = StructureType.CommandBufferBeginInfo
+            SType = StructureType.CommandBufferBeginInfo,
+            Flags = CommandBufferUsageFlags.SimultaneousUseBit
         };
 
         vk.BeginCommandBuffer(cmd, in beginInfo);
