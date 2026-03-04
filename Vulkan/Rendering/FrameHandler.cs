@@ -1,6 +1,7 @@
 ﻿using System.Numerics;
 using Silk.NET.Maths;
 using Silk.NET.Vulkan;
+using Silk.NET.Windowing;
 using Semaphore = Silk.NET.Vulkan.Semaphore;
 
 namespace Eidolon.Vulkan;
@@ -117,7 +118,7 @@ internal unsafe class FrameHandler : IDisposable
     {
         if (DEBUG)
         {
-            Debug.Log("Running Draw()");
+            // Debug.Log("Running Draw()", VALIDATION_LAYERS.INFO);
         }
         if (_compiledGraph is null)
             throw new Exception("Draw called without compiled graph.");
@@ -132,6 +133,7 @@ internal unsafe class FrameHandler : IDisposable
     
     private void ExecutePasses(in DrawData data)
     {
+        Debug.Log("ExecutePasses entered", VALIDATION_LAYERS.INFO);
         // Debug.Log($"Swapchain Extent: {_swapchainHandler.Extent.Width}x{_swapchainHandler.Extent.Height}");
         if (_compiledGraph is null)
             throw new Exception("Draw called without compiled graph.");
@@ -338,6 +340,7 @@ internal unsafe class FrameHandler : IDisposable
 
     private void BeginFrame()
     {
+        Debug.Log("BeginFrame called", VALIDATION_LAYERS.INFO);
         if (_frameActive)
             throw new Exception("BeginFrame called while frame active.");
 
@@ -347,6 +350,12 @@ internal unsafe class FrameHandler : IDisposable
              (uint)framebufferSize.Y != _swapchainHandler.Extent.Height))
         {
             _framebufferResized = true;
+        }
+        
+        if (!HasValidFramebufferSize())
+        {
+            _frameActive = false;
+            return;
         }
         
         if (IsWindowMinimized())
@@ -442,8 +451,9 @@ internal unsafe class FrameHandler : IDisposable
         _frameActive = true;
     }
 
-    public void EndFrame()
+    private void EndFrame()
     {
+        
         if (DEBUG)
         {
             Debug.Log("Running EndFrame() before frame active check");
@@ -487,7 +497,7 @@ internal unsafe class FrameHandler : IDisposable
 
     #region Creation
 
-    public void CreateResources()
+    private void CreateResources()
     {
         if (_compiledGraph is null)
             return;
@@ -630,11 +640,13 @@ internal unsafe class FrameHandler : IDisposable
 
     #region Cleanup
     
-    private bool IsWindowMinimized()
+    private bool HasValidFramebufferSize()
     {
-        // Debug.Log("Window was minimized");
-        return _master.GetWindow.FramebufferSize.X == 0 || _master.GetWindow.FramebufferSize.Y == 0;
+        var framebufferSize = _master.GetWindow.FramebufferSize;
+        return framebufferSize.X > 0 && framebufferSize.Y > 0;
     }
+
+    private bool IsWindowMinimized() => _master.GetWindow.WindowState == WindowState.Minimized;
 
     private bool RecreateSwapchain()
     {
@@ -648,7 +660,7 @@ internal unsafe class FrameHandler : IDisposable
         // Wait for the device to be completely idle
         _master.Vk.DeviceWaitIdle(_master.VulkanDevice.Device);
 
-        if (!_swapchainHandler.RecreateSwapchain())
+        if (!HasValidFramebufferSize())
         {
             _framebufferResized = true;
             return false;
@@ -658,7 +670,7 @@ internal unsafe class FrameHandler : IDisposable
         RecreateWaitSemaphores();
 
         // Reset per‑frame fences (they are already signaled after DeviceWaitIdle)
-        for (int i = 0; i < _inFlightFences.Length; i++)
+        for(int i = _inFlightFences.Length - 1; i >= 0; i--)
         {
             _master.Vk.ResetFences(_master.VulkanDevice.Device, 1, in _inFlightFences[i]);
         }

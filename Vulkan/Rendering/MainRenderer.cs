@@ -54,6 +54,7 @@ internal class MainRenderer
 	    
 	    _imguiRenderer = new ImGuiRenderer(_master);
 	    _sceneRenderer = new SceneRenderer();
+	    _gameViewRenderer = new GameViewRenderer();
 	    
 	    _imguiRenderer.Initialize(_bootstrapPipelineData.RenderPass);
 	    
@@ -61,7 +62,7 @@ internal class MainRenderer
 	    {
 		    // Render-graph passes own their framebuffer formats; keep base demo submissions disabled
 		    // until scene pipelines are authored per-pass.
-		    _master.FrameHandler.SetCompiledGraph(initialGraph);
+		    _master.FrameHandler?.SetCompiledGraph(initialGraph);
 	    }
     }
 	
@@ -78,12 +79,12 @@ internal class MainRenderer
 	        }
 	        
 	        
-	        if (ResizePending(window))
-	        {
-		        _master.FrameHandler._framebufferResized = true;
-		        _master.FrameHandler.Draw(in _drawData);
-		        return;
-	        }
+	        // if (ResizePending(window))
+	        // {
+		       //  _master.FrameHandler._framebufferResized = true;
+		       //  _master.FrameHandler.Draw(in _drawData);
+		       //  return;
+	        // }
 
 	        _sceneRenderer?.NewFrame();
 	        _gameViewRenderer?.NewFrame();

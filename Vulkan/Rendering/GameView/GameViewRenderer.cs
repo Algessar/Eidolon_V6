@@ -14,7 +14,7 @@ internal sealed class GameViewRenderer
     public void NewFrame()
     {
         CurrentSubmissions = Array.Empty<DrawSubmission>();
-        Debug.Log("Running NewFrame in GameViewRenderer", VALIDATION_LAYERS.INFO);
+        // Debug.Log("Running NewFrame in GameViewRenderer", VALIDATION_LAYERS.INFO);
     }
 
     public void SetSubmissions(params DrawSubmission[] submissions)
