@@ -105,10 +105,11 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         
         _inputManager.UpdateInput(ImGui.GetIO());
         ImGui.NewFrame();
-        
+        Debug.Log($"ImGui.NewFrame()", VALIDATION_LAYERS.INFO);
+
         var hasGameViewTexture = UpdateGameViewTextureBinding();
+        Debug.Log($"SetGameViewTexture", VALIDATION_LAYERS.INFO);
         _editorUI.SetGameViewTexture(hasGameViewTexture ? GameViewTextureId : 0);
-        
         _editorUI.Update();
         BuildUI();
         FinalizeFrame();
@@ -133,6 +134,8 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
 
     private void FinalizeFrame()
     {
+        Debug.Log("Running FinalizeFrame()", VALIDATION_LAYERS.INFO);
+
         ImGui.Render();
         var drawData = ImGui.GetDrawData();
 

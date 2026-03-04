@@ -7,16 +7,14 @@ internal unsafe class PassExecutionHandler(VulkanMaster master, Func<uint, PassA
     private readonly Dictionary<PassExecutionKey, RenderPass> _renderPassCache = new();
     private readonly Dictionary<FramebufferCacheKey, Framebuffer> _framebufferCache = new();
 
-    private bool DEBUG = false;
+    private const bool DEBUG = false;
 
     public PassExecutionContext GetOrCreate(in CompiledPass pass, in CompiledRenderGraph compiledGraph, uint currentImageIndex)
     {
-        DEBUG = false;
         if(DEBUG)
         {
             Debug.Log($"Calling GetOrCreate for pass {pass.Name}");
         }        
-        DEBUG = true;
         var resources = compiledGraph.Resources.ToDictionary(r => r.Handle.Handle, r => r);
 
         var colorTarget = ResolveColorTarget(pass, resources);

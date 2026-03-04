@@ -87,7 +87,7 @@ internal class MainRenderer
 	        // }
 
 	        _sceneRenderer?.NewFrame();
-	        _gameViewRenderer?.NewFrame();
+	        // _gameViewRenderer?.NewFrame();
 	        _imguiRenderer?.NewFrame(
 		        (float)delta,
 		        new Vector2(window.Size.X, window.Size.Y),
@@ -121,21 +121,6 @@ internal class MainRenderer
         };
         
         window.Run();
-    }
-    
-    
-    private bool ResizePending(IWindow window)
-    {
-	    var framebufferSize = window.FramebufferSize;
-	    if (framebufferSize.X <= 0 || framebufferSize.Y <= 0)
-	    {
-		    return false;
-	    }
-
-	    var extent = _master.SwapchainHandler.Extent;
-	    return _master.FrameHandler._framebufferResized ||
-	           (uint)framebufferSize.X != extent.Width ||
-	           (uint)framebufferSize.Y != extent.Height;
     }
     
     private PipelineData BuildBootstrapPipelineData(SwapchainHandler swapchain)

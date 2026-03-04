@@ -378,6 +378,7 @@ internal unsafe class FrameHandler : IDisposable
 
         if (_framebufferResized)
         {
+            RecreateSwapchain();
             _frameActive = false;
             return;
         }
@@ -658,9 +659,15 @@ internal unsafe class FrameHandler : IDisposable
         }
 
         // Wait for the device to be completely idle
-        _master.Vk.DeviceWaitIdle(_master.VulkanDevice.Device);
+        // _master.Vk.DeviceWaitIdle(_master.VulkanDevice.Device);
 
         if (!HasValidFramebufferSize())
+        {
+            _framebufferResized = true;
+            return false;
+        }
+        
+        if (!_swapchainHandler.RecreateSwapchain())
         {
             _framebufferResized = true;
             return false;
@@ -670,10 +677,10 @@ internal unsafe class FrameHandler : IDisposable
         RecreateWaitSemaphores();
 
         // Reset per‑frame fences (they are already signaled after DeviceWaitIdle)
-        for(int i = _inFlightFences.Length - 1; i >= 0; i--)
-        {
-            _master.Vk.ResetFences(_master.VulkanDevice.Device, 1, in _inFlightFences[i]);
-        }
+        // for(int i = _inFlightFences.Length - 1; i >= 0; i--)
+        // {
+        //     _master.Vk.ResetFences(_master.VulkanDevice.Device, 1, in _inFlightFences[i]);
+        // }
 
         // Reset command buffers (they are no longer in use)
         for(int i = 0; i < _commandBuffer.Length; i++)
