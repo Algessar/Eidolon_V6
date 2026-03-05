@@ -675,13 +675,7 @@ internal unsafe class FrameHandler : IDisposable
 
         // Recreate per‑frame wait semaphores
         RecreateWaitSemaphores();
-
-        // Reset per‑frame fences (they are already signaled after DeviceWaitIdle)
-        // for(int i = _inFlightFences.Length - 1; i >= 0; i--)
-        // {
-        //     _master.Vk.ResetFences(_master.VulkanDevice.Device, 1, in _inFlightFences[i]);
-        // }
-
+        
         // Reset command buffers (they are no longer in use)
         for(int i = 0; i < _commandBuffer.Length; i++)
         {

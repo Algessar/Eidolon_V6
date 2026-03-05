@@ -87,7 +87,7 @@ internal class MainRenderer
 	        // }
 
 	        _sceneRenderer?.NewFrame();
-	        // _gameViewRenderer?.NewFrame();
+	        _gameViewRenderer?.NewFrame();
 	        _imguiRenderer?.NewFrame(
 		        (float)delta,
 		        new Vector2(window.Size.X, window.Size.Y),

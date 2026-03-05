@@ -174,7 +174,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         // Immediately update the game view binding so the set is ready
         UpdateGameViewTextureBinding();
 
-        Debug.Log($"[ImGui] After recreation: font set = {_fontDescriptorSet.Handle}, game view set = {_gameViewDescriptorSet.Handle}");
+        // Debug.Log($"[ImGui] After recreation: font set = {_fontDescriptorSet.Handle}, game view set = {_gameViewDescriptorSet.Handle}");
     }
 
     private ImGuiDrawData ConvertDrawData(ImDrawDataPtr drawData)

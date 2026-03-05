@@ -26,4 +26,8 @@
       <Folder Include="RunEngine\" />
     </ItemGroup>
 
+    <PropertyGroup>
+        <ApplicationIcon>Assets\App.ico</ApplicationIcon>
+    </PropertyGroup>
+
 </Project>

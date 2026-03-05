@@ -12,7 +12,7 @@ internal unsafe class SwapchainHandler
     
     private SurfaceKHR _surfaceKhr;
     private SwapchainKHR _swapchainKhr;
-    public SwapchainKHR SwapchainKhr => _swapchainKhr;
+    // public SwapchainKHR SwapchainKhr => _swapchainKhr;
     private KhrSwapchain _khrSwapchain;
     private KhrSurface _khrSurface;
     private Format _swapchainImageFormat;
@@ -25,7 +25,7 @@ internal unsafe class SwapchainHandler
     private DeviceMemory _depthImageMemory;
     private Format _depthFormat;
     public Extent2D Extent { get; set; }
-    public Framebuffer[] Framebuffers { get; set; }
+    // public Framebuffer[] Framebuffers { get; set; }
     private Image[] SwapchainImages { get; set; }
 
 
@@ -407,70 +407,71 @@ internal unsafe class SwapchainHandler
     
     }
 
-    public void CreateFramebuffers(RenderPass renderPass, bool renderPassHasDepth)
-    {
-        Debug.Log($"Creating framebuffers for {renderPass.Handle}...");
-        // Cleanup existing framebuffers if necessary
-        if (Framebuffers is { Length: > 0 })
-        {
-            foreach (var framebuffer in Framebuffers)
-            {
-                if (framebuffer.Handle != 0)
-                {
-                    _master.Vk.DestroyFramebuffer(_master.VulkanDevice.Device, framebuffer, null);
-                }
-            }
-        }
-
-        // Create swapchain framebuffers
-        Framebuffers = new Framebuffer[_imageViews.Length];
-
-        for (int i = 0; i < _imageViews.Length; i++)
-        {
-            Debug.Log($"Image view handle[{i}]: {_imageViews[i].Handle}");
-            
-        }
-
-        ImageView[] attachmentsArray;
-
-        if (renderPassHasDepth)
-        {
-            // 2 attachments: color + depth
-            attachmentsArray = new ImageView[2];
-            attachmentsArray[1] = _depthImageView; // Depth is same for all
-        }
-        else
-        {
-            // 1 attachment: color only
-            attachmentsArray = new ImageView[1];
-        }
-
-        fixed (ImageView* attachmentsPtr = attachmentsArray)
-        {
-            for (int i = 0; i < _imageViews.Length; i++)
-            {
-                // Update only the color attachment (changes per framebuffer)
-                attachmentsArray[0] = _imageViews[i];
-
-                var framebufferInfo = new FramebufferCreateInfo
-                {
-                    SType = StructureType.FramebufferCreateInfo,
-                    RenderPass = renderPass,
-                    AttachmentCount = (uint)attachmentsArray.Length,
-                    PAttachments = attachmentsPtr,
-                    Width = Extent.Width,
-                    Height = Extent.Height,
-                    Layers = 1
-                };
-
-                if (_master.Vk.CreateFramebuffer(_master.VulkanDevice.Device,
-                        in framebufferInfo, null, out Framebuffers[i]) != Result.Success)
-                {
-                    throw new Exception($"Failed to create swapchain framebuffer {i}!");
-                }
-            }
-        }
-    }
+    // [Obsolete("Now handled by PassExecutionHandler")]
+    // public void CreateFramebuffers(RenderPass renderPass, bool renderPassHasDepth)
+    // {
+    //     Debug.Log($"Creating framebuffers for {renderPass.Handle}...");
+    //     // Cleanup existing framebuffers if necessary
+    //     if (Framebuffers is { Length: > 0 })
+    //     {
+    //         foreach (var framebuffer in Framebuffers)
+    //         {
+    //             if (framebuffer.Handle != 0)
+    //             {
+    //                 _master.Vk.DestroyFramebuffer(_master.VulkanDevice.Device, framebuffer, null);
+    //             }
+    //         }
+    //     }
+    //
+    //     // Create swapchain framebuffers
+    //     Framebuffers = new Framebuffer[_imageViews.Length];
+    //
+    //     for (int i = 0; i < _imageViews.Length; i++)
+    //     {
+    //         Debug.Log($"Image view handle[{i}]: {_imageViews[i].Handle}");
+    //         
+    //     }
+    //
+    //     ImageView[] attachmentsArray;
+    //
+    //     if (renderPassHasDepth)
+    //     {
+    //         // 2 attachments: color + depth
+    //         attachmentsArray = new ImageView[2];
+    //         attachmentsArray[1] = _depthImageView; // Depth is same for all
+    //     }
+    //     else
+    //     {
+    //         // 1 attachment: color only
+    //         attachmentsArray = new ImageView[1];
+    //     }
+    //
+    //     fixed (ImageView* attachmentsPtr = attachmentsArray)
+    //     {
+    //         for (int i = 0; i < _imageViews.Length; i++)
+    //         {
+    //             // Update only the color attachment (changes per framebuffer)
+    //             attachmentsArray[0] = _imageViews[i];
+    //
+    //             var framebufferInfo = new FramebufferCreateInfo
+    //             {
+    //                 SType = StructureType.FramebufferCreateInfo,
+    //                 RenderPass = renderPass,
+    //                 AttachmentCount = (uint)attachmentsArray.Length,
+    //                 PAttachments = attachmentsPtr,
+    //                 Width = Extent.Width,
+    //                 Height = Extent.Height,
+    //                 Layers = 1
+    //             };
+    //
+    //             if (_master.Vk.CreateFramebuffer(_master.VulkanDevice.Device,
+    //                     in framebufferInfo, null, out Framebuffers[i]) != Result.Success)
+    //             {
+    //                 throw new Exception($"Failed to create swapchain framebuffer {i}!");
+    //             }
+    //         }
+    //     }
+    // }
     
     public bool RecreateSwapchain()
     {
@@ -487,45 +488,19 @@ internal unsafe class SwapchainHandler
         return true;
     }
 
-    public bool RecreateSwapchain(RenderPass renderPass, bool renderPassHasDepth)
-    {
-        var recreated = RecreateSwapchain();
-        if (!recreated)
-            return false;
-
-        CreateFramebuffers(renderPass, renderPassHasDepth);
-        return true;
-    }
-
-    // public bool RecreateSwapchain(RenderPass renderPass, bool renderPassHasDepth)
-    // {
-    //     if (_window.FramebufferSize.X == 0 || _window.FramebufferSize.Y == 0)
-    //         return false;
-    //
-    //     _master.Vk.DeviceWaitIdle(_master.VulkanDevice.Device);
-    //
-    //     CleanupSwapchainResources();
-    //
-    //     CreateSwapchain();
-    //     CreateImageViews();
-    //     CreateDepthResources();
-    //     CreateFramebuffers(renderPass, renderPassHasDepth);
-    //     return true;
-    // }
-
     private void CleanupSwapchainResources()
     {
-        if (Framebuffers is { Length: > 0 })
-        {
-            foreach (var framebuffer in Framebuffers)
-            {
-                if (framebuffer.Handle != 0)
-                {
-                    _master.Vk.DestroyFramebuffer(_master.VulkanDevice.Device, framebuffer, null);
-                }
-            }
-            Framebuffers = Array.Empty<Framebuffer>();
-        }
+        // if (Framebuffers is { Length: > 0 })
+        // {
+        //     foreach (var framebuffer in Framebuffers)
+        //     {
+        //         if (framebuffer.Handle != 0)
+        //         {
+        //             _master.Vk.DestroyFramebuffer(_master.VulkanDevice.Device, framebuffer, null);
+        //         }
+        //     }
+        //     Framebuffers = Array.Empty<Framebuffer>();
+        // }
 
         if (_imageViews is { Length: > 0 })
         {

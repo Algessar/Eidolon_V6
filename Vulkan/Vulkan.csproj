@@ -24,4 +24,8 @@
         <None Include="Rendering\Shaders\**\*.*" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 
+    <ItemGroup>
+      <Folder Include="Rendering\Handlers\" />
+    </ItemGroup>
+
 </Project>
