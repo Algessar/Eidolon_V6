@@ -46,8 +46,8 @@ internal unsafe class FrameHandler : IDisposable
     private Dictionary<ulong, string> _fenceNames = new();
 
     public bool _framebufferResized { get; set; }
-    private bool LOG_RENDER_GRAPH = false;
-    private bool DEBUG = true;
+    private const bool LOG_RENDER_GRAPH = false;
+    private const bool DEBUG = false;
 
     public FrameHandler(VulkanMaster master)
     {
@@ -133,8 +133,12 @@ internal unsafe class FrameHandler : IDisposable
     
     private void ExecutePasses(in DrawData data)
     {
-        Debug.Log("ExecutePasses entered", VALIDATION_LAYERS.INFO);
-        // Debug.Log($"Swapchain Extent: {_swapchainHandler.Extent.Width}x{_swapchainHandler.Extent.Height}");
+        if(DEBUG)
+        {
+            Debug.Log("ExecutePasses entered", VALIDATION_LAYERS.INFO);
+            Debug.Log($"Swapchain Extent: {_swapchainHandler.Extent.Width}x{_swapchainHandler.Extent.Height}");
+        }        
+        
         if (_compiledGraph is null)
             throw new Exception("Draw called without compiled graph.");
 
@@ -150,9 +154,10 @@ internal unsafe class FrameHandler : IDisposable
 
         var submissions = data.Submissions; // ?? Array.Empty<DrawSubmission>(); // NOTE: Rider warns that left operand is never null.
 
+        
         foreach (var pass in _compiledGraph.Passes)
         {
-            if (_currentFrame == 0)
+            if (_currentFrame == 0 && DEBUG)
             {
                 Debug.Log($"[RG] Pass {pass.ExecutionIndex}: {pass.Name} ({pass.Type})", VALIDATION_LAYERS.INFO,
                     LOG_RENDER_GRAPH);
@@ -164,10 +169,7 @@ internal unsafe class FrameHandler : IDisposable
                     LOG_RENDER_GRAPH);
             }
 
-            if (_currentFrame == 0 && LOG_RENDER_GRAPH)
-            {
-                // Debug.Log($"RenderPass used in FrameHandler: {data.PipelineData.RenderPass.Handle}");
-            }
+
 
             _graphBarrierHandler.TransitionLayouts(cmd, pass);
             if (pass.Type == RenderPassType.Present)
@@ -230,7 +232,7 @@ internal unsafe class FrameHandler : IDisposable
                 _master.Vk.CmdClearAttachments(cmd, 1, &clearAttachment, 1, &clearRect);
             }
 
-            Debug.Log($"pass.Type = {pass.Type}", VALIDATION_LAYERS.INFO);
+            // Debug.Log($"pass.Type = {pass.Type}", VALIDATION_LAYERS.INFO);
             if (pass.Type is not RenderPassType.Present)
             {
                 
@@ -239,7 +241,6 @@ internal unsafe class FrameHandler : IDisposable
                     if (submission.PassType != pass.Type)
                         continue;
 
-                    Debug.Log($"Recording submissions", VALIDATION_LAYERS.WARNING);
                     RecordSubmission(cmd, in submission, passViewport, passScissor);
                 }
             }
@@ -259,7 +260,6 @@ internal unsafe class FrameHandler : IDisposable
         var descriptorSet = submission.DescriptorSet;
         if (descriptorSet.Handle != 0)
         {
-            Debug.Log($"DescriptorSet handle before bind: {descriptorSet.Handle}", VALIDATION_LAYERS.INFO);
             _master.Vk.CmdBindDescriptorSets(
                 cmd,
                 PipelineBindPoint.Graphics,
@@ -321,8 +321,9 @@ internal unsafe class FrameHandler : IDisposable
 
         if (submission.IndexBuffer.IsValid && submission.IndexCount > 0)
         {
-            Debug.Log(
+            if(DEBUG) Debug.Log(
                 $"Binding indexBuffer with handle: {submission.IndexBuffer.Buffer.Handle}, indexCount : {submission.IndexCount}", VALIDATION_LAYERS.INFO);
+            
             _master.Vk.CmdBindIndexBuffer(cmd, submission.IndexBuffer.Buffer, submission.IndexOffset,
                 submission.IndexType);
             _master.Vk.CmdDrawIndexed(cmd, submission.IndexCount, Math.Max(submission.InstanceCount, 1),
@@ -340,7 +341,10 @@ internal unsafe class FrameHandler : IDisposable
 
     private void BeginFrame()
     {
-        Debug.Log("BeginFrame called", VALIDATION_LAYERS.INFO);
+        if (DEBUG)
+        {
+            Debug.Log("BeginFrame called", VALIDATION_LAYERS.INFO);
+        }
         if (_frameActive)
             throw new Exception("BeginFrame called while frame active.");
 
@@ -404,8 +408,10 @@ internal unsafe class FrameHandler : IDisposable
                 break;
             default:
             {
-                Debug.Log("acquireResult default triggered", VALIDATION_LAYERS.INFO);
-
+                if(DEBUG)
+                {
+                    Debug.Log("acquireResult default triggered", VALIDATION_LAYERS.INFO);
+                }
                 if (acquireResult != Result.Success)
                 {
                     _frameActive = false;

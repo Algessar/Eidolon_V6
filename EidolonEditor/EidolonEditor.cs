@@ -29,6 +29,10 @@ public static class EidolonEditor
         var gameView = graph.CreateImage("GameView", GraphImageDescription.Create(
             ImageFormat.Rgba16Float, //NOTE: Should this not be Rgba32Float?
             FlagImageUsage.ColorAttachment | FlagImageUsage.Sampled));
+        
+        var gameViewDepth = graph.CreateImage("GameViewDepth", GraphImageDescription.Create(
+            ImageFormat.D32Float,
+            FlagImageUsage.DepthStencilAttachment));
 
         var backbuffer = graph.ImportImage("Backbuffer",
             GraphImageDescription.Create(ImageFormat.Bgra8Unorm,
@@ -44,8 +48,9 @@ public static class EidolonEditor
         graph.AddPass("GameView", RenderPassType.GameView) //Codex suggests GameView, which means adding that to RenderPassType
                                                           //and changing PassExecutionKey to account for that.
             .Read(postColor)
-            .Write(gameView);
-
+            .Write(gameView)
+            .Write(gameViewDepth);
+        
         graph.AddPass("ImGui", RenderPassType.UI).Read(gameView).Write(backbuffer);
         graph.AddPass("Present", RenderPassType.Present)
             .Read(backbuffer);

@@ -88,10 +88,6 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     
     public void NewFrame(float delta, Vector2 windowSize, Vector2 framebufferSize)
     {
-        if (_fontDescriptorSet.Handle == 0)
-        {
-            Debug.Log($"Font DescriptorSet handle is 0: {_fontDescriptorSet.Handle} ", VALIDATION_LAYERS.INFO);
-        }
         var io = ImGui.GetIO();
         io.DisplaySize = windowSize;
 
@@ -101,21 +97,15 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
             framebufferSize.X / safeWindowWidth,
             framebufferSize.Y / safeWindowHeight);
         io.DeltaTime = MathF.Max(1f / 1000f, delta);
-
         
         _inputManager.UpdateInput(ImGui.GetIO());
         ImGui.NewFrame();
-        Debug.Log($"ImGui.NewFrame()", VALIDATION_LAYERS.INFO);
 
         var hasGameViewTexture = UpdateGameViewTextureBinding();
-        Debug.Log($"SetGameViewTexture", VALIDATION_LAYERS.INFO);
         _editorUI.SetGameViewTexture(hasGameViewTexture ? GameViewTextureId : 0);
         _editorUI.Update();
         BuildUI();
         FinalizeFrame();
-
-        Debug.Log("Running ImGui.NewFrame()", VALIDATION_LAYERS.WARNING);
-
     }
 
     private void BuildUI()
@@ -134,8 +124,6 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
 
     private void FinalizeFrame()
     {
-        Debug.Log("Running FinalizeFrame()", VALIDATION_LAYERS.INFO);
-
         ImGui.Render();
         var drawData = ImGui.GetDrawData();
 

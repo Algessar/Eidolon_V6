@@ -11,14 +11,20 @@ namespace EidolonEngine;
 internal sealed class GameViewRenderer
 {
     private VulkanMaster _master;
-    private readonly DescriptorSet _descriptorSet;
+    private readonly Camera _camera = new();
 
+    private readonly DescriptorSet _descriptorSet;
     private PipelineData _gameViewPipeline;
+    
+    private GpuBuffer _gridVertexBuffer;
+    private GpuBufferKey _gridVertexBufferKey;
+    private uint _gridVertexCount;
+
 
     public GameViewRenderer(VulkanMaster master)
     {
         _master = master;
-        _descriptorSet = _master.DescriptorFactory.GetDescriptorSet(0);
+        // _descriptorSet = _master.DescriptorFactory.GetDescriptorSet(0);
     }
     
     
@@ -32,8 +38,8 @@ internal sealed class GameViewRenderer
     public void BuildDrawSubmissions()
     {
         EnsurePipeline();
-        CurrentSubmissions = BuildGameViewSubmissions(_gameViewPipeline, _descriptorSet);
-        
+        EnsureGridGeometry();
+        CurrentSubmissions = BuildGameViewSubmissions(_gameViewPipeline);        
     }
 
     private void EnsurePipeline()
@@ -46,8 +52,8 @@ internal sealed class GameViewRenderer
         var renderPassKey = new RenderPassKey
         {
             ColorFormat = Format.R16G16B16A16Sfloat,
-            DepthFormat = Format.Undefined,
-            HasDepth = false,
+            DepthFormat = Format.D32Sfloat,
+            HasDepth = true,
             HasAlpha = true,
             LoadOp = AttachmentLoadOp.Clear,
             StoreOp = AttachmentStoreOp.Store,
@@ -61,21 +67,25 @@ internal sealed class GameViewRenderer
 
         var pipelineKey = new PipelineKey
         {
-            VertexShaderPath = "basic.vert.spv",
-            FragmentShaderPath = "basic.frag.spv",
+            VertexShaderPath = "default_shader.vert.spv",
+            FragmentShaderPath = "default_shader.frag.spv",
             RenderPass = renderPass,
             Layout = _master.DescriptorFactory.Layout,
             VertexFormat = new VertexFormat
             {
-                Stride = 0,
-                Attributes = Array.Empty<VertexAttribute>()
+                Stride = (uint)Marshal.SizeOf<Vertex>(),
+                Attributes =
+                [
+                    new VertexAttribute(0, Format.R32G32B32Sfloat, (uint)Marshal.OffsetOf<Vertex>(nameof(Vertex.Position))),
+                    new VertexAttribute(1, Format.R32G32B32Sfloat, (uint)Marshal.OffsetOf<Vertex>(nameof(Vertex.Color))),
+                ]
             },
-            Topology = PrimitiveTopology.TriangleList,
+            Topology = PrimitiveTopology.LineList,
             CullMode = CullModeBits.None,
             FrontFace = FrontFace.CounterClockwise,
-            HasDepth = false,
-            DepthTestEnable = false,
-            DepthWriteEnable = false,
+            HasDepth = true,
+            DepthTestEnable = true,
+            DepthWriteEnable = true,
             EnableBlending = false,
             BlendState = BlendState.NoBlending,
         };
@@ -83,12 +93,17 @@ internal sealed class GameViewRenderer
         _gameViewPipeline = _master.PipelineFactory.GetOrCreate(pipelineKey);
     }
 
-    private DrawSubmission[] BuildGameViewSubmissions(PipelineData pipelineData,  DescriptorSet descriptorSet)
+    private DrawSubmission[] BuildGameViewSubmissions(PipelineData pipelineData)
     {
-        if (!pipelineData.IsValid)
+        if (!pipelineData.IsValid || !_gridVertexBuffer.IsValid || _gridVertexCount == 0)
         {
             return Array.Empty<DrawSubmission>();
         }
+        
+        var framebufferSize = _master.GetWindow.FramebufferSize;
+        var aspectRatio = framebufferSize.Y > 0 ? (float)framebufferSize.X / framebufferSize.Y : 1f;
+        var viewProjection = _camera.BuildViewProjection(aspectRatio);
+        var shaderMatrix = Matrix4x4.Transpose(viewProjection);
 
         return
         [
@@ -96,13 +111,13 @@ internal sealed class GameViewRenderer
             {
                 PassType = RenderPassType.GameView,
                 PipelineData = pipelineData,
-                DescriptorSet = descriptorSet,
-                VertexBuffer = default,
+                DescriptorSet = default,
+                VertexBuffer = _gridVertexBuffer,
                 VertexOffset = 0,
                 IndexBuffer = default,
                 IndexOffset = 0,
                 IndexType = IndexType.Uint16,
-                VertexCount = 3,
+                VertexCount = _gridVertexCount,
                 IndexCount = 0,
                 InstanceCount = 1,
                 FirstVertex = 0,
@@ -113,9 +128,77 @@ internal sealed class GameViewRenderer
                 ViewportPolicy = SubmissionViewportPolicy.PassDefault,
                 Viewport = default,
                 PushConstants = PushConstantPayload.Empty,
-                ModelMatrix = Matrix4x4.Identity,
+                ModelMatrix = shaderMatrix,
             }
         ];
+    }
+    
+    private unsafe void EnsureGridGeometry()
+    {
+        if (_gridVertexBuffer.IsValid)
+        {
+            return;
+        }
+
+        var gridVertices = BuildGridVertices(gridHalfExtent: 20, spacing: 1f);
+        _gridVertexCount = (uint)gridVertices.Length;
+
+        _gridVertexBufferKey = new GpuBufferKey
+        {
+            UsageClass = GpuBufferUsageClass.Vertex,
+            Size = (ulong)(Marshal.SizeOf<Vertex>() * gridVertices.Length),
+            Usage = BufferUsageFlags.VertexBufferBit,
+            MemoryProperties = MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit,
+            Count = 1,
+            AllocationStrategy = GpuBufferAllocationStrategy.Static,
+        };
+
+        _gridVertexBuffer = _master.GpuBufferFactory.GetOrCreate(_gridVertexBufferKey)[0];
+
+        void* mapped;
+        if (_master.Vk.MapMemory(_master.VulkanDevice.Device, _gridVertexBuffer.Memory, 0, _gridVertexBuffer.Size, 0, &mapped) != Result.Success)
+        {
+            throw new InvalidOperationException("Failed to map game-view grid vertex buffer.");
+        }
+
+        fixed (Vertex* verticesPtr = gridVertices)
+        {
+            System.Buffer.MemoryCopy(verticesPtr, mapped, (long)_gridVertexBuffer.Size, (long)_gridVertexBuffer.Size);
+        }
+
+        _master.Vk.UnmapMemory(_master.VulkanDevice.Device, _gridVertexBuffer.Memory);
+    }
+
+    private static Vertex[] BuildGridVertices(int gridHalfExtent, float spacing)
+    {
+        var lineCountPerAxis = gridHalfExtent * 2 + 1;
+        var vertices = new Vertex[lineCountPerAxis * 4];
+        var index = 0;
+
+        var axisColorX = new Vector3(0.95f, 0.25f, 0.25f);
+        var axisColorZ = new Vector3(0.25f, 0.55f, 0.95f);
+        var majorColor = new Vector3(0.35f, 0.35f, 0.35f);
+        var minorColor = new Vector3(0.2f, 0.2f, 0.2f);
+
+        for (var i = -gridHalfExtent; i <= gridHalfExtent; i++)
+        {
+            var offset = i * spacing;
+            var color = i == 0
+                ? axisColorX
+                : (i % 5 == 0 ? majorColor : minorColor);
+
+            vertices[index++] = new Vertex(new Vector3(-gridHalfExtent * spacing, 0f, offset), color);
+            vertices[index++] = new Vertex(new Vector3(gridHalfExtent * spacing, 0f, offset), color);
+
+            color = i == 0
+                ? axisColorZ
+                : (i % 5 == 0 ? majorColor : minorColor);
+
+            vertices[index++] = new Vertex(new Vector3(offset, 0f, -gridHalfExtent * spacing), color);
+            vertices[index++] = new Vertex(new Vector3(offset, 0f, gridHalfExtent * spacing), color);
+        }
+
+        return vertices;
     }
 
     public void SetSubmissions(params DrawSubmission[] submissions)
