@@ -54,7 +54,7 @@ internal class MainRenderer
 	    
 	    _imguiRenderer = new ImGuiRenderer(_master);
 	    _sceneRenderer = new SceneRenderer();
-	    _gameViewRenderer = new GameViewRenderer();
+	    _gameViewRenderer = new GameViewRenderer(_master);
 	    
 	    _imguiRenderer.Initialize(_bootstrapPipelineData.RenderPass);
 	    
@@ -88,6 +88,7 @@ internal class MainRenderer
 
 	        _sceneRenderer?.NewFrame();
 	        _gameViewRenderer?.NewFrame();
+	        _gameViewRenderer?.BuildDrawSubmissions();
 	        _imguiRenderer?.NewFrame(
 		        (float)delta,
 		        new Vector2(window.Size.X, window.Size.Y),

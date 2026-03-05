@@ -293,7 +293,8 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
 
         _fontDescriptorSet = AllocateDescriptorSet();
         _gameViewDescriptorSet = AllocateDescriptorSet();
-        // _textureDescriptorSets[FontTextureId] = _fontDescriptorSet;
+        _textureDescriptorSets[FontTextureId] = _fontDescriptorSet;
+        _textureDescriptorSets[GameViewTextureId] = _gameViewDescriptorSet;
     }
 
     private DescriptorSet AllocateDescriptorSet()
@@ -336,7 +337,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         };
         
         _master.Vk.UpdateDescriptorSets(_master.VulkanDevice.Device, 1, &write, 0, null);
-        
+        _textureDescriptorSets[FontTextureId] = _fontDescriptorSet;
         ImGui.GetIO().Fonts.SetTexID(FontTextureId);
     }
     
@@ -382,6 +383,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         };
 
         _master.Vk.UpdateDescriptorSets(_master.VulkanDevice.Device, 1, &write, 0, null);
+        _textureDescriptorSets[GameViewTextureId] = _gameViewDescriptorSet;
         _lastGameViewHandle = gameView.Handle;
 
         return true;

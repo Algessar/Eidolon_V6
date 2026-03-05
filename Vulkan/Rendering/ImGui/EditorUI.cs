@@ -24,9 +24,6 @@ internal class EditorUI
         io.ConfigFlags |= ImGuiConfigFlags.DockingEnable;
         io.ConfigFlags |= ImGuiConfigFlags.ViewportsEnable;
         
-        
-        // io.Fonts.AddFontFromFileTTF("C:/Windows/Fonts/Arial.ttf", 16.0f);
-        
         float dpiScale = 0.99f;
         io.DisplaySize = new Vector2(_window.Size.X, _window.Size.Y);
         
@@ -60,15 +57,15 @@ internal class EditorUI
         ImGui.Begin("Eidolon / Game View");
         
         //NOTE: this currently causes the Font Atlas to be rendered in the window.
-        // var available = ImGui.GetContentRegionAvail();
-        // if (_gameViewTextureID != 0 && available.X > 1f && available.Y > 1f)
-        // {
-        //     ImGui.Image((nint)_gameViewTextureID, available, new Vector2(0, 1), new Vector2(1, 0));
-        // }
-        // else
-        // {
-        //     ImGui.Text("GameView texture unavailable");
-        // }
+        var available = ImGui.GetContentRegionAvail();
+        if (_gameViewTextureID != 0 && available.X > 1f && available.Y > 1f)
+        {
+            ImGui.Image((nint)_gameViewTextureID, available, new Vector2(0, 1), new Vector2(1, 0));
+        }
+        else
+        {
+            ImGui.Text("GameView texture unavailable");
+        }
         
         ImGui.End();
     }
