@@ -92,7 +92,7 @@ internal class EditorUI
         ImGui.SetNextWindowSize(viewport.WorkSize, ImGuiCond.Always);
         ImGui.SetNextWindowViewport(viewport.ID);
 
-        ImGui.PushStyleColor(ImGuiCol.WindowBg, new Vector4(0,0,0,1));
+        ImGui.PushStyleColor(ImGuiCol.WindowBg, new Vector4(0,0,0,0));
         ImGui.PushStyleVar(ImGuiStyleVar.WindowRounding, 0);
         ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 0);
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Vector2.Zero);
@@ -116,7 +116,7 @@ internal class EditorUI
     }
 }
 
-internal struct DockedWindow
+internal struct EditorWindow
 {
     public string Name;
     public Vector2 Size;
@@ -153,6 +153,10 @@ internal struct DockedWindow
     }
 }
 
+public enum EditorType
+{
+    
+}
 
 
 public enum WindowType

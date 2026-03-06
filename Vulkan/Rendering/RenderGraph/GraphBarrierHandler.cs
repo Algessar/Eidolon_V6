@@ -36,7 +36,12 @@ internal sealed unsafe class GraphBarrierHandler
                 continue;
             }
 
-            EmitShaderReadBarrier(cmd, resource, ref runtime);
+            var isDepthResource = (resource.Description.Usage & FlagImageUsage.DepthStencilAttachment) != 0;
+            if (isDepthResource)
+                EmitDepthShaderReadBarrier(cmd, resource, ref runtime);
+            else
+                EmitShaderReadBarrier(cmd, resource, ref runtime);
+
             _runtimeManager.SetRuntime(read.Handle, runtime);
         }
 
@@ -57,7 +62,8 @@ internal sealed unsafe class GraphBarrierHandler
             else
             {
                 // Determine whether this is a depth or color attachment
-                if ((resource.Description.Usage & FlagImageUsage.DepthStencilAttachment) != 0)
+                var isDepthResource = (resource.Description.Usage & FlagImageUsage.DepthStencilAttachment) != 0;
+                if (isDepthResource)
                     EmitDepthAttachmentBarrier(cmd, resource, ref runtime);
                 else
                     EmitColorAttachmentBarrier(cmd, resource, ref runtime);
@@ -155,6 +161,51 @@ internal sealed unsafe class GraphBarrierHandler
             Debug.Log($"[RG] Barrier: {resource.Name} ColorAttachmentOptimal -> ShaderReadOnlyOptimal");
         }
         runtime.CurrentLayout = ImageLayout.ShaderReadOnlyOptimal;
+    }
+    
+    private void EmitDepthShaderReadBarrier(CommandBuffer cmd, in CompiledResource resource, ref GraphImageRuntime runtime)
+    {
+        if (runtime.CurrentLayout != ImageLayout.DepthStencilAttachmentOptimal)
+            return;
+
+        var barrier = new ImageMemoryBarrier
+        {
+            SType = StructureType.ImageMemoryBarrier,
+            OldLayout = runtime.CurrentLayout,
+            NewLayout = ImageLayout.DepthStencilReadOnlyOptimal,
+            SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
+            DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
+            SrcAccessMask = AccessFlags.DepthStencilAttachmentWriteBit,
+            DstAccessMask = AccessFlags.ShaderReadBit,
+            Image = runtime.Image,
+            SubresourceRange = new ImageSubresourceRange
+            {
+                AspectMask = GraphResourceRuntimeManager.ResolveAspectFlags(resource.Description.Usage, resource.Description.Format),
+                BaseMipLevel = 0,
+                LevelCount = 1,
+                BaseArrayLayer = 0,
+                LayerCount = 1,
+            },
+        };
+
+        _master.Vk.CmdPipelineBarrier(
+            cmd,
+            PipelineStageFlags.EarlyFragmentTestsBit | PipelineStageFlags.LateFragmentTestsBit,
+            PipelineStageFlags.FragmentShaderBit,
+            0,
+            0,
+            null,
+            0,
+            null,
+            1,
+            &barrier);
+
+        if (_logRenderGraph)
+        {
+            Debug.Log($"[RG] Barrier: {resource.Name} DepthStencilAttachmentOptimal -> DepthStencilReadOnlyOptimal");
+        }
+
+        runtime.CurrentLayout = ImageLayout.DepthStencilReadOnlyOptimal;
     }
 
     private void EmitPresentBarrier(CommandBuffer cmd, in CompiledResource resource, ref GraphImageRuntime runtime)
@@ -269,11 +320,11 @@ internal sealed unsafe class GraphBarrierHandler
             SrcAccessMask = runtime.CurrentLayout == ImageLayout.DepthStencilAttachmentOptimal
                 ? AccessFlags.DepthStencilAttachmentWriteBit
                 : 0,
-            DstAccessMask = AccessFlags.DepthStencilAttachmentWriteBit,
+            DstAccessMask = AccessFlags.DepthStencilAttachmentReadBit | AccessFlags.DepthStencilAttachmentWriteBit,
             Image = runtime.Image,
             SubresourceRange = new ImageSubresourceRange
             {
-                AspectMask = ImageAspectFlags.DepthBit, // also stencil if needed
+                AspectMask = GraphResourceRuntimeManager.ResolveAspectFlags(resource.Description.Usage, resource.Description.Format),
                 BaseMipLevel = 0,
                 LevelCount = 1,
                 BaseArrayLayer = 0,

@@ -195,7 +195,7 @@ internal unsafe class FrameHandler : IDisposable
             var clearValues = stackalloc ClearValue[2]; //NOTE: CA2014: Potential stack overflow. Move the stackalloc out of the loop.
 
             clearValues[0] = execution.ClearColor
-                ? new ClearValue { Color = new ClearColorValue(1f, 0f, 0f, 1f) }
+                ? new ClearValue { Color = new ClearColorValue(1f, 0f, 0f, 0f) }
                 : new ClearValue();
 
             uint clearValueCount = 1;

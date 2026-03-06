@@ -32,9 +32,12 @@ public class Camera
         return projection;
     }
     
+    
     public Matrix4x4 BuildViewProjection(float aspectRatio)
     {
-        // Shader expects clip transform as Projection * View.
-        return BuildProjectionMatrix(aspectRatio) * BuildViewMatrix();
+        // System.Numerics composes transforms for row-vector math (v * M).
+        // We transpose before upload for GLSL column-vector consumption,
+        // so the correct pre-transpose composition is View * Projection.
+        return BuildViewMatrix() * BuildProjectionMatrix(aspectRatio);
     }
 }
