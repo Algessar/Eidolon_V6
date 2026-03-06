@@ -77,15 +77,6 @@ internal class MainRenderer
 	        {
 		        return;
 	        }
-	        
-	        
-	        // if (ResizePending(window))
-	        // {
-		       //  _master.FrameHandler._framebufferResized = true;
-		       //  _master.FrameHandler.Draw(in _drawData);
-		       //  return;
-	        // }
-
 	        _sceneRenderer?.NewFrame();
 	        _gameViewRenderer?.NewFrame();
 	        _gameViewRenderer?.BuildDrawSubmissions();

@@ -146,11 +146,11 @@ internal unsafe class FrameHandler : IDisposable
 
         var cmd = _commandBuffer[_currentFrame];
 
-        var passViewport = new Viewport(0, 0, _swapchainHandler.Extent.Width, _swapchainHandler.Extent.Height, 0f, 1f);
-        var passScissor = new Rect2D(new Offset2D(0, 0), _swapchainHandler.Extent);
-
-        _master.Vk.CmdSetViewport(cmd, 0, 1, &passViewport);
-        _master.Vk.CmdSetScissor(cmd, 0, 1, &passScissor);
+        // var passViewport = new Viewport(0, 0, _swapchainHandler.Extent.Width, _swapchainHandler.Extent.Height, 0f, 1f);
+        // var passScissor = new Rect2D(new Offset2D(0, 0), _swapchainHandler.Extent);
+        //
+        // _master.Vk.CmdSetViewport(cmd, 0, 1, &passViewport);
+        // _master.Vk.CmdSetScissor(cmd, 0, 1, &passScissor);
 
         var submissions = data.Submissions; // ?? Array.Empty<DrawSubmission>(); // NOTE: Rider warns that left operand is never null.
 
@@ -181,6 +181,12 @@ internal unsafe class FrameHandler : IDisposable
             }
 
             var execution = _passExecutionHandler.GetOrCreate(pass, _compiledGraph, _currentImageIndex);
+
+            // Set viewport and scissor to match this pass's framebuffer
+            var passViewport = new Viewport(0, 0, execution.Extent.Width, execution.Extent.Height, 0f, 1f);
+            var passScissor = new Rect2D(new Offset2D(0, 0), execution.Extent);
+            _master.Vk.CmdSetViewport(cmd, 0, 1, &passViewport);
+            _master.Vk.CmdSetScissor(cmd, 0, 1, &passScissor);
             if (LOG_RENDER_GRAPH)
             {
                 Debug.Log($"Pass {pass.Name} render area: {execution.Extent.Width}x{execution.Extent.Height}");
@@ -189,7 +195,7 @@ internal unsafe class FrameHandler : IDisposable
             var clearValues = stackalloc ClearValue[2]; //NOTE: CA2014: Potential stack overflow. Move the stackalloc out of the loop.
 
             clearValues[0] = execution.ClearColor
-                ? new ClearValue { Color = new ClearColorValue(1f, 0f, 0f, 0f) }
+                ? new ClearValue { Color = new ClearColorValue(1f, 0f, 0f, 1f) }
                 : new ClearValue();
 
             uint clearValueCount = 1;

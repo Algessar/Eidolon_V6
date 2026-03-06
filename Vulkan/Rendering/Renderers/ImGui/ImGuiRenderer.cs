@@ -56,7 +56,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     {
         _master = master;
         _uiGeometryUploader = new UiGeometryUploader(master);
-        _master.FrameHandler.OnSwapchainRecreated += OnSwapchainRecreated;
+        _master.FrameHandler?.OnSwapchainRecreated += OnSwapchainRecreated;
     }
     public void Initialize( RenderPass renderPass)
     {
@@ -84,7 +84,6 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         
         Debug.Log("ImGuiRenderer initialized", VALIDATION_LAYERS.INFO);
     }
-
     
     public void NewFrame(float delta, Vector2 windowSize, Vector2 framebufferSize)
     {

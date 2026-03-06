@@ -11,7 +11,12 @@ namespace EidolonEngine;
 internal sealed class GameViewRenderer
 {
     private VulkanMaster _master;
-    private readonly Camera _camera = new();
+    private readonly Camera _camera = new()
+    {
+        Position = new Vector3(10f, 10f, 10f),
+        Target = Vector3.Zero,
+        Up = Vector3.UnitY,
+    };
 
     private readonly DescriptorSet _descriptorSet;
     private PipelineData _gameViewPipeline;
@@ -24,7 +29,7 @@ internal sealed class GameViewRenderer
     public GameViewRenderer(VulkanMaster master)
     {
         _master = master;
-        // _descriptorSet = _master.DescriptorFactory.GetDescriptorSet(0);
+        _descriptorSet = _master.DescriptorFactory.GetDescriptorSet(0);
     }
     
     
@@ -39,7 +44,8 @@ internal sealed class GameViewRenderer
     {
         EnsurePipeline();
         EnsureGridGeometry();
-        CurrentSubmissions = BuildGameViewSubmissions(_gameViewPipeline);        
+        CurrentSubmissions = BuildGameViewSubmissions(_gameViewPipeline);
+        Debug.Log($"[GameView] Submissions count: {CurrentSubmissions.Length}, VertexCount: {_gridVertexCount}, Pipeline valid: {_gameViewPipeline.IsValid}");
     }
 
     private void EnsurePipeline()
@@ -97,13 +103,16 @@ internal sealed class GameViewRenderer
     {
         if (!pipelineData.IsValid || !_gridVertexBuffer.IsValid || _gridVertexCount == 0)
         {
+            Debug.Log("[GameView] Submission skipped: invalid pipeline or buffer.", VALIDATION_LAYERS.WARNING);
             return Array.Empty<DrawSubmission>();
         }
         
         var framebufferSize = _master.GetWindow.FramebufferSize;
         var aspectRatio = framebufferSize.Y > 0 ? (float)framebufferSize.X / framebufferSize.Y : 1f;
-        var viewProjection = _camera.BuildViewProjection(aspectRatio);
-        var shaderMatrix = Matrix4x4.Transpose(viewProjection);
+        var shaderMatrix = Matrix4x4.Transpose(_camera.BuildViewProjection(aspectRatio));
+        var pushConstantData = MemoryMarshal
+            .AsBytes(MemoryMarshal.CreateReadOnlySpan(ref shaderMatrix, 1))
+            .ToArray();
 
         return
         [
@@ -111,7 +120,7 @@ internal sealed class GameViewRenderer
             {
                 PassType = RenderPassType.GameView,
                 PipelineData = pipelineData,
-                DescriptorSet = default,
+                DescriptorSet = _descriptorSet,
                 VertexBuffer = _gridVertexBuffer,
                 VertexOffset = 0,
                 IndexBuffer = default,
@@ -127,8 +136,13 @@ internal sealed class GameViewRenderer
                 Scissor = default,
                 ViewportPolicy = SubmissionViewportPolicy.PassDefault,
                 Viewport = default,
-                PushConstants = PushConstantPayload.Empty,
-                ModelMatrix = shaderMatrix,
+                PushConstants = new PushConstantPayload
+                {
+                    StageFlags = ShaderStageFlags.VertexBit,
+                    Offset = 0,
+                    Data = pushConstantData,
+                },
+                ModelMatrix = Matrix4x4.Identity,
             }
         ];
     }
@@ -165,7 +179,7 @@ internal sealed class GameViewRenderer
         {
             System.Buffer.MemoryCopy(verticesPtr, mapped, (long)_gridVertexBuffer.Size, (long)_gridVertexBuffer.Size);
         }
-
+        Debug.Log($"[GameView] Grid buffer handle: {_gridVertexBuffer.Buffer.Handle}, size: {_gridVertexBuffer.Size}, vertex count: {_gridVertexCount}");
         _master.Vk.UnmapMemory(_master.VulkanDevice.Device, _gridVertexBuffer.Memory);
     }
 
@@ -199,11 +213,6 @@ internal sealed class GameViewRenderer
         }
 
         return vertices;
-    }
-
-    public void SetSubmissions(params DrawSubmission[] submissions)
-    {
-        CurrentSubmissions = submissions ?? Array.Empty<DrawSubmission>();
     }
 
     public void Dispose()

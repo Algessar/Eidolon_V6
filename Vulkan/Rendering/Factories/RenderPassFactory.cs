@@ -80,6 +80,10 @@ internal unsafe class RenderPassFactory(VulkanMaster master)
         if (hasDepth)
         {
             subpass.PDepthStencilAttachment = &depthAttachmentRef;
+            Debug.Log($"[RenderPass] Depth format={depthAttachment.Format}," +
+                      $" loadOp={depthAttachment.LoadOp}, " +
+                      $"initialLayout={depthAttachment.InitialLayout}, " +
+                      $"finalLayout={depthAttachment.FinalLayout}", VALIDATION_LAYERS.WARNING);
         }
 
         // Dependency to ensure the render pass waits for the image to be available

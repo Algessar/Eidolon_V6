@@ -44,7 +44,6 @@ internal sealed unsafe class GraphBarrierHandler
         {
             if (!_runtimeManager.TryGetResource(write.Handle, out var resource))
                 continue;
-
             if (!_runtimeManager.TryGetRuntime(write.Handle, out var runtime))
                 continue;
 
@@ -57,7 +56,11 @@ internal sealed unsafe class GraphBarrierHandler
             }
             else
             {
-                EmitColorAttachmentBarrier(cmd, resource, ref runtime);
+                // Determine whether this is a depth or color attachment
+                if ((resource.Description.Usage & FlagImageUsage.DepthStencilAttachment) != 0)
+                    EmitDepthAttachmentBarrier(cmd, resource, ref runtime);
+                else
+                    EmitColorAttachmentBarrier(cmd, resource, ref runtime);
             }
 
             _runtimeManager.SetRuntime(write.Handle, runtime);
@@ -249,5 +252,53 @@ internal sealed unsafe class GraphBarrierHandler
             Debug.Log($"[RG] Barrier: {resource.Name} {barrier.OldLayout} -> ColorAttachmentOptimal (imported)");
         }
         runtime.CurrentLayout = ImageLayout.ColorAttachmentOptimal;
+    }
+    
+    private void EmitDepthAttachmentBarrier(CommandBuffer cmd, in CompiledResource resource, ref GraphImageRuntime runtime)
+    {
+        if (runtime.CurrentLayout == ImageLayout.DepthStencilAttachmentOptimal)
+            return;
+
+        var barrier = new ImageMemoryBarrier
+        {
+            SType = StructureType.ImageMemoryBarrier,
+            OldLayout = runtime.CurrentLayout,
+            NewLayout = ImageLayout.DepthStencilAttachmentOptimal,
+            SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
+            DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
+            SrcAccessMask = runtime.CurrentLayout == ImageLayout.DepthStencilAttachmentOptimal
+                ? AccessFlags.DepthStencilAttachmentWriteBit
+                : 0,
+            DstAccessMask = AccessFlags.DepthStencilAttachmentWriteBit,
+            Image = runtime.Image,
+            SubresourceRange = new ImageSubresourceRange
+            {
+                AspectMask = ImageAspectFlags.DepthBit, // also stencil if needed
+                BaseMipLevel = 0,
+                LevelCount = 1,
+                BaseArrayLayer = 0,
+                LayerCount = 1,
+            },
+        };
+
+        _master.Vk.CmdPipelineBarrier(
+            cmd,
+            runtime.CurrentLayout == ImageLayout.DepthStencilAttachmentOptimal
+                ? PipelineStageFlags.LateFragmentTestsBit
+                : PipelineStageFlags.TopOfPipeBit,
+            PipelineStageFlags.EarlyFragmentTestsBit | PipelineStageFlags.LateFragmentTestsBit,
+            0,
+            0,
+            null,
+            0,
+            null,
+            1,
+            &barrier);
+
+        if (_logRenderGraph)
+        {
+            Debug.Log($"[RG] Barrier: {resource.Name} {barrier.OldLayout} -> DepthStencilAttachmentOptimal");
+        }
+        runtime.CurrentLayout = ImageLayout.DepthStencilAttachmentOptimal;
     }
 }
