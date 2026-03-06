@@ -649,6 +649,31 @@ internal unsafe class FrameHandler : IDisposable
 
         return false;
     }
+    
+    public bool TryGetResourceExtent(string resourceName, out Extent2D extent)
+    {
+        extent = default;
+
+        if (_compiledGraph is null || string.IsNullOrWhiteSpace(resourceName))
+            return false;
+
+        foreach (var resource in _compiledGraph.Resources)
+        {
+            if (!string.Equals(resource.Name, resourceName, StringComparison.Ordinal))
+                continue;
+
+            if (!_graphResourceRuntimeManager.TryGetRuntime(resource.Handle.Handle, out var runtime))
+                return false;
+
+            if (runtime.Extent.Width == 0 || runtime.Extent.Height == 0)
+                return false;
+
+            extent = runtime.Extent;
+            return true;
+        }
+
+        return false;
+    }
 
 
     #region Cleanup

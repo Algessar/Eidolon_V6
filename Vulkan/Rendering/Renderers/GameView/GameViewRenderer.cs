@@ -1,6 +1,8 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
+using Eidolon.Engine;
 using Eidolon.Vulkan;
+using ImGuiNET;
 using Silk.NET.Vulkan;
 
 namespace EidolonEngine;
@@ -11,12 +13,10 @@ namespace EidolonEngine;
 internal sealed class GameViewRenderer
 {
     private VulkanMaster _master;
-    private readonly Camera _camera = new()
-    {
-        Position = new Vector3(10f, 10f, 10f),
-        Target = Vector3.Zero,
-        Up = Vector3.UnitY,
-    };
+    private readonly Camera _camera;
+
+    private CameraController _cameraController;
+    
 
     private readonly DescriptorSet _descriptorSet;
     private PipelineData _gameViewPipeline;
@@ -26,17 +26,20 @@ internal sealed class GameViewRenderer
     private uint _gridVertexCount;
 
 
-    public GameViewRenderer(VulkanMaster master)
+    public GameViewRenderer(VulkanMaster master, CameraController cameraController)
     {
         _master = master;
+        _cameraController = cameraController;
+        _camera = _cameraController.Camera;
         _descriptorSet = _master.DescriptorFactory.GetDescriptorSet(0);
     }
     
     
     public DrawSubmission[] CurrentSubmissions { get; private set; } = Array.Empty<DrawSubmission>();
-    public void NewFrame()
+    public void NewFrame(double delta)
     {
-        CurrentSubmissions = Array.Empty<DrawSubmission>();
+        _cameraController.Update(delta);
+        BuildDrawSubmissions();
         // Debug.Log("Running NewFrame in GameViewRenderer", VALIDATION_LAYERS.INFO);
     }
 
@@ -45,7 +48,7 @@ internal sealed class GameViewRenderer
         EnsurePipeline();
         EnsureGridGeometry();
         CurrentSubmissions = BuildGameViewSubmissions(_gameViewPipeline);
-        Debug.Log($"[GameView] Submissions count: {CurrentSubmissions.Length}, VertexCount: {_gridVertexCount}, Pipeline valid: {_gameViewPipeline.IsValid}");
+        // Debug.Log($"[GameView] Submissions count: {CurrentSubmissions.Length}, VertexCount: {_gridVertexCount}, Pipeline valid: {_gameViewPipeline.IsValid}");
     }
 
     private void EnsurePipeline()
@@ -63,7 +66,7 @@ internal sealed class GameViewRenderer
             HasAlpha = true,
             LoadOp = AttachmentLoadOp.Clear,
             StoreOp = AttachmentStoreOp.Store,
-            InitialLayout = ImageLayout.ColorAttachmentOptimal,
+            InitialLayout = ImageLayout.Undefined,
             FinalLayout = ImageLayout.ColorAttachmentOptimal,
             InitialDepthLayout = ImageLayout.Undefined,
             FinalDepthLayout = ImageLayout.DepthStencilAttachmentOptimal,
@@ -106,9 +109,19 @@ internal sealed class GameViewRenderer
             Debug.Log("[GameView] Submission skipped: invalid pipeline or buffer.", VALIDATION_LAYERS.WARNING);
             return Array.Empty<DrawSubmission>();
         }
-        
-        var framebufferSize = _master.GetWindow.FramebufferSize;
-        var aspectRatio = framebufferSize.Y > 0 ? (float)framebufferSize.X / framebufferSize.Y : 1f;
+
+        var aspectRatio = 1f;
+        if (_master.FrameHandler is not null &&
+            _master.FrameHandler.TryGetResourceExtent("GameView", out var gameViewExtent) &&
+            gameViewExtent.Height > 0)
+        {
+            aspectRatio = ResolveGameViewAspectRatio();
+        }
+        else
+        {
+            var framebufferSize = _master.GetWindow.FramebufferSize;
+            aspectRatio = framebufferSize.Y > 0 ? (float)framebufferSize.X / framebufferSize.Y : 1f;
+        }
         var shaderMatrix = Matrix4x4.Transpose(_camera.BuildViewProjection(aspectRatio));
         var pushConstantData = MemoryMarshal
             .AsBytes(MemoryMarshal.CreateReadOnlySpan(ref shaderMatrix, 1))
@@ -145,6 +158,19 @@ internal sealed class GameViewRenderer
                 ModelMatrix = Matrix4x4.Identity,
             }
         ];
+    }
+    
+    private float ResolveGameViewAspectRatio()
+    {
+        if (_master.FrameHandler is not null &&
+            _master.FrameHandler.TryGetResourceExtent("GameView", out var gameViewExtent) &&
+            gameViewExtent.Height > 0)
+        {
+            return (float)gameViewExtent.Width / gameViewExtent.Height;
+        }
+
+        var framebufferSize = _master.GetWindow.FramebufferSize;
+        return framebufferSize.Y > 0 ? (float)framebufferSize.X / framebufferSize.Y : 1f;
     }
     
     private unsafe void EnsureGridGeometry()

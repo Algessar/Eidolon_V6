@@ -4,28 +4,34 @@ using Silk.NET.Windowing;
 
 namespace Eidolon.Editor;
 
-internal class ImGuiInputManager
+internal class InputManager
 {
     
-    IInputContext _input;
+    IInputContext? _input;
     IKeyboard? _keyboard;
     IMouse? _mouse;
+
+    public IInputContext Input  => _input;
     
     private readonly List<char> _textInput = [];
     
     IWindow _window;
     
-    public ImGuiInputManager(IWindow window)
+    public InputManager(IWindow window)
     {
         _window = window;
         _input = _window.CreateInput();
+        if (_input == null)
+        {
+            Debug.Log("Input is null");
+        }
         SetInput();
     }
 
     private void SetInput()
     {
-        _keyboard = _input.Keyboards.FirstOrDefault();
-        _mouse = _input.Mice.FirstOrDefault();
+        _keyboard = _input?.Keyboards.FirstOrDefault();
+        _mouse = _input?.Mice.FirstOrDefault();
 
         if (_keyboard != null)
             _keyboard.KeyChar += (_, c) => _textInput.Add(c);
@@ -169,7 +175,7 @@ internal class ImGuiInputManager
             var silkKey = mapping.Key;
             var imguiKey = mapping.Value;
                 
-            bool isPressed = _keyboard.IsKeyPressed(silkKey);
+            bool isPressed = _keyboard != null && _keyboard.IsKeyPressed(silkKey);
             io.AddKeyEvent(imguiKey, isPressed);
         }
     }

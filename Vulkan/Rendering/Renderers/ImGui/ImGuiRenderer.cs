@@ -3,6 +3,7 @@ using System.Numerics;
 using Eidolon.Editor;
 using EidolonCore.Math;
 using ImGuiNET;
+using Silk.NET.Input;
 using Silk.NET.Vulkan;
 using Buffer = Silk.NET.Vulkan.Buffer;
 
@@ -48,15 +49,16 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     
     [Header("UI and Input")]
     EditorUI _editorUI;
-    ImGuiInputManager _inputManager;
+    readonly InputManager _inputManager;
 
     private RenderPass _renderPass;
     
-    public ImGuiRenderer(VulkanMaster master)
+    public ImGuiRenderer(VulkanMaster master, InputManager input)
     {
         _master = master;
         _uiGeometryUploader = new UiGeometryUploader(master);
         _master.FrameHandler?.OnSwapchainRecreated += OnSwapchainRecreated;
+        _inputManager = input;
     }
     public void Initialize( RenderPass renderPass)
     {
@@ -80,7 +82,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         CreatePipeline(renderPass);
 
         _editorUI = new EditorUI(_master.GetWindow);
-        _inputManager = new ImGuiInputManager(_master.GetWindow);
+        // _inputManager = new InputManager(_master.GetWindow);
         
         Debug.Log("ImGuiRenderer initialized", VALIDATION_LAYERS.INFO);
     }

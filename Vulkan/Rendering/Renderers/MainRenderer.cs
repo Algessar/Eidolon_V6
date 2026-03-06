@@ -1,6 +1,9 @@
 ﻿using System.Numerics;
+using Eidolon.Editor;
+using Eidolon.Engine;
 using Eidolon.Vulkan;
 using ImGuiNET;
+using Silk.NET.Input;
 using Silk.NET.Vulkan;
 using Silk.NET.Windowing;
 
@@ -9,6 +12,10 @@ namespace EidolonEngine;
 internal class MainRenderer
 {
 	private VulkanMaster _master;
+	private InputManager _inputManager;
+	private CameraController _cameraController;
+	private Camera _camera;
+	private IInputContext? _input;
 	
 	private readonly CompiledRenderGraph? _initialGraph;
 
@@ -52,9 +59,13 @@ internal class MainRenderer
 		    throw new InvalidOperationException("Main pipeline render pass is null before ImGui initialization.");
 	    }
 	    
-	    _imguiRenderer = new ImGuiRenderer(_master);
+	    _inputManager = new InputManager(_master.GetWindow);
+	    _cameraController = new CameraController(_inputManager.Input);
+	    _imguiRenderer = new ImGuiRenderer(_master, _inputManager);
 	    _sceneRenderer = new SceneRenderer();
-	    _gameViewRenderer = new GameViewRenderer(_master);
+	    
+	    _gameViewRenderer = new GameViewRenderer(_master, _cameraController);
+
 	    
 	    _imguiRenderer.Initialize(_bootstrapPipelineData.RenderPass);
 	    
@@ -78,8 +89,8 @@ internal class MainRenderer
 		        return;
 	        }
 	        _sceneRenderer?.NewFrame();
-	        _gameViewRenderer?.NewFrame();
-	        _gameViewRenderer?.BuildDrawSubmissions();
+	        _gameViewRenderer?.NewFrame(delta);
+	        // _gameViewRenderer?.BuildDrawSubmissions();
 	        _imguiRenderer?.NewFrame(
 		        (float)delta,
 		        new Vector2(window.Size.X, window.Size.Y),

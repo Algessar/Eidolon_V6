@@ -67,6 +67,8 @@ internal class EditorUI
             ImGui.Text("GameView texture unavailable");
         }
         
+        
+        
         ImGui.End();
     }
 
