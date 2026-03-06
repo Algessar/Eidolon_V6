@@ -26,7 +26,7 @@ public class CameraController
         // _camera = camera;
         _camera =  new()
         {
-            Position = new Vector3(0f, 5f, 5f),
+            Position = new Vector3(0f, 10f, 10f),
             Target = Vector3.Zero,
             Up = Vector3.UnitY,
         };
@@ -47,7 +47,7 @@ public class CameraController
     {
         var keyboard = _input.Keyboards[0];
 
-        _isShiftDown = keyboard.IsKeyPressed(Key.ShiftLeft) || keyboard.IsKeyPressed(Key.ShiftRight);
+        // _isShiftDown = keyboard.IsKeyPressed(Key.ShiftLeft) || keyboard.IsKeyPressed(Key.ShiftRight);
         
         if(_isMiddleMouseDown)
         {
@@ -57,8 +57,8 @@ public class CameraController
             Vector3 forward = Vector3.Normalize(_camera.Target - _camera.Position);
             Vector3 right = Vector3.Normalize(Vector3.Cross(forward, _camera.Up));
 
-            if (keyboard.IsKeyPressed(Key.W)) _camera.Move(forward * distance);
-            if (keyboard.IsKeyPressed(Key.S)) _camera.Move(-forward * distance);
+            if (keyboard.IsKeyPressed(Key.W)) _camera.Move(-forward * distance);
+            if (keyboard.IsKeyPressed(Key.S)) _camera.Move(forward * distance);
             if (keyboard.IsKeyPressed(Key.A)) _camera.Move(-right * distance);
             if (keyboard.IsKeyPressed(Key.D)) _camera.Move(right * distance);
             if (keyboard.IsKeyPressed(Key.E)) _camera.Move(Vector3.UnitY * distance);
@@ -76,10 +76,10 @@ public class CameraController
         {
             if (keyboard.IsKeyPressed(Key.Escape))
 				mouse.Cursor.CursorMode = CursorMode.Normal;
-            if (mouse.IsButtonPressed(MouseButton.Left))
-            {
-	            mouse.Cursor.CursorMode = CursorMode.Disabled;
-            }
+            // if (mouse.IsButtonPressed(MouseButton.Left))
+            // {
+	           //  mouse.Cursor.CursorMode = CursorMode.Disabled;
+            // }
         }
     }
     

@@ -90,7 +90,6 @@ internal class MainRenderer
 	        }
 	        _sceneRenderer?.NewFrame();
 	        _gameViewRenderer?.NewFrame(delta);
-	        // _gameViewRenderer?.BuildDrawSubmissions();
 	        _imguiRenderer?.NewFrame(
 		        (float)delta,
 		        new Vector2(window.Size.X, window.Size.Y),
@@ -119,8 +118,6 @@ internal class MainRenderer
 	        _drawData.Submissions = mergedSubmissions;
 
 	        _master.FrameHandler.Draw(in _drawData);
-	        
-	        
         };
         
         window.Run();

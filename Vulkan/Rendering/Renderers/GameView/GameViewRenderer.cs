@@ -111,11 +111,11 @@ internal sealed class GameViewRenderer
         }
 
         var aspectRatio = 1f;
-        if (_master.FrameHandler is not null &&
-            _master.FrameHandler.TryGetResourceExtent("GameView", out var gameViewExtent) &&
-            gameViewExtent.Height > 0)
+        if (_master.FrameHandler is { } frameHandler && frameHandler.TryGetResourceExtent("GameView", out var gameViewExtent))
         {
-            aspectRatio = ResolveGameViewAspectRatio();
+            aspectRatio = gameViewExtent.Height > 0
+                ? (float)gameViewExtent.Width / gameViewExtent.Height
+                : 1f;
         }
         else
         {
@@ -180,7 +180,7 @@ internal sealed class GameViewRenderer
             return;
         }
 
-        var gridVertices = BuildGridVertices(gridHalfExtent: 20, spacing: 1f);
+        var gridVertices = BuildGridVertices(gridHalfExtent: 20, spacing: .2f);
         _gridVertexCount = (uint)gridVertices.Length;
 
         _gridVertexBufferKey = new GpuBufferKey
