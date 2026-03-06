@@ -261,7 +261,7 @@ internal unsafe class FrameHandler : IDisposable
         if (!submission.PipelineData.IsValid)
             return;
 
-        Debug.Log($"Execution push constant range: {submission.PushConstants.Data.Length}");
+        // Debug.Log($"Execution push constant range: {submission.PushConstants.Data.Length}");
 
 
         _master.Vk.CmdBindPipeline(cmd, PipelineBindPoint.Graphics, submission.PipelineData.VkPipeline);

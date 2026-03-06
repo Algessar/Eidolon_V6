@@ -24,13 +24,13 @@ public class CameraController
     public CameraController(IInputContext input)
     {
         // _camera = camera;
+        _input = input;
         _camera =  new()
         {
-            Position = new Vector3(0f, 10f, 10f),
+            Position = new Vector3(0f, 10f, 0f),
             Target = Vector3.Zero,
             Up = Vector3.UnitY,
         };
-        _input = input;
         
         // Listen for mouse movement
         foreach (var mouse in _input.Mice)
@@ -54,7 +54,7 @@ public class CameraController
             float distance = _moveSpeed * (float)dt;
 
             // Simple WASD
-            Vector3 forward = Vector3.Normalize(_camera.Target - _camera.Position);
+            Vector3 forward = Vector3.Normalize(_camera.Position -_camera.Target);
             Vector3 right = Vector3.Normalize(Vector3.Cross(forward, _camera.Up));
 
             if (keyboard.IsKeyPressed(Key.W)) _camera.Move(-forward * distance);
@@ -109,7 +109,7 @@ public class CameraController
         Vector3 direction;
         
         direction.X = Mathf.Cos(Mathf.DegreesToRadians(_yaw)) * Mathf.Cos(Mathf.DegreesToRadians(_pitch));
-        direction.Y = Mathf.Sin(Mathf.DegreesToRadians(-_pitch));
+        direction.Y = Mathf.Sin(Mathf.DegreesToRadians(_pitch));
         direction.Z = Mathf.Sin(Mathf.DegreesToRadians(_yaw)) * Mathf.Cos(Mathf.DegreesToRadians(_pitch));
         
         _camera.Target = _camera.Position + Vector3.Normalize(direction);

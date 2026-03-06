@@ -61,55 +61,24 @@ public class Camera
         return Matrix4x4.CreateLookAt(Position, Target, Up);
     }
 
-    private Matrix4x4 BuildProjectionMatrix(float aspectRatio)
+    
+    public Matrix4x4 ProjectionMatrix(float aspect)
     {
-        var safeAspect = Mathf.Max(aspectRatio, 0.1f);
-        var near = Mathf.Max(NearPlane, 0.0001f);
-        var far = Mathf.Max(FarPlane, near + 0.0001f);
-        var tanHalfFov = MathF.Tan(FieldOfView * 0.5f);
+        float f = 1f / MathF.Tan(FieldOfView * 0.5f);
 
-        var projection = Matrix4x4.Identity;
-        projection.M11 = 1.0f / (safeAspect * tanHalfFov);
-        projection.M22 = -1.0f / tanHalfFov;                 // Vulkan Y flip
-        projection.M33 = far / (near - far);                 // depth scale
-        projection.M34 = (near * far) / (near - far);        // depth translation
-        projection.M43 = -1.0f;                               // perspective divide
-        projection.M44 = 0.0f;
+        Matrix4x4 m = new();
 
-        return projection;
+        m.M11 = f / aspect;
+        m.M22 = -f;
+
+        m.M33 = FarPlane / (NearPlane - FarPlane);
+        m.M34 = -1f;
+
+        m.M43 = (NearPlane * FarPlane) / (NearPlane - FarPlane);
+        m.M44 = 0f;
+
+        return m;
     }
     
-    public Matrix4x4 BuildViewProjection(float aspectRatio)
-    {
-        // System.Numerics composes transforms for row-vector math (v * M).
-        // We transpose before upload for GLSL column-vector consumption,
-        // so the correct pre-transpose composition is View * Projection.
-        return ViewMatrix * BuildProjectionMatrix(aspectRatio);
-    }
     
-    public Matrix4x4 ProjectionMatrix
-    {
-        get
-        {
-            // Create a right-handed perspective matrix
-            float tanHalfFov = MathF.Tan(FieldOfView * 0.5f);
-            float aspect = AspectRatio;
-            var result = Matrix4x4.Identity;
-
-            // Standard perspective matrix formula for Vulkan
-            // X: 1/(aspect * tan(fov/2))
-            result.M11 = 1.0f / (aspect * tanHalfFov);
-            // Y: -1/tan(fov/2) (negative for Vulkan Y flip)
-            result.M22 = -1.0f / tanHalfFov;
-            // Z: far/(near-far)
-            result.M33 = FarPlane / (NearPlane - FarPlane);
-            // W: -1 (for perspective divide)
-            result.M34 = -1.0f;
-            // Z translation: (near*far)/(near-far)
-            result.M43 = (NearPlane * FarPlane) / (NearPlane - FarPlane);
-            result.M44 = 0.0f;
-
-            return result;
-        }
-    }
 }
