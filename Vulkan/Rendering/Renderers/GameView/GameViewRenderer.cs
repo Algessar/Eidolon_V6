@@ -107,7 +107,7 @@ internal sealed class GameViewRenderer
                 PassType = RenderPassType.GameView,
                 PipelineData = pipelineData,
                 DescriptorSet = descriptorSet,
-                VertexBuffer = _gridVertexBuffer,
+                VertexBuffer = default,
                 VertexOffset = 0,
                 IndexBuffer = default,
                 IndexOffset = 0,
