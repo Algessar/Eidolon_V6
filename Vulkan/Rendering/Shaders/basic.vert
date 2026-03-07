@@ -6,13 +6,13 @@
 //layout(location = 2) in vec2 inUV;
 
 layout(push_constant) uniform PushConstants {
-    mat4 model;
+    mat4 viewProj;
 } pushConstants;
 
 layout(location = 0) out vec3 fragColor;
 
 void main() {
-//    gl_Position = pushConstants.model * vec4(inPosition, 1.0);
+//    gl_Position = pushConstants.viewProj * vec4(inPosition, 1.0);
     const vec2 positions[3] = vec2[](
     vec2(0.0, -0.5),
     vec2(0.5, 0.5),
@@ -29,6 +29,6 @@ void main() {
 //    fragColor = normalize(inNormal) * 0.5 + 0.5;
 
     vec4 localPosition = vec4(positions[gl_VertexIndex], 0.0, 1.0);
-    gl_Position = pushConstants.model * localPosition;
+    gl_Position = pushConstants.viewProj * localPosition;
     fragColor = colors[gl_VertexIndex];
 }

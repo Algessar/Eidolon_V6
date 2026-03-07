@@ -17,6 +17,7 @@ internal sealed class GameViewRenderer
     
 
     private readonly DescriptorSet _descriptorSet;
+    private Camera _camera;
     private PipelineData _gameViewPipeline;
     
     private GpuBuffer _gridVertexBuffer;
@@ -28,12 +29,19 @@ internal sealed class GameViewRenderer
     {
         _master = master;
         _descriptorSet = _master.DescriptorFactory.GetDescriptorSet(0);
+        _camera = new Camera();
+        _camera.SetTarget(Vector3.Zero);
     }
     
     
     public DrawSubmission[] CurrentSubmissions { get; private set; } = Array.Empty<DrawSubmission>();
     public void NewFrame(double delta)
     {
+        var frameBufferSize = _master.GetWindow.FramebufferSize;
+        if (frameBufferSize.X > 0 && frameBufferSize.Y > 0)
+        {
+            _camera.SetAspect(frameBufferSize.X, frameBufferSize.Y);
+        }
         BuildDrawSubmissions();
         // Debug.Log("Running NewFrame in GameViewRenderer", VALIDATION_LAYERS.INFO);
     }
@@ -100,6 +108,8 @@ internal sealed class GameViewRenderer
             return Array.Empty<DrawSubmission>();
         }
 
+        var viewProjection = _camera.GetViewProjectionMatrix();
+
         return
         [
             new DrawSubmission
@@ -122,10 +132,23 @@ internal sealed class GameViewRenderer
                 Scissor = default,
                 ViewportPolicy = SubmissionViewportPolicy.PassDefault,
                 Viewport = default,
-                PushConstants = PushConstantPayload.Empty,
+                PushConstants = BuildViewProjectionPushConstants(viewProjection),
                 ModelMatrix = Matrix4x4.Identity,
             }
         ];
+    }
+    
+    private PushConstantPayload BuildViewProjectionPushConstants(Matrix4x4 viewProjection)
+    {
+        var payload = new byte[Marshal.SizeOf<Matrix4x4>()];
+        MemoryMarshal.Write(payload.AsSpan(), in viewProjection);
+
+        return new PushConstantPayload
+        {
+            StageFlags = ShaderStageFlags.VertexBit,
+            Offset = 0,
+            Data = payload,
+        };
     }
 
     public void Dispose()
