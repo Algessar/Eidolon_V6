@@ -9,7 +9,14 @@ layout(push_constant) uniform PushConstants
     vec3 cameraPos;
 } pc;
 
-vec3 reconstructWorld(vec2 uv)
+vec3 reconstructNear(vec2 uv)
+{
+    vec4 clip = vec4(uv * 2.0 - 1.0, 0.0, 1.0);
+    vec4 world = pc.invViewProj * clip;
+    return world.xyz / world.w;
+}
+
+vec3 reconstructFar(vec2 uv)
 {
     vec4 clip = vec4(uv * 2.0 - 1.0, 1.0, 1.0);
     vec4 world = pc.invViewProj * clip;
@@ -18,40 +25,62 @@ vec3 reconstructWorld(vec2 uv)
 
 float grid(vec2 coord, float scale)
 {
-    vec2 g = abs(fract(coord/scale - 0.5) - 0.5) / fwidth(coord/scale);
-    return min(g.x,g.y);
+    vec2 grid = abs(fract(coord / scale - 0.5) - 0.5) / fwidth(coord / scale);
+    return min(grid.x, grid.y);
 }
 
 void main()
 {
-    vec3 world = reconstructWorld(uv);
+    vec3 nearPoint = reconstructNear(uv);
+    vec3 farPoint  = reconstructFar(uv);
 
-    vec3 rayDir = normalize(world - pc.cameraPos);
+    vec3 rayOrigin = pc.cameraPos;
+    vec3 rayDir = normalize(farPoint - rayOrigin);
 
-    float t = -pc.cameraPos.y / rayDir.y;
-
-    if (t < 0)
+    if (abs(rayDir.y) < 0.0001)
     discard;
 
-    vec3 hit = pc.cameraPos + rayDir * t;
+    float denom = rayDir.y;
 
-    float minor = grid(hit.xz,1.0);
-    float major = grid(hit.xz,5.0);
+    if (abs(denom) < 1e-5)
+    discard;
 
-    float g = min(minor,major);
+    float t = -rayOrigin.y / denom;
+
+    if (t <= 0.0)
+    discard;
+
+    vec3 hit = rayOrigin + rayDir * t;
+
+    float dist = length(hit.xz);
+
+    // logarithmic grid scale
+    float logScale = pow(10.0, floor(log(dist + 1.0)));
+    float minorScale = logScale * 0.1;
+    float majorScale = logScale;
+
+    float minor = grid(hit.xz, minorScale);
+    float major = grid(hit.xz, majorScale);
+
+    float line = min(minor, major);
 
     vec3 color = vec3(0.2);
 
     if (major < 1.0)
     color = vec3(0.35);
 
-    if (abs(hit.x) < 0.02)
-    color = vec3(0.9,0.2,0.2);
+    // axis highlight
+    if (abs(hit.x) < minorScale * 0.5)
+    color = vec3(0.9, 0.2, 0.2);
 
-    if (abs(hit.z) < 0.02)
-    color = vec3(0.2,0.5,0.9);
+    if (abs(hit.z) < minorScale * 0.5)
+    color = vec3(0.2, 0.5, 0.9);
 
-    float alpha = 1.0 - clamp(g,0,1);
+    float alpha = 1.0 - clamp(line, 0.0, 1.0);
 
-    outColor = vec4(color,alpha);
+    // distance fade
+    float fade = exp(-dist * 0.02);
+    alpha *= fade;
+
+    outColor = vec4(color, alpha);
 }

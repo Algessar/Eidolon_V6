@@ -27,8 +27,8 @@ public class CameraController
         _input = input;
         _camera =  new()
         {
-            Position = new Vector3(0f, 10f, 0f),
-            Target = Vector3.Zero,
+            Position = new Vector3(0f, 5f, 5f),
+            Target = new Vector3(0,0,0),
             Up = Vector3.UnitY,
         };
         
@@ -53,14 +53,18 @@ public class CameraController
         {
             float distance = _moveSpeed * (float)dt;
 
-            // Simple WASD
-            Vector3 forward = Vector3.Normalize(_camera.Position -_camera.Target);
-            Vector3 right = Vector3.Normalize(Vector3.Cross(forward, _camera.Up));
+            Vector3 viewForward = Vector3.Normalize(_camera.Target - _camera.Position);
 
-            if (keyboard.IsKeyPressed(Key.W)) _camera.Move(-forward * distance);
-            if (keyboard.IsKeyPressed(Key.S)) _camera.Move(forward * distance);
+// flatten to ground plane
+            Vector3 forward = Vector3.Normalize(new Vector3(viewForward.X, 0f, viewForward.Z));
+
+            Vector3 right = Vector3.Normalize(Vector3.Cross(Vector3.UnitY, forward));
+
+            if (keyboard.IsKeyPressed(Key.W)) _camera.Move(forward * distance);
+            if (keyboard.IsKeyPressed(Key.S)) _camera.Move(-forward * distance);
             if (keyboard.IsKeyPressed(Key.A)) _camera.Move(-right * distance);
             if (keyboard.IsKeyPressed(Key.D)) _camera.Move(right * distance);
+
             if (keyboard.IsKeyPressed(Key.E)) _camera.Move(Vector3.UnitY * distance);
             if (keyboard.IsKeyPressed(Key.Q)) _camera.Move(-Vector3.UnitY * distance);
 
@@ -104,6 +108,21 @@ public class CameraController
         _yaw += lookDelta.x * _lookSensitivity;
         _pitch -= lookDelta.y * _lookSensitivity;
         _pitch = Mathf.Clamp(_pitch, -89f, 89f);
+        
+        if (_isMiddleMouseDown && _isShiftDown)
+        {
+            float panSpeed = 0.01f;
+
+            Vector3 forward = Vector3.Normalize(_camera.Target - _camera.Position);
+            Vector3 right = Vector3.Normalize(Vector3.Cross(forward, _camera.Up));
+            Vector3 up = Vector3.Normalize(Vector3.Cross(right, forward));
+
+            Vector3 delta =
+                (-right * lookDelta.x + up * lookDelta.y) * panSpeed;
+
+            _camera.Move(delta);
+            return;
+        }
 
         // Update camera target based on rotation
         Vector3 direction;

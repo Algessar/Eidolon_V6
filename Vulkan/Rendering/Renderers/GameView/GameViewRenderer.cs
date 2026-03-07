@@ -91,7 +91,7 @@ internal sealed class GameViewRenderer
             },
             Topology = PrimitiveTopology.TriangleList,
             CullMode = CullModeBits.None,
-            FrontFace = FrontFace.CounterClockwise,
+            FrontFace = FrontFace.Clockwise,
             HasDepth = true,
             DepthTestEnable = true,
             DepthWriteEnable = false,
@@ -138,8 +138,8 @@ private DrawSubmission[] BuildGameViewSubmissions(PipelineData pipelineData)
 
     Span<byte> push = stackalloc byte[80];
 
-    MemoryMarshal.Write(push[..64], ref shaderMatrix);
-    MemoryMarshal.Write(push[64..76], ref cameraPos);
+    MemoryMarshal.Write(push[..64], in shaderMatrix);
+    MemoryMarshal.Write(push[64..76], in cameraPos);
 
     var pushConstantData = push.ToArray();
 
