@@ -13,9 +13,7 @@ namespace EidolonEngine;
 internal sealed class GameViewRenderer
 {
     private VulkanMaster _master;
-    private readonly Camera _camera;
 
-    private CameraController _cameraController;
     
 
     private readonly DescriptorSet _descriptorSet;
@@ -26,11 +24,9 @@ internal sealed class GameViewRenderer
     private uint _gridVertexCount;
 
 
-    public GameViewRenderer(VulkanMaster master, CameraController cameraController)
+    public GameViewRenderer(VulkanMaster master)
     {
         _master = master;
-        _cameraController = cameraController;
-        _camera = _cameraController.Camera;
         _descriptorSet = _master.DescriptorFactory.GetDescriptorSet(0);
     }
     
@@ -38,7 +34,6 @@ internal sealed class GameViewRenderer
     public DrawSubmission[] CurrentSubmissions { get; private set; } = Array.Empty<DrawSubmission>();
     public void NewFrame(double delta)
     {
-        _cameraController.Update(delta);
         BuildDrawSubmissions();
         // Debug.Log("Running NewFrame in GameViewRenderer", VALIDATION_LAYERS.INFO);
     }
@@ -47,7 +42,7 @@ internal sealed class GameViewRenderer
     {
         EnsurePipeline();
         // EnsureGridGeometry();
-        CurrentSubmissions = BuildGameViewSubmissions(_gameViewPipeline);
+        CurrentSubmissions = BuildGameViewSubmissions(_gameViewPipeline, _descriptorSet);
         // Debug.Log($"[GameView] Submissions count: {CurrentSubmissions.Length}, VertexCount: {_gridVertexCount}, Pipeline valid: {_gameViewPipeline.IsValid}");
     }
 
@@ -76,24 +71,20 @@ internal sealed class GameViewRenderer
 
         var pipelineKey = new PipelineKey
         {
-            VertexShaderPath = "grid.vert.spv",
-            FragmentShaderPath = "grid.frag.spv",
+            VertexShaderPath = "basic.vert.spv",
+            FragmentShaderPath = "basic.frag.spv",
             RenderPass = renderPass,
             Layout = _master.DescriptorFactory.Layout,
             VertexFormat = new VertexFormat
             {
-                Stride = (uint)Marshal.SizeOf<Vertex>(),
-                Attributes =
-                [
-                    new VertexAttribute(0, Format.R32G32B32Sfloat, (uint)Marshal.OffsetOf<Vertex>(nameof(Vertex.Position))),
-                    new VertexAttribute(1, Format.R32G32B32Sfloat, (uint)Marshal.OffsetOf<Vertex>(nameof(Vertex.Color))),
-                ]
+                Stride = 0,
+                Attributes = Array.Empty<VertexAttribute>()
             },
             Topology = PrimitiveTopology.TriangleList,
             CullMode = CullModeBits.None,
-            FrontFace = FrontFace.Clockwise,
-            HasDepth = true,
-            DepthTestEnable = true,
+            FrontFace = FrontFace.CounterClockwise,
+            HasDepth = false,
+            DepthTestEnable = false,
             DepthWriteEnable = false,
             EnableBlending = false,
             BlendState = BlendState.NoBlending,
@@ -102,154 +93,39 @@ internal sealed class GameViewRenderer
         _gameViewPipeline = _master.PipelineFactory.GetOrCreate(pipelineKey);
     }
 
-private DrawSubmission[] BuildGameViewSubmissions(PipelineData pipelineData)
-{
-    if (!pipelineData.IsValid)
+    private DrawSubmission[] BuildGameViewSubmissions(PipelineData pipelineData,  DescriptorSet descriptorSet)
     {
-        Debug.Log("[GameView] Submission skipped: invalid pipeline.", VALIDATION_LAYERS.WARNING);
-        return Array.Empty<DrawSubmission>();
-    }
-
-    float aspectRatio;
-
-    if (_master.FrameHandler is { } frameHandler &&
-        frameHandler.TryGetResourceExtent("GameView", out var gameViewExtent) &&
-        gameViewExtent.Height > 0)
-    {
-        aspectRatio = (float)gameViewExtent.Width / gameViewExtent.Height;
-    }
-    else
-    {
-        var framebufferSize = _master.GetWindow.FramebufferSize;
-        aspectRatio = framebufferSize.Y > 0
-            ? (float)framebufferSize.X / framebufferSize.Y
-            : 1f;
-    }
-
-    var view = _camera.ViewMatrix;
-    var proj = _camera.ProjectionMatrix(aspectRatio);
-
-    var viewProj = view * proj;
-
-    Matrix4x4.Invert(viewProj, out var invViewProj);
-
-    var shaderMatrix = Matrix4x4.Transpose(invViewProj);
-    var cameraPos = _camera.Position;
-
-    Span<byte> push = stackalloc byte[80];
-
-    MemoryMarshal.Write(push[..64], in shaderMatrix);
-    MemoryMarshal.Write(push[64..76], in cameraPos);
-
-    var pushConstantData = push.ToArray();
-
-    return
-    [
-        new DrawSubmission
+        if (!pipelineData.IsValid)
         {
-            PassType = RenderPassType.GameView,
-            PipelineData = pipelineData,
-            DescriptorSet = _descriptorSet,
+            return Array.Empty<DrawSubmission>();
+        }
 
-            VertexBuffer = default,
-            VertexOffset = 0,
-
-            IndexBuffer = default,
-            IndexOffset = 0,
-            IndexType = IndexType.Uint16,
-
-            VertexCount = 6,
-            IndexCount = 0,
-            InstanceCount = 1,
-
-            FirstVertex = 0,
-            FirstIndex = 0,
-            VertexBase = 0,
-
-            ScissorPolicy = SubmissionScissorPolicy.PassDefault,
-            Scissor = default,
-
-            ViewportPolicy = SubmissionViewportPolicy.PassDefault,
-            Viewport = default,
-
-            PushConstants = new PushConstantPayload
+        return
+        [
+            new DrawSubmission
             {
-                StageFlags = ShaderStageFlags.VertexBit | ShaderStageFlags.FragmentBit,
-                Offset = 0,
-                Data = pushConstantData,
-            },
-
-            ModelMatrix = Matrix4x4.Identity
-        }
-    ];
-}
-    
-    private unsafe void EnsureGridGeometry()
-    {
-        if (_gridVertexBuffer.IsValid)
-        {
-            return;
-        }
-
-        var gridVertices = BuildGridVertices(gridHalfExtent: 20, spacing: 0.1f);
-        _gridVertexCount = (uint)gridVertices.Length;
-
-        _gridVertexBufferKey = new GpuBufferKey
-        {
-            UsageClass = GpuBufferUsageClass.Vertex,
-            Size = (ulong)(Marshal.SizeOf<Vertex>() * gridVertices.Length),
-            Usage = BufferUsageFlags.VertexBufferBit,
-            MemoryProperties = MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit,
-            Count = 1,
-            AllocationStrategy = GpuBufferAllocationStrategy.Static,
-        };
-
-        _gridVertexBuffer = _master.GpuBufferFactory.GetOrCreate(_gridVertexBufferKey)[0];
-
-        void* mapped;
-        if (_master.Vk.MapMemory(_master.VulkanDevice.Device, _gridVertexBuffer.Memory, 0, _gridVertexBuffer.Size, 0, &mapped) != Result.Success)
-        {
-            throw new InvalidOperationException("Failed to map game-view grid vertex buffer.");
-        }
-
-        fixed (Vertex* verticesPtr = gridVertices)
-        {
-            System.Buffer.MemoryCopy(verticesPtr, mapped, (long)_gridVertexBuffer.Size, (long)_gridVertexBuffer.Size);
-        }
-        Debug.Log($"[GameView] Grid buffer handle: {_gridVertexBuffer.Buffer.Handle}, size: {_gridVertexBuffer.Size}, vertex count: {_gridVertexCount}");
-        _master.Vk.UnmapMemory(_master.VulkanDevice.Device, _gridVertexBuffer.Memory);
-    }
-
-    private static Vertex[] BuildGridVertices(int gridHalfExtent, float spacing)
-    {
-        var lineCountPerAxis = gridHalfExtent * 2 + 1;
-        var vertices = new Vertex[lineCountPerAxis * 4];
-        var index = 0;
-
-        var axisColorX = new Vector3(0.95f, 0.25f, 0.25f);
-        var axisColorZ = new Vector3(0.25f, 0.55f, 0.95f);
-        var majorColor = new Vector3(0.35f, 0.35f, 0.35f);
-        var minorColor = new Vector3(0.2f, 0.2f, 0.2f);
-
-        for (var i = -gridHalfExtent; i <= gridHalfExtent; i++)
-        {
-            var offset = i * spacing;
-            var color = i == 0
-                ? axisColorX
-                : (i % 5 == 0 ? majorColor : minorColor);
-
-            vertices[index++] = new Vertex(new Vector3(-gridHalfExtent * spacing, 0f, offset), color);
-            vertices[index++] = new Vertex(new Vector3(gridHalfExtent * spacing, 0f, offset), color);
-
-            color = i == 0
-                ? axisColorZ
-                : (i % 5 == 0 ? majorColor : minorColor);
-
-            vertices[index++] = new Vertex(new Vector3(offset, 0f, -gridHalfExtent * spacing), color);
-            vertices[index++] = new Vertex(new Vector3(offset, 0f, gridHalfExtent * spacing), color);
-        }
-
-        return vertices;
+                PassType = RenderPassType.GameView,
+                PipelineData = pipelineData,
+                DescriptorSet = descriptorSet,
+                VertexBuffer = _gridVertexBuffer,
+                VertexOffset = 0,
+                IndexBuffer = default,
+                IndexOffset = 0,
+                IndexType = IndexType.Uint16,
+                VertexCount = 3,
+                IndexCount = 0,
+                InstanceCount = 1,
+                FirstVertex = 0,
+                FirstIndex = 0,
+                VertexBase = 0,
+                ScissorPolicy = SubmissionScissorPolicy.PassDefault,
+                Scissor = default,
+                ViewportPolicy = SubmissionViewportPolicy.PassDefault,
+                Viewport = default,
+                PushConstants = PushConstantPayload.Empty,
+                ModelMatrix = Matrix4x4.Identity,
+            }
+        ];
     }
 
     public void Dispose()

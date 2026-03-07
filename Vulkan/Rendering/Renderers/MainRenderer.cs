@@ -13,8 +13,7 @@ internal class MainRenderer
 {
 	private VulkanMaster _master;
 	private InputManager _inputManager;
-	private CameraController _cameraController;
-	private Camera _camera;
+
 	private IInputContext? _input;
 	
 	private readonly CompiledRenderGraph? _initialGraph;
@@ -60,11 +59,10 @@ internal class MainRenderer
 	    }
 	    
 	    _inputManager = new InputManager(_master.GetWindow);
-	    _cameraController = new CameraController(_inputManager.Input);
 	    _imguiRenderer = new ImGuiRenderer(_master, _inputManager);
 	    _sceneRenderer = new SceneRenderer();
 	    
-	    _gameViewRenderer = new GameViewRenderer(_master, _cameraController);
+	    _gameViewRenderer = new GameViewRenderer(_master);
 
 	    
 	    _imguiRenderer.Initialize(_bootstrapPipelineData.RenderPass);
