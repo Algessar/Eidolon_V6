@@ -2,6 +2,7 @@
 using EidolonCore.Rendering;
 using EidolonEngine;
 
+
 namespace Eidolon.Editor;
 
 public static class EidolonEditor

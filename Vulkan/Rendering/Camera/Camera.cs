@@ -1,5 +1,6 @@
 ﻿using System.Numerics;
 using EidolonCore.Math;
+using Silk.NET.Maths;
 
 namespace Eidolon.Vulkan;
 
@@ -8,28 +9,22 @@ public class Camera
     private const float DegreesToRadians = MathF.PI / 180f;
     public Vector3 Position { get; set; } = new(0, 0, 3f);
     public Vector3 Forward { get; private set; } = -Vector3.UnitZ;
-    public Vector3 Target { get; private set; } = Vector3.Zero;
+    public Vector3 Target { get; set; } = Vector3.Zero;
     public Vector3 Up { get; set; } = Vector3.UnitY;
 
     public float FieldOfViewRadians { get; set; } = 60f * DegreesToRadians;    public float NearPlane { get; set; } = 0.1f;
     public float FarPlane { get; set; } = 1000f;
     public float AspectRatio { get; set; } = 16f / 9f;
     
+    public float FieldOfView { get; set; } = 45.0f * (MathF.PI / 180.0f);
+    
     public bool UseYawPitch { get; set; }
     public float YawRadians { get; set; } = -90f * DegreesToRadians;
     public float PitchRadians { get; set; }
 
-    private bool FlipYForVulkan { get; set; }
 
-    public void SetAspect(float width, float height)
+    public void SetAspectRatio(float width, float height)
     {
-        //NOTE: This might be an issue if the window is minimized?
-        if (height <= 0f)
-            throw new ArgumentOutOfRangeException(nameof(height), "Height must be greater than zero.");
-
-        if (width <= 0f)
-            throw new ArgumentOutOfRangeException(nameof(width), "Width must be greater than zero.");
-
         AspectRatio = width / height;
     }
 
@@ -42,37 +37,67 @@ public class Camera
     public Matrix4x4 GetViewMatrix()
     {
         if (UseYawPitch)
-        {
-            
+        {            
+            UpdateTargetFromYawPitch();
         }
 
         return Matrix4x4.CreateLookAt(Position, Target, Up);
     }
-
-    public Matrix4x4 GetProjectionMatrix()
+    
+    //NOTE: Use this. From old working project.
+    public Matrix4x4 ProjectionMatrix
     {
-        var fov = Math.Clamp(FieldOfViewRadians, 0.001f, MathF.PI - 0.001f);
-        var near = Math.Max(NearPlane, 0.0001f);
-        var far = Math.Max(FarPlane, near + 0.0001f);
-
-        var yScale = 1f / MathF.Tan(fov * 0.5f);
-        var xScale = yScale / AspectRatio;
-        if (FlipYForVulkan)
+        get
         {
-            yScale = -yScale;
+            // Create a right-handed perspective matrix
+            float tanHalfFov = MathF.Tan(FieldOfView * 0.5f);
+            float aspect = AspectRatio;
+                
+            var result = Matrix4x4.Identity;
+                
+            // Standard perspective matrix formula for Vulkan
+            // X: 1/(aspect * tan(fov/2))
+            result.M11 = 1.0f / (aspect * tanHalfFov);
+            // Y: -1/tan(fov/2) (negative for Vulkan Y flip)
+            result.M22 = -1.0f / tanHalfFov;
+            // Z: far/(near-far)
+            result.M33 = FarPlane / (NearPlane - FarPlane);
+            // W: -1 (for perspective divide)
+            result.M34 = -1.0f;
+            // Z translation: (near*far)/(near-far)
+            result.M43 = (NearPlane * FarPlane) / (NearPlane - FarPlane);
+            result.M44 = 0.0f;
+                
+            return result;
         }
-        
-        return new Matrix4x4(
-            xScale, 0f, 0f, 0f,
-            0f, yScale, 0f, 0f,
-            0f, 0f, far / (near - far), -1f,
-            0f, 0f, (near * far) / (near - far), 0f
-            );
     }
+    
+    
+    public Matrix4x4 ViewMatrix
+    {
+        get
+        {
+            var direction = Vector3.Normalize(Target - Position);
+                
+            // Fix for when direction is parallel/anti-parallel to up vector
+            if (MathF.Abs(Vector3.Dot(direction, Up)) > 0.9999f)
+            {
+                // Use a different up vector temporarily
+                var tempUp = (MathF.Abs(direction.Y) > 0.9999f) ? 
+                    Vector3.UnitZ : 
+                    Vector3.UnitY;
+                    
+                return Matrix4x4.CreateLookAt(Position, Target, tempUp);
+            }
+                
+            return Matrix4x4.CreateLookAt(Position, Target, Up);
+        }
+    }
+
 
     public Matrix4x4 GetViewProjectionMatrix()
     {
-        return GetProjectionMatrix() * GetViewMatrix();
+        return ProjectionMatrix * GetViewMatrix();
     }
 
     private void UpdateTargetFromYawPitch()
@@ -84,6 +109,19 @@ public class Camera
             MathF.Sin(YawRadians) * MathF.Cos(clampedPitch));
 
         Forward = Vector3.Normalize(forward);
-        Target = Position * Forward;
+        Target = Position + Forward;
+    }
+    
+    public void Move(Vector3 delta)
+    {
+        Position += delta;
+        Target += delta;
+    }
+    
+    private float Zoom = 45f;
+
+    public Matrix4x4 Matrix()
+    {
+        return Matrix4x4.CreatePerspectiveFieldOfView(Mathf.DegreesToRadians(Zoom), AspectRatio, 0.1f, 100.0f);
     }
 }

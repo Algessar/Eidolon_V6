@@ -29,8 +29,8 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     private DeviceMemory _fontImageMemory;
     private Sampler _fontSampler;
     
-    private const nint FontTextureId = 1;
-    private const nint GameViewTextureId = 2;
+    private const nint _FontTextureId = 1;
+    private const nint _GameViewTextureId = 2;
 
     
     // Per-frame CPU state
@@ -38,7 +38,6 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     private readonly UiGeometryUploader _uiGeometryUploader;
     private ImGuiDrawData CurrentDrawData { get; set; } = ImGuiDrawData.Empty;
     public DrawSubmission[] CurrentSubmissions { get; private set; } = Array.Empty<DrawSubmission>();
-
     
     public uint LastVertexCount { get; private set; }
     public uint LastIndexCount { get; private set; }
@@ -48,7 +47,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     bool _showDemoWindow = false;
     
     [Header("UI and Input")]
-    EditorUI _editorUI;
+    private EditorUI _editorUI;
     readonly InputManager _inputManager;
 
     private RenderPass _renderPass;
@@ -103,7 +102,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         ImGui.NewFrame();
 
         var hasGameViewTexture = UpdateGameViewTextureBinding();
-        _editorUI.SetGameViewTexture(hasGameViewTexture ? GameViewTextureId : 0);
+        _editorUI.SetGameViewTexture(hasGameViewTexture ? _GameViewTextureId : 0);
         _editorUI.Update();
         BuildUI();
         FinalizeFrame();
@@ -135,7 +134,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         CurrentDrawData = ConvertDrawData(drawData);
     }
 
-    public void OnSwapchainRecreated()
+    private void OnSwapchainRecreated()
     {
         // Destroy old pool and layout
         if (_descriptorPool.Handle != 0)
@@ -282,8 +281,8 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
 
         _fontDescriptorSet = AllocateDescriptorSet();
         _gameViewDescriptorSet = AllocateDescriptorSet();
-        _textureDescriptorSets[FontTextureId] = _fontDescriptorSet;
-        _textureDescriptorSets[GameViewTextureId] = _gameViewDescriptorSet;
+        _textureDescriptorSets[_FontTextureId] = _fontDescriptorSet;
+        _textureDescriptorSets[_GameViewTextureId] = _gameViewDescriptorSet;
     }
 
     private DescriptorSet AllocateDescriptorSet()
@@ -326,8 +325,8 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         };
         
         _master.Vk.UpdateDescriptorSets(_master.VulkanDevice.Device, 1, &write, 0, null);
-        _textureDescriptorSets[FontTextureId] = _fontDescriptorSet;
-        ImGui.GetIO().Fonts.SetTexID(FontTextureId);
+        _textureDescriptorSets[_FontTextureId] = _fontDescriptorSet;
+        ImGui.GetIO().Fonts.SetTexID(_FontTextureId);
     }
     
     private bool UpdateGameViewTextureBinding()
@@ -372,12 +371,11 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         };
 
         _master.Vk.UpdateDescriptorSets(_master.VulkanDevice.Device, 1, &write, 0, null);
-        _textureDescriptorSets[GameViewTextureId] = _gameViewDescriptorSet;
+        _textureDescriptorSets[_GameViewTextureId] = _gameViewDescriptorSet;
         _lastGameViewHandle = gameView.Handle;
 
         return true;
     }
-
     
     private void CreatePipeline(RenderPass renderPass)
     {
@@ -648,14 +646,6 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
 
         CurrentSubmissions = submissions.ToArray();
     }
-    
-    // private DescriptorSet ResolveDescriptorSet(nint textureId)
-    // {
-    //     if (textureId == GameViewTextureId)
-    //         return _gameViewDescriptorSet;
-    //     // Fallback to font set for any other texture ID (including FontTextureId)
-    //     return _fontDescriptorSet;
-    // }
     
     private DescriptorSet ResolveDescriptorSet(nint textureId)
     {

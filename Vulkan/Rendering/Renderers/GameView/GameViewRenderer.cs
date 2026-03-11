@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Eidolon.Engine;
 using Eidolon.Vulkan;
@@ -18,6 +19,7 @@ internal sealed class GameViewRenderer
 
     private readonly DescriptorSet _descriptorSet;
     private Camera _camera;
+    public Camera Camera => _camera;
     private PipelineData _gameViewPipeline;
     
     private GpuBuffer _gridVertexBuffer;
@@ -30,19 +32,17 @@ internal sealed class GameViewRenderer
         _master = master;
         _descriptorSet = _master.DescriptorFactory.GetDescriptorSet(0);
         _camera = new Camera();
-        _camera.SetTarget(Vector3.Zero);
+        _camera.Position = new Vector3(0, 15, 5);
+        _camera.SetTarget(new Vector3(0, 0, -5)); // Look at the triangle
     }
     
     
     public DrawSubmission[] CurrentSubmissions { get; private set; } = Array.Empty<DrawSubmission>();
     public void NewFrame(double delta)
     {
-        var frameBufferSize = _master.GetWindow.FramebufferSize;
-        if (frameBufferSize.X > 0 && frameBufferSize.Y > 0)
-        {
-            _camera.SetAspect(frameBufferSize.X, frameBufferSize.Y);
-        }
+
         BuildDrawSubmissions();
+        
         // Debug.Log("Running NewFrame in GameViewRenderer", VALIDATION_LAYERS.INFO);
     }
 
@@ -91,8 +91,8 @@ internal sealed class GameViewRenderer
             Topology = PrimitiveTopology.TriangleList,
             CullMode = CullModeBits.None,
             FrontFace = FrontFace.CounterClockwise,
-            HasDepth = false,
-            DepthTestEnable = false,
+            HasDepth = true,
+            DepthTestEnable = true,
             DepthWriteEnable = false,
             EnableBlending = false,
             BlendState = BlendState.NoBlending,
@@ -107,9 +107,19 @@ internal sealed class GameViewRenderer
         {
             return Array.Empty<DrawSubmission>();
         }
+        // if (_master.FrameHandler is { } frameHandler &&
+        //     frameHandler.TryGetResourceExtent("GameView", out var gameViewExtent) &&
+        //     gameViewExtent.Height > 0)
+        // {
+        //     // _camera.AspectRatio = (float)gameViewExtent.Width / gameViewExtent.Height;
+        //     _camera.SetAspect(gameViewExtent.Width, gameViewExtent.Height);
+        // }
 
         var viewProjection = _camera.GetViewProjectionMatrix();
-
+        // viewProjection = Matrix4x4.Transpose(viewProjection);
+        Debug.Log($"{viewProjection}");
+        var identity = Matrix4x4.Identity;
+        
         return
         [
             new DrawSubmission
@@ -117,7 +127,7 @@ internal sealed class GameViewRenderer
                 PassType = RenderPassType.GameView,
                 PipelineData = pipelineData,
                 DescriptorSet = descriptorSet,
-                VertexBuffer = default,
+                VertexBuffer = _gridVertexBuffer,
                 VertexOffset = 0,
                 IndexBuffer = default,
                 IndexOffset = 0,
@@ -132,8 +142,9 @@ internal sealed class GameViewRenderer
                 Scissor = default,
                 ViewportPolicy = SubmissionViewportPolicy.PassDefault,
                 Viewport = default,
-                PushConstants = BuildViewProjectionPushConstants(viewProjection),
-                ModelMatrix = Matrix4x4.Identity,
+                // PushConstants = BuildViewProjectionPushConstants(identity),
+                PushConstants = PushConstantPayload.Empty,
+                ModelMatrix = identity,
             }
         ];
     }
@@ -145,7 +156,7 @@ internal sealed class GameViewRenderer
 
         return new PushConstantPayload
         {
-            StageFlags = ShaderStageFlags.VertexBit,
+            StageFlags = ShaderStageFlags.VertexBit | ShaderStageFlags.FragmentBit,
             Offset = 0,
             Data = payload,
         };

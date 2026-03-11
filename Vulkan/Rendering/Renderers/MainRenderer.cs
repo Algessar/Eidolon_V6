@@ -13,6 +13,7 @@ internal class MainRenderer
 {
 	private VulkanMaster _master;
 	private InputManager _inputManager;
+	private CameraController? _cameraController;
 
 	private IInputContext? _input;
 	
@@ -20,13 +21,13 @@ internal class MainRenderer
 
     private ImGuiRenderer _imguiRenderer;
     private SceneRenderer _sceneRenderer;
+    private GameViewRenderer _gameViewRenderer;
 
     private DrawSubmission[] _sceneSubmissions;
 
     private DrawData _drawData;
     
     private PipelineData _bootstrapPipelineData;
-    private GameViewRenderer _gameViewRenderer;
 
     public MainRenderer(VulkanMaster master)
     {
@@ -61,9 +62,8 @@ internal class MainRenderer
 	    _inputManager = new InputManager(_master.GetWindow);
 	    _imguiRenderer = new ImGuiRenderer(_master, _inputManager);
 	    _sceneRenderer = new SceneRenderer();
-	    
 	    _gameViewRenderer = new GameViewRenderer(_master);
-
+	    _cameraController = new CameraController(_inputManager.Input);
 	    
 	    _imguiRenderer.Initialize(_bootstrapPipelineData.RenderPass);
 	    
@@ -80,22 +80,40 @@ internal class MainRenderer
     {
         // Keep _window.Load in VulkanMaster for Vulkan setup.
 
-        window.Render += delta =>
+        window.Update += (delta) =>
         {
-	        if (_master.FrameHandler is null)
-	        {
-		        return;
-	        }
 	        _sceneRenderer?.NewFrame();
 	        _gameViewRenderer?.NewFrame(delta);
 	        _imguiRenderer?.NewFrame(
 		        (float)delta,
 		        new Vector2(window.Size.X, window.Size.Y),
 		        new Vector2(window.FramebufferSize.X, window.FramebufferSize.Y));
-
+	        
+	        //NOTE: This annoys the fuck out of me. What is CurrentFrame doing here?
 	        _imguiRenderer?.BuildDrawSubmissions(_master.FrameHandler.CurrentFrame, Constants.MAX_FRAMES_IN_FLIGHT);
+	        if (_cameraController is not null)
+	        {
+		        // Debug.Log($"Camera controller is not null");
+		        _cameraController.Update((float)delta);
+	        }
+        };
+        
+        window.Render += delta =>
+        {
+	        if (_master.FrameHandler is null)
+	        {
+		        return;
+	        }
+	        
+	        // _sceneRenderer?.NewFrame();
+	        // _gameViewRenderer?.NewFrame(delta);
+	        // _imguiRenderer?.NewFrame(
+		       //  (float)delta,
+		       //  new Vector2(window.Size.X, window.Size.Y),
+		       //  new Vector2(window.FramebufferSize.X, window.FramebufferSize.Y));
 
-	        var baseSubmissions = _sceneSubmissions; 
+
+	        var baseSubmissions = Array.Empty<DrawSubmission>(); 
 
 	        var sceneSubmissions = _sceneRenderer?.CurrentSubmissions ?? Array.Empty<DrawSubmission>();
 	        var gameViewSubmissions = _gameViewRenderer?.CurrentSubmissions ?? Array.Empty<DrawSubmission>();

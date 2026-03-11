@@ -10,8 +10,12 @@ internal class InputManager
     IInputContext? _input;
     IKeyboard? _keyboard;
     IMouse? _mouse;
+    
+    
+    public IInputContext? Input => _input;
+    public IKeyboard? Keyboard => _keyboard;
+    public IMouse? Mouse => _mouse;
 
-    public IInputContext Input  => _input;
     
     private readonly List<char> _textInput = [];
     
