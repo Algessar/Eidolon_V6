@@ -2,7 +2,7 @@
 
 namespace Eidolon.Vulkan;
 
-public class GameObject : IComponent
+public class GameObject : Component
 {
     public Transform Transform;
 
@@ -16,7 +16,9 @@ public class GameObject : IComponent
         
     }
     
-    
-    
+    public override void NewFrame()
+    {
+        
+    }
 }
 

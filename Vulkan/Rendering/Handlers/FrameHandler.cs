@@ -73,7 +73,7 @@ internal unsafe class FrameHandler : IDisposable
         _framebufferResized = true;
     }
 
-    public void Initialize()
+    private void Initialize()
     {
         CreateResources();
         CreateSyncObjects();

@@ -4,13 +4,15 @@ using System.Runtime.InteropServices;
 namespace Eidolon.Vulkan;
 
 [StructLayout(LayoutKind.Sequential)]
-public struct Vertex
+internal struct Vertex
 {
     public Vector3 Position;
     public Vector2 Normal;
     public Vector3 Color; // This should be Vector4 for Alpha
     public Vector2 TexCoord;
     public float Distance;
+
+    public VertexAttribute VertexAttribute;
 
     public Vertex(Vector3 position, Vector3 color, Vector2 texCoord, Vector2 normal)
     {
@@ -48,7 +50,7 @@ public struct Vertex
 }
 
 // Simple mesh data for testing
-public static class TestMeshes
+internal static class TestMeshes
 {
     public static Vertex[] CubeVertices = new Vertex[]
     {

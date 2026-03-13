@@ -1,7 +1,7 @@
 ﻿using Silk.NET.Vulkan;
 
 namespace Eidolon.Vulkan;
-public class Mesh
+internal class Mesh
 {
     internal Geometry BackendGeometry { get; set; }
     public Vertex[] Vertices { get; set; }

@@ -52,6 +52,8 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
 
     private RenderPass _renderPass;
     
+    public Vector2 GameViewSize => _editorUI.GameViewSize;
+    
     public ImGuiRenderer(VulkanMaster master, InputManager input)
     {
         _master = master;
@@ -81,13 +83,14 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         CreatePipeline(renderPass);
 
         _editorUI = new EditorUI(_master.GetWindow);
-        // _inputManager = new InputManager(_master.GetWindow);
         
         Debug.Log("ImGuiRenderer initialized", VALIDATION_LAYERS.INFO);
     }
     
     public void NewFrame(float delta, Vector2 windowSize, Vector2 framebufferSize)
     {
+        BuildDrawSubmissions(_master.FrameHandler.CurrentFrame, Constants.MAX_FRAMES_IN_FLIGHT);
+        
         var io = ImGui.GetIO();
         io.DisplaySize = windowSize;
 

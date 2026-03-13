@@ -61,7 +61,7 @@ internal class MainRenderer
 	    
 	    _inputManager = new InputManager(_master.GetWindow);
 	    _imguiRenderer = new ImGuiRenderer(_master, _inputManager);
-	    _sceneRenderer = new SceneRenderer();
+	    _sceneRenderer = new SceneRenderer(_master);
 	    _gameViewRenderer = new GameViewRenderer(_master);
 	    _cameraController = new CameraController(_inputManager.Input);
 	    
@@ -90,11 +90,12 @@ internal class MainRenderer
 		        new Vector2(window.FramebufferSize.X, window.FramebufferSize.Y));
 	        
 	        //NOTE: This annoys the fuck out of me. What is CurrentFrame doing here?
-	        _imguiRenderer?.BuildDrawSubmissions(_master.FrameHandler.CurrentFrame, Constants.MAX_FRAMES_IN_FLIGHT);
+	        // _imguiRenderer?.BuildDrawSubmissions(_master.FrameHandler.CurrentFrame, Constants.MAX_FRAMES_IN_FLIGHT);
 	        if (_cameraController is not null)
 	        {
 		        // Debug.Log($"Camera controller is not null");
 		        _cameraController.Update((float)delta);
+		        _cameraController.SetAspect(_imguiRenderer.GameViewSize);
 	        }
         };
         
@@ -104,14 +105,6 @@ internal class MainRenderer
 	        {
 		        return;
 	        }
-	        
-	        // _sceneRenderer?.NewFrame();
-	        // _gameViewRenderer?.NewFrame(delta);
-	        // _imguiRenderer?.NewFrame(
-		       //  (float)delta,
-		       //  new Vector2(window.Size.X, window.Size.Y),
-		       //  new Vector2(window.FramebufferSize.X, window.FramebufferSize.Y));
-
 
 	        var baseSubmissions = Array.Empty<DrawSubmission>(); 
 

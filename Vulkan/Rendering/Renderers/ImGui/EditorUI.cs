@@ -52,12 +52,16 @@ internal class EditorUI
         DrawBrowserWindow();
     }
 
+    public Vector2 GameViewSize = new Vector2();
+
     private void DrawGameViewWindow()
     {
         ImGui.Begin("Eidolon / Game View");
         
         //NOTE: this currently causes the Font Atlas to be rendered in the window.
         var available = ImGui.GetContentRegionAvail();
+        GameViewSize = available;
+        Debug.Log($"Game view size: {GameViewSize}");
         if (_gameViewTextureID != 0 && available.X > 1f && available.Y > 1f)
         {
             ImGui.Image((nint)_gameViewTextureID, available, new Vector2(0, 1), new Vector2(1, 0));

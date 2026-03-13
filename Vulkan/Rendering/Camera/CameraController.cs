@@ -5,6 +5,7 @@ using Silk.NET.Input;
 
 namespace Eidolon.Vulkan;
 
+//NOTE: This class is now the same as in an older working version.
 internal class CameraController
 {
     private Camera _camera;
@@ -60,15 +61,20 @@ internal class CameraController
             _camera.Target = new Vector3(0, 0, 0);
         }
 
-        foreach (var mouse in _input.Mice)
-        {
-            if (keyboard.IsKeyPressed(Key.Escape))
-                mouse.Cursor.CursorMode = CursorMode.Normal;
-            if (mouse.IsButtonPressed(MouseButton.Left))
-            {
-                mouse.Cursor.CursorMode = CursorMode.Disabled;
-            }
-        }
+        // foreach (var mouse in _input.Mice)
+        // {
+        //     if (keyboard.IsKeyPressed(Key.Escape))
+        //         mouse.Cursor.CursorMode = CursorMode.Normal;
+        //     if (mouse.IsButtonPressed(MouseButton.Left))
+        //     {
+        //         mouse.Cursor.CursorMode = CursorMode.Disabled;
+        //     }
+        // }
+    }
+
+    public void SetAspect(Vector2 windowSize)
+    {
+        _camera.SetAspectRatio(windowSize.X, windowSize.Y);
     }
     
     private void OnMouseMove(IMouse mouse, Vector2 position)

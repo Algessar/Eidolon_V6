@@ -13,10 +13,7 @@ namespace EidolonEngine;
 /// </summary>
 internal sealed class GameViewRenderer
 {
-    private VulkanMaster _master;
-
-    
-
+    private VulkanMaster _master; 
     private readonly DescriptorSet _descriptorSet;
     private Camera _camera;
     public Camera Camera => _camera;
@@ -26,6 +23,7 @@ internal sealed class GameViewRenderer
     private GpuBufferKey _gridVertexBufferKey;
     private uint _gridVertexCount;
 
+    public DrawSubmission[] CurrentSubmissions { get; private set; } = Array.Empty<DrawSubmission>();
 
     public GameViewRenderer(VulkanMaster master)
     {
@@ -36,8 +34,6 @@ internal sealed class GameViewRenderer
         _camera.SetTarget(new Vector3(0, 0, -5)); // Look at the triangle
     }
     
-    
-    public DrawSubmission[] CurrentSubmissions { get; private set; } = Array.Empty<DrawSubmission>();
     public void NewFrame(double delta)
     {
 
@@ -48,13 +44,13 @@ internal sealed class GameViewRenderer
 
     public void BuildDrawSubmissions()
     {
-        EnsurePipeline();
-        // EnsureGridGeometry();
+        BuildPipeline();
         CurrentSubmissions = BuildGameViewSubmissions(_gameViewPipeline, _descriptorSet);
-        // Debug.Log($"[GameView] Submissions count: {CurrentSubmissions.Length}, VertexCount: {_gridVertexCount}, Pipeline valid: {_gameViewPipeline.IsValid}");
+        Debug.Log($"[GameView] Submissions count: {CurrentSubmissions.Length}, VertexCount: {_gridVertexCount}, Pipeline valid: {_gameViewPipeline.IsValid}");
     }
 
-    private void EnsurePipeline()
+    //NOTE: Why this is called every frame is beyond me.
+    private void BuildPipeline()
     {
         if (_gameViewPipeline.IsValid)
             return;

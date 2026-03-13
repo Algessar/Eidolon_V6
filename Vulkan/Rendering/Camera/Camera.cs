@@ -1,10 +1,13 @@
 ﻿using System.Numerics;
+using EidolonCore.ECS;
 using EidolonCore.Math;
 using Silk.NET.Maths;
 
 namespace Eidolon.Vulkan;
 
-public class Camera
+//NOTE: This class is now the same as in an older working version.
+
+public class Camera : Component
 {
     private const float DegreesToRadians = MathF.PI / 180f;
     public Vector3 Position { get; set; } = new(0, 0, 3f);
@@ -21,7 +24,7 @@ public class Camera
     public bool UseYawPitch { get; set; }
     public float YawRadians { get; set; } = -90f * DegreesToRadians;
     public float PitchRadians { get; set; }
-
+    
 
     public void SetAspectRatio(float width, float height)
     {

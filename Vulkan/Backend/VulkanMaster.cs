@@ -46,8 +46,6 @@ internal class VulkanMaster
     
     
     private DrawData _drawData;
-
-    private Scene _scene;
  
     private MainRenderer? _mainRenderer;
     #endregion
