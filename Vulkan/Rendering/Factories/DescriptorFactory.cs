@@ -37,7 +37,7 @@ internal unsafe class DescriptorFactory: IDisposable
     private DescriptorPool _descriptorPool; //NOTE: Currently created in ImGuiRenderer, which I'm not a fan of. 
     
     private DescriptorSetLayout _descriptorSetLayout;
-    
+    private GpuBuffer[] _defaultUniformBuffers = Array.Empty<GpuBuffer>();
     public DescriptorSetLayout Layout => GetOrCreate(_defaultKey).Layout;
     
     public DescriptorFactory(VulkanMaster master)
@@ -89,6 +89,18 @@ internal unsafe class DescriptorFactory: IDisposable
     {
         return GetOrCreate(_defaultKey).GetSet(frameIndex);
     }
+    
+    public GpuBuffer GetDefaultUniformBuffer(uint frameIndex)
+    {
+        if (_defaultUniformBuffers.Length == 0)
+            throw new InvalidOperationException("Default uniform buffers are not initialized.");
+
+        if (frameIndex >= _defaultUniformBuffers.Length)
+            throw new ArgumentOutOfRangeException(nameof(frameIndex));
+
+        return _defaultUniformBuffers[frameIndex];
+    }
+
 
     public DescriptorData GetOrCreate(DescriptorKey key)
     {
@@ -226,8 +238,7 @@ internal unsafe class DescriptorFactory: IDisposable
         var key = new GpuBufferKey
         {
             UsageClass = GpuBufferUsageClass.Uniform,
-            Size = (ulong)sizeof(VertexAttribute),
-            Usage = BufferUsageFlags.UniformBufferBit,
+            Size = (ulong)System.Runtime.InteropServices.Marshal.SizeOf<CameraUboData>(),            Usage = BufferUsageFlags.UniformBufferBit,
             MemoryProperties = MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit,
             Count = Constants.MAX_FRAMES_IN_FLIGHT,
             AllocationStrategy = GpuBufferAllocationStrategy.PerFrame,
@@ -236,6 +247,7 @@ internal unsafe class DescriptorFactory: IDisposable
         //NOTE: to self; this is *descriptor* buffer info, so it's valid here.
         // For next time I think it should be in a BufferFactory.
         var uniformBuffers = _master.GpuBufferFactory.GetOrCreate(key);
+        _defaultUniformBuffers = uniformBuffers;
         for (var i = 0; i < data.Sets.Length; i++)
         {
             var bufferInfo = new DescriptorBufferInfo
@@ -273,5 +285,6 @@ internal unsafe class DescriptorFactory: IDisposable
 
         _cache.Clear();
         _bindingsByKey.Clear();
+        _defaultUniformBuffers = Array.Empty<GpuBuffer>();
     }
 }

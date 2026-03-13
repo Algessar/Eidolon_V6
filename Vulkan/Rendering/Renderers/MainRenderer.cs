@@ -87,7 +87,7 @@ internal class MainRenderer
         window.Update += (delta) =>
         {
 	        _sceneRenderer?.NewFrame();
-	        _gameViewRenderer?.NewFrame(delta);
+	        // _gameViewRenderer?.NewFrame(delta);
 	        _imguiRenderer?.NewFrame(
 		        (float)delta,
 		        new Vector2(window.Size.X, window.Size.Y),

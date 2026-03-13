@@ -2,18 +2,19 @@
 using System.Runtime.InteropServices;
 using Eidolon.Engine;
 using Eidolon.Vulkan;
-using EidolonCore.ECS;
 using Silk.NET.Vulkan;
 
 namespace EidolonEngine;
 
-internal class SceneRenderer : IDisposable
+//NOTE: 
+internal unsafe class SceneRenderer : IDisposable
 {
     
     private readonly VulkanMaster _master;
     private readonly MeshFactory _meshFactory;
+    private Camera _camera;
+    
     private readonly DescriptorSet _descriptorSet;
-
     private PipelineData _geometryPipeline;
     private MeshHandle _triangleMesh;
      
@@ -24,18 +25,20 @@ internal class SceneRenderer : IDisposable
         _master = master;
         _meshFactory = meshFactory;
         _descriptorSet = _master.DescriptorFactory.GetDescriptorSet(0);
-        
+
+        _camera = new Camera
+        {
+            Position = new Vector3(0, 0, 0)
+        };
+        _camera.SetTarget(Vector3.Zero);
+
     }
     
-    // Create and add geometry to scenes
 
-    // Build submissions
-
-    // PipelineKeys are individual depending on shaders
 
     public void NewFrame()
     {
-        
+        BuildDrawSubmissions();
     }
 
    public void BuildDrawSubmissions()
@@ -53,14 +56,20 @@ internal class SceneRenderer : IDisposable
             CurrentSubmissions = Array.Empty<DrawSubmission>();
             return;
         }
+        
+        var frameIndex = _master.FrameHandler?.CurrentFrame ?? 0;
+        //NOTE: This is fucked. I thought I wrote in rules.md that frame index shouldn't leave FrameHandler?
+        // Whatever I guess.
+        var descriptorSet = _master.DescriptorFactory.GetDescriptorSet(frameIndex);
+        UpdateCameraUniformBuffer(frameIndex);
 
         CurrentSubmissions =
         [
             new DrawSubmission
             {
-                PassType = RenderPassType.Geometry,
+                PassType = RenderPassType.GameView,
                 PipelineData = _geometryPipeline,
-                DescriptorSet = _descriptorSet,
+                DescriptorSet = descriptorSet,
                 VertexBuffer = mesh.VertexBuffer,
                 VertexOffset = 0,
                 IndexBuffer = mesh.IndexBuffer,
@@ -82,6 +91,35 @@ internal class SceneRenderer : IDisposable
         ];
     }
 
+    private void UpdateCameraUniformBuffer(uint frameIndex)
+    {
+        if (_master.FrameHandler is { } frameHandler &&
+            frameHandler.TryGetResourceExtent("SceneColor", out var sceneExtent) &&
+            sceneExtent.Width > 0 &&
+            sceneExtent.Height > 0)
+        {
+            _camera.SetAspectRatio(sceneExtent.Width, sceneExtent.Height);
+        }
+
+        var buffer = _master.DescriptorFactory.GetDefaultUniformBuffer(frameIndex);
+        if (!buffer.IsValid || !buffer.HostVisible)
+            return;
+
+        var cameraData = new CameraUboData
+        {
+            ViewProjection = _camera.GetViewProjectionMatrix()
+        };
+
+        void* mapped = null;
+        var dataSize = (ulong)Marshal.SizeOf<CameraUboData>();
+        var mapResult = _master.Vk.MapMemory(_master.VulkanDevice.Device, buffer.Memory, 0, dataSize, 0, &mapped);
+        if (mapResult != Result.Success || mapped is null)
+            throw new InvalidOperationException($"Failed to map camera uniform buffer for frame {frameIndex}. Result: {mapResult}");
+
+        *(CameraUboData*)mapped = cameraData;
+        _master.Vk.UnmapMemory(_master.VulkanDevice.Device, buffer.Memory);
+    }
+   
     private void EnsureGeometryResources()
     {
         if (!_geometryPipeline.IsValid)
