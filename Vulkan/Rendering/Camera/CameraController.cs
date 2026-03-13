@@ -23,9 +23,10 @@ internal class CameraController
     private float _yaw = -90;
     private float _pitch = 0f;
 
-    public CameraController(IInputContext? input)
+    public CameraController(IInputContext? input, Camera camera)
     {
         _input = input;
+        _camera = camera;
 
         if (_camera == null)
         {

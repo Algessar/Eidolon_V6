@@ -13,8 +13,9 @@ internal unsafe class SceneRenderer : IDisposable
     private readonly VulkanMaster _master;
     private readonly MeshFactory _meshFactory;
     private Camera _camera;
+    public Camera Camera => _camera;
     
-    private readonly DescriptorSet _descriptorSet;
+    // private readonly DescriptorSet _descriptorSet;
     private PipelineData _geometryPipeline;
     private MeshHandle _triangleMesh;
      
@@ -24,21 +25,20 @@ internal unsafe class SceneRenderer : IDisposable
     {
         _master = master;
         _meshFactory = meshFactory;
-        _descriptorSet = _master.DescriptorFactory.GetDescriptorSet(0);
+        // _descriptorSet = _master.DescriptorFactory.GetDescriptorSet(0);
 
         _camera = new Camera
         {
             Position = new Vector3(0, 0, 0)
         };
-        _camera.SetTarget(Vector3.Zero);
+        // _camera.SetTarget(Vector3.Zero);
 
     }
     
-
-
     public void NewFrame()
     {
         BuildDrawSubmissions();
+        Debug.Log($"DrawSubmission count: {CurrentSubmissions.Length}");
     }
 
    public void BuildDrawSubmissions()
@@ -58,8 +58,6 @@ internal unsafe class SceneRenderer : IDisposable
         }
         
         var frameIndex = _master.FrameHandler?.CurrentFrame ?? 0;
-        //NOTE: This is fucked. I thought I wrote in rules.md that frame index shouldn't leave FrameHandler?
-        // Whatever I guess.
         var descriptorSet = _master.DescriptorFactory.GetDescriptorSet(frameIndex);
         UpdateCameraUniformBuffer(frameIndex);
 
@@ -95,8 +93,7 @@ internal unsafe class SceneRenderer : IDisposable
     {
         if (_master.FrameHandler is { } frameHandler &&
             frameHandler.TryGetResourceExtent("SceneColor", out var sceneExtent) &&
-            sceneExtent.Width > 0 &&
-            sceneExtent.Height > 0)
+            sceneExtent is { Width: > 0, Height: > 0 })
         {
             _camera.SetAspectRatio(sceneExtent.Width, sceneExtent.Height);
         }

@@ -238,7 +238,8 @@ internal unsafe class DescriptorFactory: IDisposable
         var key = new GpuBufferKey
         {
             UsageClass = GpuBufferUsageClass.Uniform,
-            Size = (ulong)System.Runtime.InteropServices.Marshal.SizeOf<CameraUboData>(),            Usage = BufferUsageFlags.UniformBufferBit,
+            Size = (ulong)System.Runtime.InteropServices.Marshal.SizeOf<CameraUboData>(),
+            Usage = BufferUsageFlags.UniformBufferBit,
             MemoryProperties = MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit,
             Count = Constants.MAX_FRAMES_IN_FLIGHT,
             AllocationStrategy = GpuBufferAllocationStrategy.PerFrame,

@@ -67,7 +67,7 @@ internal class MainRenderer
 	    _imguiRenderer = new ImGuiRenderer(_master, _inputManager);
 	    _sceneRenderer = new SceneRenderer(_master, _meshFactory);
 	    _gameViewRenderer = new GameViewRenderer(_master);
-	    _cameraController = new CameraController(_inputManager.Input);
+	    _cameraController = new CameraController(_inputManager.Input, _sceneRenderer.Camera);
 	    
 	    _imguiRenderer.Initialize(_bootstrapPipelineData.RenderPass);
 	    
@@ -86,15 +86,13 @@ internal class MainRenderer
 
         window.Update += (delta) =>
         {
-	        _sceneRenderer?.NewFrame();
+	        
 	        // _gameViewRenderer?.NewFrame(delta);
+	        _sceneRenderer?.NewFrame();
 	        _imguiRenderer?.NewFrame(
 		        (float)delta,
 		        new Vector2(window.Size.X, window.Size.Y),
 		        new Vector2(window.FramebufferSize.X, window.FramebufferSize.Y));
-	        
-	        //NOTE: This annoys the fuck out of me. What is CurrentFrame doing here?
-	        // _imguiRenderer?.BuildDrawSubmissions(_master.FrameHandler.CurrentFrame, Constants.MAX_FRAMES_IN_FLIGHT);
 	        if (_cameraController is not null)
 	        {
 		        // Debug.Log($"Camera controller is not null");
