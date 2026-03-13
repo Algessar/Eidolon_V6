@@ -6,6 +6,7 @@ using ImGuiNET;
 using Silk.NET.Input;
 using Silk.NET.Vulkan;
 using Silk.NET.Windowing;
+using MeshFactory = Eidolon.Engine.MeshFactory;
 
 namespace EidolonEngine;
 
@@ -14,7 +15,9 @@ internal class MainRenderer
 	private VulkanMaster _master;
 	private InputManager _inputManager;
 	private CameraController? _cameraController;
-
+	private MeshFactory _meshFactory;
+	
+	
 	private IInputContext? _input;
 	
 	private readonly CompiledRenderGraph? _initialGraph;
@@ -60,8 +63,9 @@ internal class MainRenderer
 	    }
 	    
 	    _inputManager = new InputManager(_master.GetWindow);
+	    _meshFactory = new MeshFactory(_master);
 	    _imguiRenderer = new ImGuiRenderer(_master, _inputManager);
-	    _sceneRenderer = new SceneRenderer(_master);
+	    _sceneRenderer = new SceneRenderer(_master, _meshFactory);
 	    _gameViewRenderer = new GameViewRenderer(_master);
 	    _cameraController = new CameraController(_inputManager.Input);
 	    
@@ -127,6 +131,13 @@ internal class MainRenderer
 	        _drawData.Submissions = mergedSubmissions;
 
 	        _master.FrameHandler.Draw(in _drawData);
+        };
+        
+        
+        window.Closing += () =>
+        {
+	        _sceneRenderer?.Dispose();
+	        _meshFactory?.Dispose();
         };
         
         window.Run();
