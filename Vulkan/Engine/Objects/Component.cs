@@ -5,7 +5,7 @@ namespace Eidolon.Vulkan;
 public class Component
 {
 
-    public Transform Transform;
+    public Transform Transform = new();
     
     public virtual void Update()
     {

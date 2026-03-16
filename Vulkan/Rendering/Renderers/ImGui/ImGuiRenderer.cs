@@ -15,11 +15,15 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
 {
     VulkanMaster _master;
     
-    // // Lifetime (created once)
+    [Header("UI and Input")]
+    private EditorUI _editorUI;
+    readonly InputManager _inputManager;
+
+    
     
     private PipelineData _pipelineData;
     private DescriptorSetLayout _descriptorSetLayout;
-    private DescriptorPool _descriptorPool; // Not sure what this is doing here. Shouldn't this be in DescriptorFactory?
+    private DescriptorPool _descriptorPool;
     private DescriptorSet _fontDescriptorSet;
     private DescriptorSet _gameViewDescriptorSet;
     private readonly Dictionary<nint, DescriptorSet> _textureDescriptorSets = new();
@@ -46,9 +50,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     [Header("Debug")]
     bool _showDemoWindow = false;
     
-    [Header("UI and Input")]
-    private EditorUI _editorUI;
-    readonly InputManager _inputManager;
+
 
     private RenderPass _renderPass;
     

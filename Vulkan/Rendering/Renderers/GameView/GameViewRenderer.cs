@@ -15,23 +15,14 @@ internal sealed class GameViewRenderer
 {
     private VulkanMaster _master; 
     private readonly DescriptorSet _descriptorSet;
-    private Camera _camera;
-    public Camera Camera => _camera;
     private PipelineData _gameViewPipeline;
-    
-    private GpuBuffer _gridVertexBuffer;
-    private GpuBufferKey _gridVertexBufferKey;
-    private uint _gridVertexCount;
-
     public DrawSubmission[] CurrentSubmissions { get; private set; } = Array.Empty<DrawSubmission>();
 
     public GameViewRenderer(VulkanMaster master)
     {
         _master = master;
         _descriptorSet = _master.DescriptorFactory.GetDescriptorSet(0);
-        _camera = new Camera();
-        _camera.Position = new Vector3(0, 15, 5);
-        _camera.SetTarget(new Vector3(0, 0, -5)); // Look at the triangle
+
     }
     
     public void NewFrame(double delta)
@@ -42,11 +33,10 @@ internal sealed class GameViewRenderer
         // Debug.Log("Running NewFrame in GameViewRenderer", VALIDATION_LAYERS.INFO);
     }
 
-    public void BuildDrawSubmissions()
+    private void BuildDrawSubmissions()
     {
         BuildPipeline();
         CurrentSubmissions = BuildGameViewSubmissions(_gameViewPipeline, _descriptorSet);
-        Debug.Log($"[GameView] Submissions count: {CurrentSubmissions.Length}, VertexCount: {_gridVertexCount}, Pipeline valid: {_gameViewPipeline.IsValid}");
     }
 
     //NOTE: Why this is called every frame is beyond me.
@@ -103,17 +93,7 @@ internal sealed class GameViewRenderer
         {
             return Array.Empty<DrawSubmission>();
         }
-        // if (_master.FrameHandler is { } frameHandler &&
-        //     frameHandler.TryGetResourceExtent("GameView", out var gameViewExtent) &&
-        //     gameViewExtent.Height > 0)
-        // {
-        //     // _camera.AspectRatio = (float)gameViewExtent.Width / gameViewExtent.Height;
-        //     _camera.SetAspect(gameViewExtent.Width, gameViewExtent.Height);
-        // }
 
-        var viewProjection = _camera.GetViewProjectionMatrix();
-        // viewProjection = Matrix4x4.Transpose(viewProjection);
-        Debug.Log($"{viewProjection}");
         var identity = Matrix4x4.Identity;
         
         return
@@ -123,7 +103,7 @@ internal sealed class GameViewRenderer
                 PassType = RenderPassType.GameView,
                 PipelineData = pipelineData,
                 DescriptorSet = descriptorSet,
-                VertexBuffer = _gridVertexBuffer,
+                VertexBuffer = default,
                 VertexOffset = 0,
                 IndexBuffer = default,
                 IndexOffset = 0,

@@ -8,36 +8,23 @@ namespace Eidolon.Vulkan;
 //NOTE: This class is now the same as in an older working version.
 internal class CameraController
 {
-    private Camera _camera;
+    private Camera? _camera;
     private float _moveSpeed = 10.0f;
     private float _lookSensitivity = 0.07f;
 
     private readonly IInputContext _input;
-    private readonly IKeyboard? _keyboard;
-    private readonly IMouse? _mouse;
 
     private Vector2 _lastMousePos;
-    private bool _hasMousePosition;
-    private Vector2 _lastScroll;
-    private bool _hasScroll;
     private float _yaw = -90;
     private float _pitch = 0f;
 
-    public CameraController(IInputContext? input, Camera camera)
+    public CameraController(IInputContext input, Camera? camera)
     {
         _input = input;
-        _camera = camera;
+        _camera = camera ?? new Camera();
 
-        if (_camera == null)
-        {
-            _camera = new Camera();
-        }
-        
         foreach (var mouse in _input.Mice)
         {
-            // mouse.Cursor.CursorMode = CursorMode.Disabled;
-            //
-            // mouse.CursorMode = CursorMode.Disabled; // Lock mouse to window
             mouse.MouseMove += OnMouseMove;
         }
     }
@@ -61,22 +48,8 @@ internal class CameraController
             _camera.Position = new Vector3(0, 0, 10);
             _camera.Target = new Vector3(0, 0, 0);
         }
-
-        // foreach (var mouse in _input.Mice)
-        // {
-        //     if (keyboard.IsKeyPressed(Key.Escape))
-        //         mouse.Cursor.CursorMode = CursorMode.Normal;
-        //     if (mouse.IsButtonPressed(MouseButton.Left))
-        //     {
-        //         mouse.Cursor.CursorMode = CursorMode.Disabled;
-        //     }
-        // }
     }
 
-    public void SetAspect(Vector2 windowSize)
-    {
-        _camera.SetAspectRatio(windowSize.X, windowSize.Y);
-    }
     
     private void OnMouseMove(IMouse mouse, Vector2 position)
     {
@@ -85,7 +58,7 @@ internal class CameraController
 
         _yaw += lookDelta.X * _lookSensitivity;
         _pitch -= lookDelta.Y * _lookSensitivity;
-        _pitch = System.Math.Clamp(_pitch, -89f, 89f);
+        _pitch = Math.Clamp(_pitch, -89f, 89f);
 
         // Update camera target based on rotation
         Vector3 direction;
@@ -93,6 +66,6 @@ internal class CameraController
         direction.Y = MathF.Sin(Mathf.DegreesToRadians(_pitch));
         direction.Z = MathF.Sin(Mathf.DegreesToRadians(_yaw)) * MathF.Cos(Mathf.DegreesToRadians(_pitch));
             
-        _camera.Target = _camera.Position + Vector3.Normalize(direction);
+        _camera?.Target = _camera.Position + Vector3.Normalize(direction);
     }
 }

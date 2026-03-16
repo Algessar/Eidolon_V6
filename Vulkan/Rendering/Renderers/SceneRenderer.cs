@@ -25,20 +25,21 @@ internal unsafe class SceneRenderer : IDisposable
     {
         _master = master;
         _meshFactory = meshFactory;
-        // _descriptorSet = _master.DescriptorFactory.GetDescriptorSet(0);
 
         _camera = new Camera
         {
-            Position = new Vector3(0, 0, 0)
+            Position = new Vector3(0, 0, 10f)
         };
-        // _camera.SetTarget(Vector3.Zero);
+        _camera.SetTarget(Vector3.Zero);
+        Debug.Log($"SCENE RENDERER: CameraPos: {_camera.Position} :: Camera Target: {_camera.Target}", VALIDATION_LAYERS.INFO);
 
     }
     
     public void NewFrame()
     {
         BuildDrawSubmissions();
-        Debug.Log($"DrawSubmission count: {CurrentSubmissions.Length}");
+        // Debug.Log($"DrawSubmission count: {CurrentSubmissions.Length}");
+        Debug.Log($"Camera pos: {_camera.Position}", VALIDATION_LAYERS.INFO);
     }
 
    public void BuildDrawSubmissions()
@@ -61,11 +62,18 @@ internal unsafe class SceneRenderer : IDisposable
         var descriptorSet = _master.DescriptorFactory.GetDescriptorSet(frameIndex);
         UpdateCameraUniformBuffer(frameIndex);
 
+        Debug.Log($"Mesh vertex count: {mesh.VertexCount}");
+        Debug.Log($"Mesh index count: {mesh.IndexCount}");
+
+        Debug.Log($"Mesh VertexBuffer: {mesh.VertexBuffer.Buffer.Handle}", VALIDATION_LAYERS.INFO);
+        Debug.Log($"Mesh IndexBuffer: {mesh.IndexBuffer.Buffer.Handle}", VALIDATION_LAYERS.INFO);
+
+        
         CurrentSubmissions =
         [
             new DrawSubmission
             {
-                PassType = RenderPassType.GameView,
+                PassType = RenderPassType.Geometry,
                 PipelineData = _geometryPipeline,
                 DescriptorSet = descriptorSet,
                 VertexBuffer = mesh.VertexBuffer,
@@ -89,6 +97,7 @@ internal unsafe class SceneRenderer : IDisposable
         ];
     }
 
+
     private void UpdateCameraUniformBuffer(uint frameIndex)
     {
         if (_master.FrameHandler is { } frameHandler &&
@@ -104,7 +113,7 @@ internal unsafe class SceneRenderer : IDisposable
 
         var cameraData = new CameraUboData
         {
-            ViewProjection = _camera.GetViewProjectionMatrix()
+            ViewProjection = Matrix4x4.Transpose(_camera.GetViewProjectionMatrix())
         };
 
         void* mapped = null;
@@ -115,7 +124,9 @@ internal unsafe class SceneRenderer : IDisposable
 
         *(CameraUboData*)mapped = cameraData;
         _master.Vk.UnmapMemory(_master.VulkanDevice.Device, buffer.Memory);
+
     }
+
    
     private void EnsureGeometryResources()
     {
@@ -125,7 +136,7 @@ internal unsafe class SceneRenderer : IDisposable
             {
                 ColorFormat = Format.R16G16B16A16Sfloat,
                 DepthFormat = Format.D32Sfloat,
-                HasDepth = false,
+                HasDepth = true,
                 HasAlpha = true,
                 LoadOp = AttachmentLoadOp.Clear,
                 StoreOp = AttachmentStoreOp.Store,
@@ -140,6 +151,7 @@ internal unsafe class SceneRenderer : IDisposable
             var vertexFormat = new VertexFormat
             {
                 Stride = (uint)Marshal.SizeOf<Vertex>(),
+                // Attributes = Array.Empty<VertexAttribute>()
                 Attributes =
                 [
                     VertexAttribute.Create<Vertex>(0, Format.R32G32B32Sfloat, nameof(Vertex.Position)),
@@ -149,6 +161,8 @@ internal unsafe class SceneRenderer : IDisposable
 
             var pipelineKey = new PipelineKey
             {
+                // VertexShaderPath = "basic.vert.spv",
+                // FragmentShaderPath = "basic.frag.spv",
                 VertexShaderPath = "default_shader.vert.spv",
                 FragmentShaderPath = "default_shader.frag.spv",
                 RenderPass = renderPass,
@@ -157,11 +171,11 @@ internal unsafe class SceneRenderer : IDisposable
                 Topology = PrimitiveTopology.TriangleList,
                 CullMode = CullModeBits.None,
                 FrontFace = FrontFace.CounterClockwise,
-                HasDepth = false,
-                DepthTestEnable = false,
+                HasDepth = true,
+                DepthTestEnable = true,
                 DepthWriteEnable = false,
                 EnableBlending = false,
-                BlendState = BlendState.NoBlending,
+                BlendState = BlendState.AlphaBlending,
             };
 
             _geometryPipeline = _master.PipelineFactory.GetOrCreate(pipelineKey);
@@ -171,9 +185,9 @@ internal unsafe class SceneRenderer : IDisposable
         {
             var vertices = new[]
             {
-                new Vertex(new Vector3(0f, -0.6f, 0f), new Vector3(1f, 0.3f, 0.3f)),
-                new Vertex(new Vector3(0.6f, 0.6f, 0f), new Vector3(0.3f, 1f, 0.3f)),
-                new Vertex(new Vector3(-0.6f, 0.6f, 0f), new Vector3(0.3f, 0.5f, 1f)),
+                new Vertex(new Vector3(0f, -0.5f, 0f), new Vector3   (1.0f, 0.2f, 0.2f)),
+                new Vertex(new Vector3(0.5f, 0.5f, 0f), new Vector3  (0.2f, 1.0f, 0.3f)),
+                new Vertex(new Vector3(-0.5f, 0.5f, 0f), new Vector3 (0.2f, 0.5f, 1.0f)),
             };
             var indices = new uint[] { 0, 1, 2 };
 

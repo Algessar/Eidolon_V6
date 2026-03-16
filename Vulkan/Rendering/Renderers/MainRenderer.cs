@@ -6,7 +6,6 @@ using ImGuiNET;
 using Silk.NET.Input;
 using Silk.NET.Vulkan;
 using Silk.NET.Windowing;
-using MeshFactory = Eidolon.Engine.MeshFactory;
 
 namespace EidolonEngine;
 
@@ -17,16 +16,10 @@ internal class MainRenderer
 	private CameraController? _cameraController;
 	private MeshFactory _meshFactory;
 	
-	
-	private IInputContext? _input;
-	
-	private readonly CompiledRenderGraph? _initialGraph;
-
     private ImGuiRenderer _imguiRenderer;
     private SceneRenderer _sceneRenderer;
     private GameViewRenderer _gameViewRenderer;
 
-    private DrawSubmission[] _sceneSubmissions;
 
     private DrawData _drawData;
     
@@ -48,14 +41,7 @@ internal class MainRenderer
 	    ImGui.CreateContext();
 	    _bootstrapPipelineData = BuildBootstrapPipelineData(_master.SwapchainHandler);
 	    _drawData = BuildInitialDrawData(_bootstrapPipelineData);
-	    _sceneSubmissions = _drawData.Submissions ?? Array.Empty<DrawSubmission>();
-		
-	    if (initialGraph is not null)
-	    {
-		    // Render-graph passes own their framebuffer formats; keep base demo submissions disabled
-		    // until scene pipelines are authored per-pass.
-		    _sceneSubmissions = Array.Empty<DrawSubmission>();
-	    }
+
         
 	    if (_bootstrapPipelineData.RenderPass.Handle == 0)
 	    {
@@ -87,8 +73,8 @@ internal class MainRenderer
         window.Update += (delta) =>
         {
 	        
-	        // _gameViewRenderer?.NewFrame(delta);
 	        _sceneRenderer?.NewFrame();
+	        // _gameViewRenderer?.NewFrame(delta);
 	        _imguiRenderer?.NewFrame(
 		        (float)delta,
 		        new Vector2(window.Size.X, window.Size.Y),
@@ -97,7 +83,7 @@ internal class MainRenderer
 	        {
 		        // Debug.Log($"Camera controller is not null");
 		        _cameraController.Update((float)delta);
-		        _cameraController.SetAspect(_imguiRenderer.GameViewSize);
+		        // _cameraController.SetAspect(_imguiRenderer.GameViewSize);
 	        }
         };
         
@@ -111,6 +97,7 @@ internal class MainRenderer
 	        var baseSubmissions = Array.Empty<DrawSubmission>(); 
 
 	        var sceneSubmissions = _sceneRenderer?.CurrentSubmissions ?? Array.Empty<DrawSubmission>();
+	        Debug.Log($"Scene submission count MainRenderer: {sceneSubmissions.Length}");
 	        var gameViewSubmissions = _gameViewRenderer?.CurrentSubmissions ?? Array.Empty<DrawSubmission>();
 	        var uiSubmissions = _imguiRenderer?.CurrentSubmissions ?? Array.Empty<DrawSubmission>();
 
@@ -130,7 +117,6 @@ internal class MainRenderer
 
 	        _master.FrameHandler.Draw(in _drawData);
         };
-        
         
         window.Closing += () =>
         {
