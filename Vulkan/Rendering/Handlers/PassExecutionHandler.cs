@@ -7,7 +7,8 @@ internal unsafe class PassExecutionHandler(VulkanMaster master, Func<uint, PassA
     private readonly Dictionary<PassExecutionKey, RenderPass> _renderPassCache = new();
     private readonly Dictionary<FramebufferCacheKey, Framebuffer> _framebufferCache = new();
 
-    private const bool DEBUG = false;
+    // Runtime diagnostics switch; kept as a field so the guarded blocks stay reachable.
+    private static readonly bool DEBUG = false;
 
     public PassExecutionContext GetOrCreate(in CompiledPass pass, in CompiledRenderGraph compiledGraph, uint currentImageIndex)
     {
@@ -206,19 +207,6 @@ internal unsafe class PassExecutionHandler(VulkanMaster master, Func<uint, PassA
         }
 
         return null;
-    }
-
-    // NOTE: Why is this static? And why is it unused? 
-    private Format ResolveVkFormat(ImageFormat format)
-    {
-        return format switch
-        {
-            ImageFormat.Bgra8Unorm => Format.B8G8R8A8Unorm,
-            ImageFormat.Rgba16Float => Format.R16G16B16A16Sfloat,
-            ImageFormat.D24UnormS8Uint => Format.D24UnormS8Uint,
-            ImageFormat.D32Float => Format.D32Sfloat,
-            _ => throw new ArgumentOutOfRangeException(nameof(format), format, "Unsupported render-graph image format."),
-        };
     }
 
     private readonly record struct FramebufferCacheKey(

@@ -1,7 +1,5 @@
-﻿using System.Numerics;
-using Eidolon.Vulkan.Rendering;
+﻿using Eidolon.Vulkan.Rendering;
 using EidolonEngine;
-using ImGuiNET;
 using Silk.NET.Maths;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.KHR;
@@ -15,7 +13,7 @@ internal class VulkanMaster
 
     public Vk Vk;
     
-    private IWindow _window;
+    private readonly IWindow _window;
     
     //NOTE: Possibly temp
     public IWindow GetWindow => _window;
@@ -43,11 +41,8 @@ internal class VulkanMaster
     #region Rendering
    
     public FrameHandler? FrameHandler { get; set; }
-    
-    
-    private DrawData _drawData;
- 
-    private MainRenderer? _mainRenderer;
+
+    private readonly MainRenderer _mainRenderer;
     #endregion
 
 
@@ -62,7 +57,7 @@ internal class VulkanMaster
         
         //TODO: Consider moving window handling out of Vulkan and into Editor.
         
-        CreateOSWindow();
+        _window = CreateOSWindow();
 
         _mainRenderer = new MainRenderer(this);
         _window.Load += () =>
@@ -71,7 +66,7 @@ internal class VulkanMaster
             _mainRenderer.CreateRenderers(initialGraph);
         };
         
-        _mainRenderer?.Run(_window);
+        _mainRenderer.Run(_window);
     }
 
     private void InitializeManagers()
@@ -95,7 +90,7 @@ internal class VulkanMaster
         
     }
 
-    private void CreateOSWindow()
+    private IWindow CreateOSWindow()
     {
         var opts = WindowOptions.DefaultVulkan with
         {
@@ -107,7 +102,7 @@ internal class VulkanMaster
             WindowState = WindowState.Maximized
         };
         
-        _window = Window.Create(opts);
+        return Window.Create(opts);
     }
     
     private void Dispose()

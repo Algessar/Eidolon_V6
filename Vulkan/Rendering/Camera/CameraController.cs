@@ -12,7 +12,7 @@ internal class CameraController
     private float _moveSpeed = 5.0f;
     private float _lookSensitivity = 0.12f;
 
-    private readonly IInputContext _input;
+    private readonly IInputContext? _input;
 
     private Vector2 _lastMousePos;
     private bool _isLooking;
@@ -23,7 +23,7 @@ internal class CameraController
     private readonly Vector3 _homePosition;
     private readonly Vector3 _homeTarget;
 
-    public CameraController(IInputContext input, Camera? camera)
+    public CameraController(IInputContext? input, Camera? camera)
     {
         _input = input;
         _camera = camera ?? new Camera();
@@ -31,9 +31,12 @@ internal class CameraController
         _homePosition = _camera.Position;
         _homeTarget = _camera.Target;
 
-        foreach (var mouse in _input.Mice)
+        if (_input is not null)
         {
-            mouse.MouseMove += OnMouseMove;
+            foreach (var mouse in _input.Mice)
+            {
+                mouse.MouseMove += OnMouseMove;
+            }
         }
 
         // Start yaw/pitch from wherever the camera is already looking so the first
@@ -45,7 +48,7 @@ internal class CameraController
 
     public void Update(double dt)
     {
-        if (_camera is null)
+        if (_camera is null || _input is null)
             return;
 
         // Hold the right mouse button to look around. Nothing else in the editor uses it,

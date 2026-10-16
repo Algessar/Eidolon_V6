@@ -77,11 +77,12 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         {
             throw new InvalidOperationException("Failed to load font texture.");
         }
-        
-        io.Fonts.ClearTexData();
 
         CreateDescriptorResources();
         CreateFontAtlasTexture(pixels, width, height, bytesPerPixel);
+
+        // Free the CPU-side atlas only after it has been uploaded.
+        io.Fonts.ClearTexData();
         CreatePipeline(renderPass);
 
         _editorUI = new EditorUI(_master.GetWindow);
@@ -91,7 +92,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     
     public void NewFrame(float delta, Vector2 windowSize, Vector2 framebufferSize)
     {
-        BuildDrawSubmissions(_master.FrameHandler.CurrentFrame, Constants.MAX_FRAMES_IN_FLIGHT);
+        BuildDrawSubmissions(_master.FrameHandler?.CurrentFrame ?? 0, Constants.MAX_FRAMES_IN_FLIGHT);
         
         var io = ImGui.GetIO();
         io.DisplaySize = windowSize;

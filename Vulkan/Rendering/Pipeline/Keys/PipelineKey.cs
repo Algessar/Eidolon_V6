@@ -25,28 +25,22 @@ internal record struct PipelineKey
 
     public bool DepthTestEnable { get; init; }
     public bool DepthWriteEnable { get; init; }
-    public bool DepthCompareOp  { get; init; }
     public FrontFace FrontFace { get; init; }
 
     public bool EnableBlending;
     public BlendState BlendState;
 
     public bool HasDepth;
-    
+
+    // Required by the field initializers above; the required shader paths are supplied
+    // by callers through object initializers.
     public PipelineKey()
     {
         EnableBlending = false;
         BlendState = BlendState.NoBlending;
-        RenderPass = default;
-        VertexShaderPath = null;
-        FragmentShaderPath = null;
-        VertexFormat = default;
+        CullMode = CullModeBits.Back;
         Topology = PrimitiveTopology.PointList;
-        DepthTestEnable = false;
-        DepthWriteEnable = false;
-        DepthCompareOp = false;
     }
-
 }
 
 internal record struct BlendState

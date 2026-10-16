@@ -155,9 +155,15 @@ public struct Vec3
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool operator !=(Vec3 lhs, Vec3 rhs) => !(lhs == rhs);
 
+    public override bool Equals(object? obj) => obj is Vec3 other && this == other;
+
+    public override int GetHashCode() => HashCode.Combine(x, y, z);
+
+    public override string ToString() => $"Vec3({x}, {y}, {z})";
+
     public static Vec3 Normalize(Vec3 position)
     {
-      throw new NotImplementedException();
+      return position.Normalized();
     }
 
 #region Math calculations

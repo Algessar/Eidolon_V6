@@ -127,11 +127,4 @@ public class Camera : Component
         Position += delta;
         Target += delta;
     }
-    
-    private float Zoom = 45f;
-
-    public Matrix4x4 Matrix()
-    {
-        return Matrix4x4.CreatePerspectiveFieldOfView(Mathf.DegreesToRadians(Zoom), AspectRatio, 0.1f, 100.0f);
-    }
 }

@@ -60,12 +60,13 @@ internal unsafe class PipelineFactory
             //     PName = pMain
             // };
             
-            var vertexAttributeCount = (uint)(key.VertexFormat.Attributes?.Length ?? 0);
+            var vertexAttributes = key.VertexFormat.Attributes ?? Array.Empty<VertexAttribute>();
+            var vertexAttributeCount = (uint)vertexAttributes.Length;
             var attributeScratchCount = vertexAttributeCount > 0 ? (int)vertexAttributeCount : 1;
             var attributeDescriptions = stackalloc VertexInputAttributeDescription[attributeScratchCount];
             for (var i = 0; i < vertexAttributeCount; i++)
             {
-                var attr = key.VertexFormat.Attributes[i];
+                var attr = vertexAttributes[i];
                 attributeDescriptions[i] = new VertexInputAttributeDescription
                 {
                     Location = attr.Location,

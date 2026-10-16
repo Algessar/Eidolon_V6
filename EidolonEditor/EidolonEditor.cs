@@ -1,5 +1,4 @@
 ﻿using Eidolon.Vulkan;
-using EidolonCore.Rendering;
 using EidolonEngine;
 
 

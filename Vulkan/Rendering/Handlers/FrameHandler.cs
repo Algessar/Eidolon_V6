@@ -41,13 +41,11 @@ internal unsafe class FrameHandler : IDisposable
     private uint _currentImageIndex;
     public uint CurrentFrame => _currentFrame;
 
-    //NOTE: Only used for debug logging rn?
-    private Dictionary<ulong, string> _semaphoreNames = new();
-    private Dictionary<ulong, string> _fenceNames = new();
-
     public bool _framebufferResized { get; set; }
-    private const bool LOG_RENDER_GRAPH = false;
-    private const bool DEBUG = false;
+
+    // Runtime diagnostics switches; kept as fields so the guarded blocks stay reachable.
+    private static readonly bool LOG_RENDER_GRAPH = false;
+    private static readonly bool DEBUG = false;
 
     public FrameHandler(VulkanMaster master)
     {
@@ -154,7 +152,8 @@ internal unsafe class FrameHandler : IDisposable
 
         var submissions = data.Submissions; // ?? Array.Empty<DrawSubmission>(); // NOTE: Rider warns that left operand is never null.
 
-        
+        var clearValues = stackalloc ClearValue[2];
+
         foreach (var pass in _compiledGraph.Passes)
         {
             if (_currentFrame == 0 && DEBUG)
@@ -191,8 +190,6 @@ internal unsafe class FrameHandler : IDisposable
             {
                 Debug.Log($"Pass {pass.Name} render area: {execution.Extent.Width}x{execution.Extent.Height}");
             }
-
-            var clearValues = stackalloc ClearValue[2]; //NOTE: CA2014: Potential stack overflow. Move the stackalloc out of the loop.
 
             clearValues[0] = execution.ClearColor
                 ? new ClearValue { Color = new ClearColorValue(0.05f, 0.05f, 0.06f, 1f) }
@@ -560,16 +557,16 @@ internal unsafe class FrameHandler : IDisposable
 
         for (int i = 0; i < _maxFramesInFlight; i++)
         {
-            _waitSemaphore[i] = CreateSemaphore($"WaitSemaphore {i}");
+            _waitSemaphore[i] = CreateSemaphore();
 
             Debug.Log($"Semaphore handles : {_waitSemaphore[i].Handle}", VALIDATION_LAYERS.INFO);
-            _inFlightFences[i] = CreateFence($"InFlightFence {i}");
+            _inFlightFences[i] = CreateFence();
             Debug.Log($"In Flight Fences handles : {_inFlightFences[i].Handle}", VALIDATION_LAYERS.INFO);
         }
 
         for (int i = 0; i < _imageCount; i++)
         {
-            _signalSemaphore[i] = CreateSemaphore($"SignalFinishedSemaphore {i}");
+            _signalSemaphore[i] = CreateSemaphore();
 
             Debug.Log($"Signal semaphore handles : {_signalSemaphore[i].Handle}", VALIDATION_LAYERS.INFO);
         }
@@ -589,7 +586,7 @@ internal unsafe class FrameHandler : IDisposable
             VALIDATION_LAYERS.SUCCESS);
     }
 
-    private Semaphore CreateSemaphore(string name)
+    private Semaphore CreateSemaphore()
     {
         var semaphoreInfo = new SemaphoreCreateInfo
         {
@@ -599,12 +596,10 @@ internal unsafe class FrameHandler : IDisposable
             Result.Success)
             throw new Exception("Failed to create semaphore!");
 
-        _semaphoreNames[semaphore.Handle] = name;
-
         return semaphore;
     }
 
-    private Fence CreateFence(string name)
+    private Fence CreateFence()
     {
         var fenceInfo = new FenceCreateInfo
         {
@@ -614,8 +609,6 @@ internal unsafe class FrameHandler : IDisposable
 
         if (_master.Vk.CreateFence(_master.VulkanDevice.Device, in fenceInfo, null, out var fence) != Result.Success)
             throw new Exception("Failed to create fence!");
-
-        _fenceNames[fence.Handle] = name;
 
         return fence;
     }
@@ -758,7 +751,7 @@ internal unsafe class FrameHandler : IDisposable
         _waitSemaphore = new Semaphore[Constants.MAX_FRAMES_IN_FLIGHT];
         for (int i = 0; i < Constants.MAX_FRAMES_IN_FLIGHT; i++)
         {
-            _waitSemaphore[i] = CreateSemaphore($"WaitSemaphore {i}");
+            _waitSemaphore[i] = CreateSemaphore();
         }
     }
 
@@ -775,7 +768,7 @@ internal unsafe class FrameHandler : IDisposable
         _signalSemaphore = new Semaphore[_imageCount];
         for (var i = 0; i < _imageCount; i++)
         {
-            _signalSemaphore[i] = CreateSemaphore($"SignalSemaphore {i}");
+            _signalSemaphore[i] = CreateSemaphore();
         }
     }
 

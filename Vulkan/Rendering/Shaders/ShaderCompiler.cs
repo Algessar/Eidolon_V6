@@ -46,6 +46,12 @@ public static class ShaderCompiler
 				Debug.Log($"Hex header of {Path.GetFileName(file)}: {BitConverter.ToString(firstBytes)}");
 				Debug.Log("Output file: " + output + " ");
 				using var process = Process.Start(startInfo);
+				if (process is null)
+				{
+					Debug.Log($"Could not start the shader compiler for {Path.GetFileName(file)}");
+					continue;
+				}
+
 				string error = process.StandardError.ReadToEnd();
 				process.WaitForExit();
 

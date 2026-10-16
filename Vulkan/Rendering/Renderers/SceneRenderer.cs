@@ -204,18 +204,3 @@ internal unsafe class SceneRenderer : IDisposable
         CurrentSubmissions = Array.Empty<DrawSubmission>();
     }
 }
-
-
-
-internal class MeshRenderer : Component
-{
-    
-    public Mesh Mesh;
-    public DrawSubmission _drawSubmission;
-
-    public override void NewFrame()
-    {
-        
-        
-    }
-}

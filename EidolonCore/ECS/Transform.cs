@@ -10,8 +10,8 @@ public struct Transform
     public Transform(Vector3 position, Quaternion rotation, Vector3 scale)
     {
         Position = position;
-        Rotation = Quaternion.Identity;
-        Scale = Vector3.One;
+        Rotation = rotation;
+        Scale = scale;
     }
 
     public Matrix4x4 GetWorldMatrix()

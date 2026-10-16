@@ -1,6 +1,4 @@
 ﻿using System.Runtime.CompilerServices;
-using System.Timers;
-using Timer = System.Timers.Timer;
 
 public enum VALIDATION_LAYERS
 {
@@ -54,23 +52,5 @@ public static class Debug
         }
 
         Console.ResetColor();
-    }
-    
-    static Timer _debugTimer;
-    public static void SetTimer()
-    {
-        // Second timer interval
-        Console.WriteLine($"Setting debug timer, {DateTime.Now}");
-        Timer timer = new System.Timers.Timer(5000);
-        // Subscribe to event
-        timer.Elapsed += OnTimedEvent;
-        timer.AutoReset = true;
-        timer.Enabled = true;
-    }
-
-    private static void OnTimedEvent(Object source, ElapsedEventArgs e)
-    {
-        Console.WriteLine("Time elapsed since server was started {0:HH:mm:ss.fff}",
-            e.SignalTime);
     }
 }
