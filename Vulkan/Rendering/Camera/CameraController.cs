@@ -9,28 +9,60 @@ namespace Eidolon.Vulkan;
 internal class CameraController
 {
     private Camera? _camera;
-    private float _moveSpeed = 10.0f;
-    private float _lookSensitivity = 0.07f;
+    private float _moveSpeed = 5.0f;
+    private float _lookSensitivity = 0.12f;
 
     private readonly IInputContext _input;
 
     private Vector2 _lastMousePos;
+    private bool _isLooking;
     private float _yaw = -90;
     private float _pitch = 0f;
+
+    // Where the camera started, so it can be sent back home.
+    private readonly Vector3 _homePosition;
+    private readonly Vector3 _homeTarget;
 
     public CameraController(IInputContext input, Camera? camera)
     {
         _input = input;
         _camera = camera ?? new Camera();
 
+        _homePosition = _camera.Position;
+        _homeTarget = _camera.Target;
+
         foreach (var mouse in _input.Mice)
         {
             mouse.MouseMove += OnMouseMove;
         }
+
+        // Start yaw/pitch from wherever the camera is already looking so the first
+        // look-drag doesn't snap the view.
+        var direction = Vector3.Normalize(_camera.Target - _camera.Position);
+        _pitch = MathF.Asin(Math.Clamp(direction.Y, -1f, 1f)) * Mathf.Rad2Deg;
+        _yaw = MathF.Atan2(direction.Z, direction.X) * Mathf.Rad2Deg;
     }
+
     public void Update(double dt)
     {
-        var keyboard = _input.Keyboards[0];
+        if (_camera is null)
+            return;
+
+        // Hold the right mouse button to look around. Nothing else in the editor uses it,
+        // so this keeps camera control from fighting the ImGui panels.
+        var mouse = _input.Mice.FirstOrDefault();
+        var wasLooking = _isLooking;
+        _isLooking = mouse is not null && mouse.IsButtonPressed(MouseButton.Right);
+        if (_isLooking && !wasLooking && mouse is not null)
+        {
+            // Don't jump when the look drag starts.
+            _lastMousePos = mouse.Position;
+        }
+
+        var keyboard = _input.Keyboards.FirstOrDefault();
+        if (keyboard is null || ImGui.GetIO().WantTextInput)
+            return;
+
         float distance = _moveSpeed * (float)dt;
 
         // Simple WASD
@@ -45,8 +77,8 @@ internal class CameraController
         if (keyboard.IsKeyPressed(Key.Q)) _camera.Move(-Vector3.UnitY * distance);
         if (keyboard.IsKeyPressed(Key.Space))
         {
-            _camera.Position = new Vector3(0, 0, 10);
-            _camera.Target = new Vector3(0, 0, 0);
+            _camera.Position = _homePosition;
+            _camera.Target = _homeTarget;
         }
     }
 
@@ -55,6 +87,9 @@ internal class CameraController
     {
         var lookDelta = position - _lastMousePos;
         _lastMousePos = position;
+
+        if (!_isLooking || _camera is null)
+            return;
 
         _yaw += lookDelta.X * _lookSensitivity;
         _pitch -= lookDelta.Y * _lookSensitivity;
@@ -66,6 +101,6 @@ internal class CameraController
         direction.Y = MathF.Sin(Mathf.DegreesToRadians(_pitch));
         direction.Z = MathF.Sin(Mathf.DegreesToRadians(_yaw)) * MathF.Cos(Mathf.DegreesToRadians(_pitch));
             
-        _camera?.Target = _camera.Position + Vector3.Normalize(direction);
+        _camera.Target = _camera.Position + Vector3.Normalize(direction);
     }
 }

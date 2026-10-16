@@ -56,15 +56,18 @@ internal class EditorUI
 
     private void DrawGameViewWindow()
     {
+        // Give the game view a usable size the first time the editor runs.
+        ImGui.SetNextWindowSize(new Vector2(1280f, 720f), ImGuiCond.FirstUseEver);
         ImGui.Begin("Eidolon / Game View");
         
         //NOTE: this currently causes the Font Atlas to be rendered in the window.
         var available = ImGui.GetContentRegionAvail();
         GameViewSize = available;
-        Debug.Log($"Game view size: {GameViewSize}");
         if (_gameViewTextureID != 0 && available.X > 1f && available.Y > 1f)
         {
-            ImGui.Image((nint)_gameViewTextureID, available, new Vector2(0, 1), new Vector2(1, 0));
+            // The scene is rendered with the Vulkan Y flip in the projection, so its
+            // framebuffer already has +Y at the top; no extra UV flip is needed here.
+            ImGui.Image((nint)_gameViewTextureID, available);
         }
         else
         {

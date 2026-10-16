@@ -14,10 +14,15 @@ internal unsafe class SceneRenderer : IDisposable
     private readonly MeshFactory _meshFactory;
     private Camera _camera;
     public Camera Camera => _camera;
+
+    //NOTE: Size of the game view panel in the editor UI. The GameView image is the full
+    // swapchain and gets stretched into that panel, so matching the projection aspect to the
+    // panel keeps the scene free of distortion.
+    private Vector2 _gameViewSize;
     
-    // private readonly DescriptorSet _descriptorSet;
+    private DescriptorSet _descriptorSet;
     private PipelineData _geometryPipeline;
-    private MeshHandle _triangleMesh;
+    private MeshHandle _cubeMesh;
      
     public DrawSubmission[] CurrentSubmissions { get; private set; } = Array.Empty<DrawSubmission>();
 
@@ -28,18 +33,22 @@ internal unsafe class SceneRenderer : IDisposable
 
         _camera = new Camera
         {
-            Position = new Vector3(0, 0, 10f)
+            Position = new Vector3(2f, 1.5f, 3.5f)
         };
         _camera.SetTarget(Vector3.Zero);
         Debug.Log($"SCENE RENDERER: CameraPos: {_camera.Position} :: Camera Target: {_camera.Target}", VALIDATION_LAYERS.INFO);
 
     }
+
+    public void SetGameViewSize(Vector2 size)
+    {
+        if (size.X > 1f && size.Y > 1f)
+            _gameViewSize = size;
+    }
     
     public void NewFrame()
     {
         BuildDrawSubmissions();
-        // Debug.Log($"DrawSubmission count: {CurrentSubmissions.Length}");
-        Debug.Log($"Camera pos: {_camera.Position}", VALIDATION_LAYERS.INFO);
     }
 
    public void BuildDrawSubmissions()
@@ -52,30 +61,23 @@ internal unsafe class SceneRenderer : IDisposable
             return;
         }
 
-        if (!_meshFactory.TryGet(_triangleMesh, out var mesh))
+        if (!_meshFactory.TryGet(_cubeMesh, out var mesh))
         {
             CurrentSubmissions = Array.Empty<DrawSubmission>();
             return;
         }
         
         var frameIndex = _master.FrameHandler?.CurrentFrame ?? 0;
-        var descriptorSet = _master.DescriptorFactory.GetDescriptorSet(frameIndex);
+        _descriptorSet = _master.DescriptorFactory.GetDescriptorSet(frameIndex);
         UpdateCameraUniformBuffer(frameIndex);
-
-        Debug.Log($"Mesh vertex count: {mesh.VertexCount}");
-        Debug.Log($"Mesh index count: {mesh.IndexCount}");
-
-        Debug.Log($"Mesh VertexBuffer: {mesh.VertexBuffer.Buffer.Handle}", VALIDATION_LAYERS.INFO);
-        Debug.Log($"Mesh IndexBuffer: {mesh.IndexBuffer.Buffer.Handle}", VALIDATION_LAYERS.INFO);
-
         
         CurrentSubmissions =
         [
             new DrawSubmission
             {
-                PassType = RenderPassType.Geometry,
+                PassType = RenderPassType.GameView,
                 PipelineData = _geometryPipeline,
-                DescriptorSet = descriptorSet,
+                DescriptorSet = _descriptorSet,
                 VertexBuffer = mesh.VertexBuffer,
                 VertexOffset = 0,
                 IndexBuffer = mesh.IndexBuffer,
@@ -97,23 +99,30 @@ internal unsafe class SceneRenderer : IDisposable
         ];
     }
 
-
     private void UpdateCameraUniformBuffer(uint frameIndex)
     {
-        if (_master.FrameHandler is { } frameHandler &&
-            frameHandler.TryGetResourceExtent("SceneColor", out var sceneExtent) &&
-            sceneExtent is { Width: > 0, Height: > 0 })
+        if (_gameViewSize is { X: > 1f, Y: > 1f })
+        {
+            _camera.SetAspectRatio(_gameViewSize.X, _gameViewSize.Y);
+        }
+        else if (_master.FrameHandler is { } frameHandler &&
+                 (frameHandler.TryGetResourceExtent("GameView", out var sceneExtent) ||
+                  frameHandler.TryGetResourceExtent("SceneColor", out sceneExtent)) &&
+                 sceneExtent is { Width: > 0, Height: > 0 })
         {
             _camera.SetAspectRatio(sceneExtent.Width, sceneExtent.Height);
         }
+
 
         var buffer = _master.DescriptorFactory.GetDefaultUniformBuffer(frameIndex);
         if (!buffer.IsValid || !buffer.HostVisible)
             return;
 
+        // System.Numerics matrices are row-major/row-vector, which maps directly onto the
+        // column-major mat4 the shader reads, so the matrix is uploaded as-is.
         var cameraData = new CameraUboData
         {
-            ViewProjection = Matrix4x4.Transpose(_camera.GetViewProjectionMatrix())
+            ViewProjection = _camera.GetViewProjectionMatrix()
         };
 
         void* mapped = null;
@@ -151,7 +160,6 @@ internal unsafe class SceneRenderer : IDisposable
             var vertexFormat = new VertexFormat
             {
                 Stride = (uint)Marshal.SizeOf<Vertex>(),
-                // Attributes = Array.Empty<VertexAttribute>()
                 Attributes =
                 [
                     VertexAttribute.Create<Vertex>(0, Format.R32G32B32Sfloat, nameof(Vertex.Position)),
@@ -161,8 +169,6 @@ internal unsafe class SceneRenderer : IDisposable
 
             var pipelineKey = new PipelineKey
             {
-                // VertexShaderPath = "basic.vert.spv",
-                // FragmentShaderPath = "basic.frag.spv",
                 VertexShaderPath = "default_shader.vert.spv",
                 FragmentShaderPath = "default_shader.frag.spv",
                 RenderPass = renderPass,
@@ -173,34 +179,26 @@ internal unsafe class SceneRenderer : IDisposable
                 FrontFace = FrontFace.CounterClockwise,
                 HasDepth = true,
                 DepthTestEnable = true,
-                DepthWriteEnable = false,
+                DepthWriteEnable = true,
                 EnableBlending = false,
-                BlendState = BlendState.AlphaBlending,
+                BlendState = BlendState.NoBlending,
             };
 
             _geometryPipeline = _master.PipelineFactory.GetOrCreate(pipelineKey);
         }
 
-        if (!_triangleMesh.IsValid)
+        if (!_cubeMesh.IsValid)
         {
-            var vertices = new[]
-            {
-                new Vertex(new Vector3(0f, -0.5f, 0f), new Vector3   (1.0f, 0.2f, 0.2f)),
-                new Vertex(new Vector3(0.5f, 0.5f, 0f), new Vector3  (0.2f, 1.0f, 0.3f)),
-                new Vertex(new Vector3(-0.5f, 0.5f, 0f), new Vector3 (0.2f, 0.5f, 1.0f)),
-            };
-            var indices = new uint[] { 0, 1, 2 };
-
-            _triangleMesh = _meshFactory.CreateStatic(new Mesh(vertices, indices));
+            _cubeMesh = _meshFactory.CreateStatic(new Mesh(TestMeshes.CubeVertices, TestMeshes.CubeIndices));
         }
     }
 
     public void Dispose()
     {
-        if (_triangleMesh.IsValid)
+        if (_cubeMesh.IsValid)
         {
-            _meshFactory.Destroy(_triangleMesh);
-            _triangleMesh = default;
+            _meshFactory.Destroy(_cubeMesh);
+            _cubeMesh = default;
         }
 
         CurrentSubmissions = Array.Empty<DrawSubmission>();

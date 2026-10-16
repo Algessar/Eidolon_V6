@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace Eidolon.Vulkan;
 
-[StructLayout(LayoutKind.Sequential)]
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 internal struct Vertex
 {
     public Vector3 Position;
@@ -49,37 +49,57 @@ internal struct Vertex
     }
 }
 
-// Simple mesh data for testing
+// Simple mesh data for testing.
+// The cube uses 24 vertices (4 per face) so every face can carry a flat colour that
+// makes the 3D shape readable without any lighting in the shader.
 internal static class TestMeshes
 {
     public static Vertex[] CubeVertices = new Vertex[]
     {
-        // Front face
-        new(new Vector3(-0.5f, -0.5f,  0.5f), new Vector3(0, 0, 1), new Vector2(0, 0)),
-        new(new Vector3( 0.5f, -0.5f,  0.5f), new Vector3(0, 0, 1), new Vector2(1, 0)),
-        new(new Vector3( 0.5f,  0.5f,  0.5f), new Vector3(0, 0, 1), new Vector2(1, 1)),
-        new(new Vector3(-0.5f,  0.5f,  0.5f), new Vector3(0, 0, 1), new Vector2(0, 1)),
-        
-        // Back face
-        new(new Vector3(-0.5f, -0.5f, -0.5f), new Vector3(0, 0, -1), new Vector2(1, 0)),
-        new(new Vector3(-0.5f,  0.5f, -0.5f), new Vector3(0, 0, -1), new Vector2(1, 1)),
-        new(new Vector3( 0.5f,  0.5f, -0.5f), new Vector3(0, 0, -1), new Vector2(0, 1)),
-        new(new Vector3( 0.5f, -0.5f, -0.5f), new Vector3(0, 0, -1), new Vector2(0, 0)),
+        // Front face (+Z)
+        new(new Vector3(-0.5f, -0.5f,  0.5f), new Vector3(0.90f, 0.30f, 0.30f)),
+        new(new Vector3( 0.5f, -0.5f,  0.5f), new Vector3(0.90f, 0.30f, 0.30f)),
+        new(new Vector3( 0.5f,  0.5f,  0.5f), new Vector3(0.90f, 0.30f, 0.30f)),
+        new(new Vector3(-0.5f,  0.5f,  0.5f), new Vector3(0.90f, 0.30f, 0.30f)),
+
+        // Back face (-Z)
+        new(new Vector3( 0.5f, -0.5f, -0.5f), new Vector3(0.30f, 0.75f, 0.35f)),
+        new(new Vector3(-0.5f, -0.5f, -0.5f), new Vector3(0.30f, 0.75f, 0.35f)),
+        new(new Vector3(-0.5f,  0.5f, -0.5f), new Vector3(0.30f, 0.75f, 0.35f)),
+        new(new Vector3( 0.5f,  0.5f, -0.5f), new Vector3(0.30f, 0.75f, 0.35f)),
+
+        // Left face (-X)
+        new(new Vector3(-0.5f, -0.5f, -0.5f), new Vector3(0.30f, 0.45f, 0.95f)),
+        new(new Vector3(-0.5f, -0.5f,  0.5f), new Vector3(0.30f, 0.45f, 0.95f)),
+        new(new Vector3(-0.5f,  0.5f,  0.5f), new Vector3(0.30f, 0.45f, 0.95f)),
+        new(new Vector3(-0.5f,  0.5f, -0.5f), new Vector3(0.30f, 0.45f, 0.95f)),
+
+        // Right face (+X)
+        new(new Vector3( 0.5f, -0.5f,  0.5f), new Vector3(0.95f, 0.85f, 0.30f)),
+        new(new Vector3( 0.5f, -0.5f, -0.5f), new Vector3(0.95f, 0.85f, 0.30f)),
+        new(new Vector3( 0.5f,  0.5f, -0.5f), new Vector3(0.95f, 0.85f, 0.30f)),
+        new(new Vector3( 0.5f,  0.5f,  0.5f), new Vector3(0.95f, 0.85f, 0.30f)),
+
+        // Top face (+Y)
+        new(new Vector3(-0.5f,  0.5f,  0.5f), new Vector3(0.35f, 0.90f, 0.90f)),
+        new(new Vector3( 0.5f,  0.5f,  0.5f), new Vector3(0.35f, 0.90f, 0.90f)),
+        new(new Vector3( 0.5f,  0.5f, -0.5f), new Vector3(0.35f, 0.90f, 0.90f)),
+        new(new Vector3(-0.5f,  0.5f, -0.5f), new Vector3(0.35f, 0.90f, 0.90f)),
+
+        // Bottom face (-Y)
+        new(new Vector3(-0.5f, -0.5f, -0.5f), new Vector3(0.85f, 0.35f, 0.85f)),
+        new(new Vector3( 0.5f, -0.5f, -0.5f), new Vector3(0.85f, 0.35f, 0.85f)),
+        new(new Vector3( 0.5f, -0.5f,  0.5f), new Vector3(0.85f, 0.35f, 0.85f)),
+        new(new Vector3(-0.5f, -0.5f,  0.5f), new Vector3(0.85f, 0.35f, 0.85f)),
     };
 
     public static uint[] CubeIndices = new uint[]
     {
-        // Front face
-        0, 1, 2, 2, 3, 0,
-        // Back face
-        4, 5, 6, 6, 7, 4,
-        // Top face
-        3, 2, 6, 6, 5, 3,
-        // Bottom face
-        0, 4, 7, 7, 1, 0,
-        // Right face
-        1, 7, 6, 6, 2, 1,
-        // Left face
-        0, 3, 5, 5, 4, 0
+        0, 1, 2, 0, 2, 3,       // Front
+        4, 5, 6, 4, 6, 7,       // Back
+        8, 9, 10, 8, 10, 11,    // Left
+        12, 13, 14, 12, 14, 15, // Right
+        16, 17, 18, 16, 18, 19, // Top
+        20, 21, 22, 20, 22, 23, // Bottom
     };
 }

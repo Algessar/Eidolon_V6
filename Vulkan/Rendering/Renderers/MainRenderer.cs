@@ -72,19 +72,19 @@ internal class MainRenderer
 
         window.Update += (delta) =>
         {
-	        
+	        if (_cameraController is not null)
+	        {
+		        _cameraController.Update((float)delta);
+	        }
+
 	        _sceneRenderer?.NewFrame();
 	        // _gameViewRenderer?.NewFrame(delta);
 	        _imguiRenderer?.NewFrame(
 		        (float)delta,
 		        new Vector2(window.Size.X, window.Size.Y),
 		        new Vector2(window.FramebufferSize.X, window.FramebufferSize.Y));
-	        if (_cameraController is not null)
-	        {
-		        // Debug.Log($"Camera controller is not null");
-		        _cameraController.Update((float)delta);
-		        // _cameraController.SetAspect(_imguiRenderer.GameViewSize);
-	        }
+	        // The editor UI knows how big the game view panel ended up this frame.
+	        _sceneRenderer?.SetGameViewSize(_imguiRenderer.GameViewSize);
         };
         
         window.Render += delta =>
@@ -97,7 +97,6 @@ internal class MainRenderer
 	        var baseSubmissions = Array.Empty<DrawSubmission>(); 
 
 	        var sceneSubmissions = _sceneRenderer?.CurrentSubmissions ?? Array.Empty<DrawSubmission>();
-	        Debug.Log($"Scene submission count MainRenderer: {sceneSubmissions.Length}");
 	        var gameViewSubmissions = _gameViewRenderer?.CurrentSubmissions ?? Array.Empty<DrawSubmission>();
 	        var uiSubmissions = _imguiRenderer?.CurrentSubmissions ?? Array.Empty<DrawSubmission>();
 

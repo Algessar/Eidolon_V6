@@ -195,7 +195,7 @@ internal unsafe class FrameHandler : IDisposable
             var clearValues = stackalloc ClearValue[2]; //NOTE: CA2014: Potential stack overflow. Move the stackalloc out of the loop.
 
             clearValues[0] = execution.ClearColor
-                ? new ClearValue { Color = new ClearColorValue(1f, 0f, 0f, 0f) }
+                ? new ClearValue { Color = new ClearColorValue(0.05f, 0.05f, 0.06f, 1f) }
                 : new ClearValue();
 
             uint clearValueCount = 1;
@@ -333,10 +333,17 @@ internal unsafe class FrameHandler : IDisposable
             if(DEBUG) Debug.Log(
                 $"Binding indexBuffer with handle: {submission.IndexBuffer.Buffer.Handle}, indexCount : {submission.IndexCount}", VALIDATION_LAYERS.INFO);
             
-            _master.Vk.CmdBindIndexBuffer(cmd, submission.IndexBuffer.Buffer, submission.IndexOffset,
-                submission.IndexType);
-            _master.Vk.CmdDrawIndexed(cmd, submission.IndexCount, Math.Max(submission.InstanceCount, 1),
-                submission.FirstIndex, submission.VertexBase, 0);
+            _master.Vk.CmdBindIndexBuffer(cmd, 
+                submission.IndexBuffer.Buffer, 
+                submission.IndexOffset,
+                submission.IndexType
+            );
+            _master.Vk.CmdDrawIndexed(cmd, submission.IndexCount,
+                Math.Max(submission.InstanceCount,
+                    1),
+                submission.FirstIndex, 
+                submission.VertexBase, 0
+            );
             return;
         }
 

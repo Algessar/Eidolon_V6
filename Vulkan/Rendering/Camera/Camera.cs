@@ -39,7 +39,7 @@ public class Camera : Component
     public void SetTarget(Vector3 target)
     {
         Target = target;
-        Forward = Vector3.Normalize(Target - Transform.Position);
+        Forward = Vector3.Normalize(Target - Position);
     }
 
     public Matrix4x4 GetViewMatrix()
@@ -49,7 +49,7 @@ public class Camera : Component
             UpdateTargetFromYawPitch();
         }
 
-        return Matrix4x4.CreateLookAt(Transform.Position, Target, Up);
+        return Matrix4x4.CreateLookAt(Position, Target, Up);
     }
     
     //NOTE: Use this. From old working project.
@@ -85,7 +85,7 @@ public class Camera : Component
     {
         get
         {
-            var direction = Vector3.Normalize(Target - Transform.Position);
+            var direction = Vector3.Normalize(Target - Position);
                 
             // Fix for when direction is parallel/anti-parallel to up vector
             if (MathF.Abs(Vector3.Dot(direction, Up)) > 0.9999f)
@@ -95,17 +95,19 @@ public class Camera : Component
                     Vector3.UnitZ : 
                     Vector3.UnitY;
                     
-                return Matrix4x4.CreateLookAt(Transform.Position, Target, tempUp);
+                return Matrix4x4.CreateLookAt(Position, Target, tempUp);
             }
                 
-            return Matrix4x4.CreateLookAt(Transform.Position, Target, Up);
+            return Matrix4x4.CreateLookAt(Position, Target, Up);
         }
     }
 
 
     public Matrix4x4 GetViewProjectionMatrix()
     {
-        return ProjectionMatrix * GetViewMatrix();
+        // System.Numerics uses row-vector conventions, so the view transform must be
+        // applied before the projection: v * (View * Projection).
+        return GetViewMatrix() * ProjectionMatrix;
     }
 
     private void UpdateTargetFromYawPitch()
@@ -117,7 +119,7 @@ public class Camera : Component
             MathF.Sin(YawRadians) * MathF.Cos(clampedPitch));
 
         Forward = Vector3.Normalize(forward);
-        Target = Transform.Position + Forward;
+        Target = Position + Forward;
     }
     
     public void Move(Vector3 delta)
