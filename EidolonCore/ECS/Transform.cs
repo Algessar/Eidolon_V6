@@ -1,7 +1,7 @@
 ﻿using System.Numerics;
 
 namespace EidolonCore.ECS;
-public struct Transform : IComponent
+public struct Transform
 {
     public Vector3 Position;
     public Quaternion Rotation;

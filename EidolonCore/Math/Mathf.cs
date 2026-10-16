@@ -13,7 +13,7 @@ public static class Mathf
 	/// </summary>
 	/// <param name="deg">Angle in degrees</param>
 	/// <returns>Angle in radians</returns>
-	public static  float DegreesToRadians(float deg) => deg * (pi / 180.0f);
+	public static float DegreesToRadians(float deg) => deg * (pi / 180.0f);
 	    
 	/// <summary>
 	/// Returns pi
@@ -45,8 +45,10 @@ public static class Mathf
 		return (float)MathF.Sin(f);
 	}
 	
-	public static double cos(double d) { throw null; }
-	public static float Cos(float f) => (float) cos((double) f);	    
+	public static float Cos(float f) => MathF.Cos(f);
+
+// If you need a double version, implement it:
+	// public static double Cos(double d) =>(double)MathF.Cos(d);	    
 
 	    
 	public static float Tan(float f)

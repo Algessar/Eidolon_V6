@@ -1,14 +1,14 @@
 ﻿using Eidolon.Vulkan;
 using EidolonCore.Rendering;
+using EidolonEngine;
+
 
 namespace Eidolon.Editor;
 
-public class EidolonEditor
+public static class EidolonEditor
 {
     public static void Main()
     {
-        // ShaderCompiler.CompileShaders(@"G:\Coding\Eidolon_V6\Vulkan\Rendering\Shaders");
-
         Debug.Log("Starting from EidolonEditor", VALIDATION_LAYERS.INFO);
         var initialGraph = BuildInitialGraph(1920, 1080);
         VulkanHost.Run(initialGraph);
@@ -24,8 +24,16 @@ public class EidolonEditor
                 FlagImageUsage.ColorAttachment | FlagImageUsage.Sampled));
 
         var postColor = graph.CreateImage("PostColor",
-            GraphImageDescription.Create(ImageFormat.Rgba16Float,
-                FlagImageUsage.ColorAttachment | FlagImageUsage.Sampled));
+        GraphImageDescription.Create(ImageFormat.Rgba16Float,
+        FlagImageUsage.ColorAttachment | FlagImageUsage.Sampled));
+
+        var gameView = graph.CreateImage("GameView", GraphImageDescription.Create(
+            ImageFormat.Rgba16Float, //NOTE: Should this not be Rgba32Float?
+            FlagImageUsage.ColorAttachment | FlagImageUsage.Sampled));
+        
+        var gameViewDepth = graph.CreateImage("GameViewDepth", GraphImageDescription.Create(
+            ImageFormat.D32Float,
+            FlagImageUsage.DepthStencilAttachment));
 
         var backbuffer = graph.ImportImage("Backbuffer",
             GraphImageDescription.Create(ImageFormat.Bgra8Unorm,
@@ -33,19 +41,22 @@ public class EidolonEditor
 
         graph.AddPass("Geometry", RenderPassType.Geometry)
             .Write(sceneColor);
-        
+
         graph.AddPass("PostProcess", RenderPassType.PostProcess)
             .Read(sceneColor)
             .Write(postColor);
-
-        graph.AddPass("Present", RenderPassType.Present)
-            .Read(postColor)
-            .Write(backbuffer);
         
-        graph.AddPass("ImGui", RenderPassType.Ui)
-            .Write(backbuffer);
-
-
+        graph.AddPass("GameView", RenderPassType.GameView) //Codex suggests GameView, which means adding that to RenderPassType
+                                                          //and changing PassExecutionKey to account for that.
+            .Read(postColor)
+            .Write(gameView)
+            .Write(gameViewDepth);
+        
+        graph.AddPass("ImGui", RenderPassType.UI).Read(gameView).Write(backbuffer);
+        graph.AddPass("Present", RenderPassType.Present)
+            .Read(backbuffer);
+        
+        
         return graph.Compile(new FrameDescription
         {
             Width = width,

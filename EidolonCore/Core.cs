@@ -1,6 +1,6 @@
 ﻿
 namespace EidolonCore;
-public class Core
+public static class Core
 {
     public static void Main(String[] args)
     {

@@ -7,6 +7,7 @@ internal enum ImportedResourceKind
     SceneDepth,
 }
 
+//NOTE: this is doing exactly two things and seems superfluous.
 internal sealed class GraphResourceImportMap
 {
     private readonly Dictionary<uint, ImportedResourceKind> _importKinds = new();
@@ -20,12 +21,19 @@ internal sealed class GraphResourceImportMap
         
         _importKinds[handle.Handle] = kind;
     }
+    
+    public uint GetHandleForKind(ImportedResourceKind kind)
+    {
+        foreach (var kv in _importKinds)
+        {
+            if (kv.Value == kind)
+                return kv.Key;
+        }
+        return 0;
+    }
 
-public bool TryResolve(
-        in CompiledResource resource,
-        in SwapchainHandler swapchain,
-        uint swapchainImageIndex,
-        out ImageData imageData)
+    public bool TryResolve(in CompiledResource resource, in SwapchainHandler swapchain,
+        uint swapchainImageIndex, out ImageData imageData)
     {
         imageData = default;
 
