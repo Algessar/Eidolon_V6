@@ -33,10 +33,7 @@ internal unsafe class DescriptorFactory: IDisposable
     
     private readonly DescriptorKey _defaultKey;
     private readonly DescriptorKey _imguiKey;
-    
-    private DescriptorPool _descriptorPool; //NOTE: Currently created in ImGuiRenderer, which I'm not a fan of. 
-    
-    private DescriptorSetLayout _descriptorSetLayout;
+
     private GpuBuffer[] _defaultUniformBuffers = Array.Empty<GpuBuffer>();
     public DescriptorSetLayout Layout => GetOrCreate(_defaultKey).Layout;
     
@@ -150,31 +147,6 @@ internal unsafe class DescriptorFactory: IDisposable
     }
     
     
-    
-    public DescriptorSetLayout CreateDescriptorSetLayout()
-    {
-        var uboLayoutBinding = new DescriptorSetLayoutBinding
-        {
-            Binding = 0,                                   // Binding point 0 in shader
-            DescriptorType = DescriptorType.UniformBuffer, // It's a uniform buffer
-            DescriptorCount = 1,                           // One buffer at this binding
-            StageFlags = ShaderStageFlags.VertexBit,       // Accessed by vertex shader
-            PImmutableSamplers = null
-        };
-
-        var layoutInfo = new DescriptorSetLayoutCreateInfo
-        {
-            SType = StructureType.DescriptorSetLayoutCreateInfo,
-            BindingCount = 1,
-            PBindings = &uboLayoutBinding
-        };
-
-        if (_master.Vk.CreateDescriptorSetLayout(_master.VulkanDevice.Device, &layoutInfo, null, out _descriptorSetLayout) != Result.Success)
-            throw new Exception("Failed to create descriptor set layout!");
-
-        return _descriptorSetLayout;
-    }
-    
     private DescriptorPool CreateDescriptorPool(DescriptorSetLayoutBinding[] bindings, uint setCount)
     {
         var descriptorCounts = new Dictionary<DescriptorType, uint>();
@@ -247,7 +219,7 @@ internal unsafe class DescriptorFactory: IDisposable
         
         //NOTE: to self; this is *descriptor* buffer info, so it's valid here.
         // For next time I think it should be in a BufferFactory.
-        var uniformBuffers = _master.GpuBufferFactory.GetOrCreate(key);
+        var uniformBuffers = _master.GpuBufferFactory.Create(key);
         _defaultUniformBuffers = uniformBuffers;
         for (var i = 0; i < data.Sets.Length; i++)
         {

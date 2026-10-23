@@ -8,6 +8,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EidolonCore", "EidolonCore\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EidolonEngine", "EidolonEngine\EidolonEngine.csproj", "{A6E14423-859D-453A-8F5B-835188691167}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Eidolon.Tests", "Eidolon.Tests\Eidolon.Tests.csproj", "{C359F84F-1900-4D56-8D01-9F7EDCB90444}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -30,5 +32,9 @@ Global
 		{A6E14423-859D-453A-8F5B-835188691167}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A6E14423-859D-453A-8F5B-835188691167}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A6E14423-859D-453A-8F5B-835188691167}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C359F84F-1900-4D56-8D01-9F7EDCB90444}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C359F84F-1900-4D56-8D01-9F7EDCB90444}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C359F84F-1900-4D56-8D01-9F7EDCB90444}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C359F84F-1900-4D56-8D01-9F7EDCB90444}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

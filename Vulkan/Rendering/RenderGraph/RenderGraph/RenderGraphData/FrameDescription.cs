@@ -1,6 +1,6 @@
 ﻿namespace Eidolon.Vulkan;
 
-public struct FrameDescription(uint[,] size)
+public struct FrameDescription
 {
     public uint Width;
     public uint Height;

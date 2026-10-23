@@ -25,28 +25,30 @@ internal record struct PipelineKey
 
     public bool DepthTestEnable { get; init; }
     public bool DepthWriteEnable { get; init; }
-    public bool DepthCompareOp  { get; init; }
     public FrontFace FrontFace { get; init; }
 
     public bool EnableBlending;
     public BlendState BlendState;
 
     public bool HasDepth;
-    
+
+    /// <summary>Size in bytes of the push constant block the pipeline layout declares.</summary>
+    public uint PushConstantSize { get; init; } = 64;
+
+    /// <summary>Shader stages the push constant block is visible to.</summary>
+    public ShaderStageFlags PushConstantStages { get; init; } = ShaderStageFlags.VertexBit;
+
+    // Required by the field initializers above; the required shader paths are supplied
+    // by callers through object initializers.
     public PipelineKey()
     {
         EnableBlending = false;
         BlendState = BlendState.NoBlending;
-        RenderPass = default;
-        VertexShaderPath = null;
-        FragmentShaderPath = null;
-        VertexFormat = default;
+        CullMode = CullModeBits.Back;
         Topology = PrimitiveTopology.PointList;
-        DepthTestEnable = false;
-        DepthWriteEnable = false;
-        DepthCompareOp = false;
+        PushConstantSize = 64;
+        PushConstantStages = ShaderStageFlags.VertexBit;
     }
-
 }
 
 internal record struct BlendState

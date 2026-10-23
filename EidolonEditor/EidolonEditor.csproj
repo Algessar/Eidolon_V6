@@ -15,15 +15,8 @@
     </ItemGroup>
 
     <ItemGroup>
-      <None Include="bin\Debug\net10.0\Rendering\Shaders\basic.frag" />
-      <None Include="bin\Debug\net10.0\Rendering\Shaders\basic.frag.spv" />
-      <None Include="bin\Debug\net10.0\Rendering\Shaders\basic.vert" />
-      <None Include="bin\Debug\net10.0\Rendering\Shaders\basic.vert.spv" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <Folder Include="bin\Debug\net10.0\" />
-      <Folder Include="RunEngine\" />
+      <!-- Models, materials and other data the editor loads at runtime. -->
+      <None Include="Assets\**\*.*" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 
     <PropertyGroup>

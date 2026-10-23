@@ -1,7 +1,7 @@
-﻿using System.Numerics;
-using Eidolon.Vulkan.Rendering;
+﻿using Eidolon.Vulkan.Rendering;
 using EidolonEngine;
-using ImGuiNET;
+using EidolonCore.Assets;
+using EidolonCore.ECS;
 using Silk.NET.Maths;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.KHR;
@@ -9,13 +9,13 @@ using Silk.NET.Windowing;
 
 namespace Eidolon.Vulkan;
 
-internal class VulkanMaster
+internal class VulkanMaster : IDisposable
 {
     #region Vulkan Core
 
     public Vk Vk;
     
-    private IWindow _window;
+    private readonly IWindow _window;
     
     //NOTE: Possibly temp
     public IWindow GetWindow => _window;
@@ -43,18 +43,24 @@ internal class VulkanMaster
     #region Rendering
    
     public FrameHandler? FrameHandler { get; set; }
-    
-    
-    private DrawData _drawData;
- 
-    private MainRenderer? _mainRenderer;
+
+    private readonly MainRenderer _mainRenderer;
+    private readonly World _world;
+    private readonly AssetLibrary _assets;
+
+    private bool _initialized;
+    private bool _disposed;
     #endregion
 
+    public World World => _world;
 
-    
-    public VulkanMaster(CompiledRenderGraph? initialGraph = null)
+    public VulkanMaster(World world, AssetLibrary assets, CompiledRenderGraph? initialGraph = null)
     {
-        ShaderCompiler.CompileShaders(@"G:\Coding\Eidolon_V6\Vulkan\Rendering\Shaders");
+        _world = world;
+        _assets = assets;
+
+        // Compile in place in the deployed shader folder so this run picks up the result.
+        ShaderCompiler.CompileShaders(Path.Combine(AppContext.BaseDirectory, "Rendering", "Shaders"));
         
         Debug.Log("::: Initializing Vulkan resources :::", VALIDATION_LAYERS.WARNING);
 
@@ -62,16 +68,16 @@ internal class VulkanMaster
         
         //TODO: Consider moving window handling out of Vulkan and into Editor.
         
-        CreateOSWindow();
+        _window = CreateOSWindow();
 
         _mainRenderer = new MainRenderer(this);
         _window.Load += () =>
         {
             InitializeManagers();
-            _mainRenderer.CreateRenderers(initialGraph);
+            _mainRenderer.CreateRenderers(_world, _assets, initialGraph);
         };
         
-        _mainRenderer?.Run(_window);
+        _mainRenderer.Run(_window);
     }
 
     private void InitializeManagers()
@@ -91,11 +97,12 @@ internal class VulkanMaster
         CommandHandler = new CommandHandler(this);
         FrameHandler = new FrameHandler(this);
         PipelineFactory = new PipelineFactory(this);
+        _initialized = true;
         Debug.Log("Vulkan resources initialized.", VALIDATION_LAYERS.SUCCESS);
         
     }
 
-    private void CreateOSWindow()
+    private IWindow CreateOSWindow()
     {
         var opts = WindowOptions.DefaultVulkan with
         {
@@ -107,21 +114,52 @@ internal class VulkanMaster
             WindowState = WindowState.Maximized
         };
         
-        _window = Window.Create(opts);
+        return Window.Create(opts);
     }
     
-    private void Dispose()
+    /// <summary>
+    /// Tears the backend down in dependency order. Everything that belongs to the device has
+    /// to go before the device itself, and the swapchain before the surface it presents to.
+    /// </summary>
+    public void Dispose()
     {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+
+        if (!_initialized)
+        {
+            Vk?.Dispose();
+            return;
+        }
+
         Debug.Log("Disposing VulkanMaster", VALIDATION_LAYERS.WARNING);
-        
-        Vk.Dispose();
-        VulkanDevice.Dispose();
+
+        var device = VulkanDevice.Device;
+        Vk.DeviceWaitIdle(device);
+
+        // Renderer-owned resources (mesh buffers, font atlas, UI geometry, descriptor pool).
+        _mainRenderer.Dispose();
+
+        // Per-frame resources: graph images, framebuffers, sync objects, command pools.
+        FrameHandler?.Dispose();
+        CommandHandler.Dispose();
+
+        // Pipelines reference shader modules and render passes, so they go first.
+        PipelineFactory.Dispose();
+        ShaderManager.Dispose();
         DescriptorFactory.Dispose();
         GpuBufferFactory.Dispose();
-        PipelineFactory.Dispose();
-        CommandHandler.Dispose();
-        
-        
+        RenderPassFactory.Dispose();
+
+        // The swapchain must be destroyed before the surface.
+        SwapchainHandler.Dispose();
+
+        VulkanDevice.Dispose();
+        VulkanInstance.Dispose();
+        Vk.Dispose();
+
         Debug.Log("Disposed VulkanMaster", VALIDATION_LAYERS.INFO);
     }
 }

@@ -1,26 +1,30 @@
 ﻿using System.Numerics;
 using EidolonCore.ECS;
-using EidolonCore.Math;
-using Silk.NET.Maths;
+using EidolonCore.Rendering;
 
 namespace Eidolon.Vulkan;
 
 //NOTE: This class is now the same as in an older working version.
 
-public class Camera : Component
+/// <summary>
+/// Perspective camera. Lives on a scene entity as a component; the renderer uses the first
+/// entity that carries one.
+/// </summary>
+public class Camera : IComponent
 {
     private const float DegreesToRadians = MathF.PI / 180f;
+
     public Vector3 Position { get; set; } = new(0, 0, 3f);
     public Vector3 Forward { get; private set; } = -Vector3.UnitZ;
     public Vector3 Target { get; set; } = Vector3.Zero;
     public Vector3 Up { get; set; } = Vector3.UnitY;
 
-    public float FieldOfViewRadians { get; set; } = 60f * DegreesToRadians;    public float NearPlane { get; set; } = 0.1f;
+    public float NearPlane { get; set; } = 0.1f;
     public float FarPlane { get; set; } = 1000f;
     public float AspectRatio { get; set; } = 16f / 9f;
-    
-    public float FieldOfView { get; set; } = 45.0f * (MathF.PI / 180.0f);
-    
+
+    public float FieldOfView { get; set; } = 45.0f * DegreesToRadians;
+
     public bool UseYawPitch { get; set; }
     public float YawRadians { get; set; } = -90f * DegreesToRadians;
     public float PitchRadians { get; set; }
@@ -110,6 +114,30 @@ public class Camera : Component
         return GetViewMatrix() * ProjectionMatrix;
     }
 
+    /// <summary>
+    /// Builds a world-space picking ray from a normalised device coordinate (-1..1). Screen Y is
+    /// flipped the same way the projection flips it, so -1 is the top of the viewport.
+    /// </summary>
+    public Ray ScreenPointToRay(Vector2 ndc)
+    {
+        if (!Matrix4x4.Invert(GetViewProjectionMatrix(), out var inverse))
+            return new Ray(Position, Vector3.Normalize(Target - Position));
+
+        var near = Unproject(new Vector3(ndc.X, ndc.Y, 0f), inverse);
+        var far = Unproject(new Vector3(ndc.X, ndc.Y, 1f), inverse);
+
+        var direction = far - near;
+        return direction.LengthSquared() < 1e-12f
+            ? new Ray(Position, Vector3.Normalize(Target - Position))
+            : new Ray(near, Vector3.Normalize(direction));
+    }
+
+    private static Vector3 Unproject(Vector3 ndc, Matrix4x4 inverseViewProjection)
+    {
+        var clip = Vector4.Transform(new Vector4(ndc, 1f), inverseViewProjection);
+        return new Vector3(clip.X, clip.Y, clip.Z) / clip.W;
+    }
+
     private void UpdateTargetFromYawPitch()
     {
         var clampedPitch = Math.Clamp(PitchRadians, -89 * DegreesToRadians, 89f * DegreesToRadians);
@@ -126,12 +154,5 @@ public class Camera : Component
     {
         Position += delta;
         Target += delta;
-    }
-    
-    private float Zoom = 45f;
-
-    public Matrix4x4 Matrix()
-    {
-        return Matrix4x4.CreatePerspectiveFieldOfView(Mathf.DegreesToRadians(Zoom), AspectRatio, 0.1f, 100.0f);
     }
 }

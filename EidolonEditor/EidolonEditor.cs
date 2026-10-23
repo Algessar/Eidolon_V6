@@ -1,6 +1,7 @@
 ﻿using Eidolon.Vulkan;
-using EidolonCore.Rendering;
 using EidolonEngine;
+using EidolonCore.Assets;
+using EidolonCore.ECS;
 
 
 namespace Eidolon.Editor;
@@ -10,8 +11,18 @@ public static class EidolonEditor
     public static void Main()
     {
         Debug.Log("Starting from EidolonEditor", VALIDATION_LAYERS.INFO);
+
+        var world = new World();
+        var assets = new AssetLibrary();
+
+        var assetRoot = Path.Combine(AppContext.BaseDirectory, "Assets");
+        var discovered = assets.Discover(assetRoot);
+        Debug.Log($"Asset library: {discovered} mesh asset(s) under '{assetRoot}'", VALIDATION_LAYERS.INFO);
+
+        DefaultScene.Populate(world, assets);
+
         var initialGraph = BuildInitialGraph(1920, 1080);
-        VulkanHost.Run(initialGraph);
+        VulkanHost.Run(world, assets, initialGraph);
         Debug.Log("EidolonEditor shutting down!", VALIDATION_LAYERS.SUCCESS);
     }
 

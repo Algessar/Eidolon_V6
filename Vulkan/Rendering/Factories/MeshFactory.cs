@@ -1,5 +1,5 @@
-﻿using System.Numerics;
-using Eidolon.Vulkan;
+﻿using Eidolon.Vulkan;
+using EidolonCore.Rendering;
 using Silk.NET.Vulkan;
 
 namespace Eidolon.Engine;
@@ -16,11 +16,20 @@ internal readonly record struct MeshGpuData(
     uint IndexCount,
     IndexType IndexType);
 
-internal unsafe class MeshFactory
+/// <summary>
+/// Uploads CPU-side meshes to the GPU and hands back the data needed to draw them.
+/// </summary>
+/// <remarks>
+/// A mesh is uploaded the first time it is drawn and cached by instance, so every entity that
+/// references the same <see cref="Mesh"/> shares one pair of buffers. Buffers live for the
+/// lifetime of the factory: deleting an entity does not free its mesh, because another entity
+/// may still be using it. Asset lifetime and unloading is a follow-up once import exists.
+/// </remarks>
+internal unsafe class MeshFactory : IDisposable
 {
     private readonly VulkanMaster _master;
+    private readonly Dictionary<Mesh, MeshHandle> _handles = new();
     private readonly Dictionary<MeshHandle, MeshGpuData> _meshes = new();
-    private readonly Dictionary<MeshHandle, (GpuBufferKey VertexKey, GpuBufferKey IndexKey)> _bufferKeys = new();
 
     private int _nextId = 1;
 
@@ -29,17 +38,22 @@ internal unsafe class MeshFactory
         _master = master;
     }
 
-    public MeshHandle CreateStatic(Mesh mesh)
+    /// <summary>Resolves a mesh to its GPU buffers, uploading it on first use.</summary>
+    public bool TryGet(Mesh? mesh, out MeshGpuData data)
     {
-        if (mesh is null)
-            throw new ArgumentNullException(nameof(mesh));
+        data = default;
 
-        if (mesh.Vertices is null || mesh.Vertices.Length == 0)
-            throw new InvalidOperationException("Mesh must contain at least one vertex.");
+        if (mesh is null || !mesh.IsValid)
+            return false;
 
-        if (mesh.Indices is null || mesh.Indices.Length == 0)
-            throw new InvalidOperationException("Mesh must contain at least one index.");
+        if (!_handles.TryGetValue(mesh, out var handle))
+            handle = Upload(mesh);
 
+        return _meshes.TryGetValue(handle, out data);
+    }
+
+    private MeshHandle Upload(Mesh mesh)
+    {
         var vertexBytes = checked((ulong)(mesh.Vertices.Length * sizeof(Vertex)));
         var indexBytes = checked((ulong)(mesh.Indices.Length * sizeof(uint)));
 
@@ -51,9 +65,8 @@ internal unsafe class MeshFactory
             MemoryProperties = MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit,
             Count = 1,
             AllocationStrategy = GpuBufferAllocationStrategy.Static
-
         };
-        
+
         var indexKey = new GpuBufferKey
         {
             UsageClass = GpuBufferUsageClass.Index,
@@ -64,8 +77,8 @@ internal unsafe class MeshFactory
             AllocationStrategy = GpuBufferAllocationStrategy.Static,
         };
 
-        var vertexBuffer = _master.GpuBufferFactory.GetOrCreate(vertexKey)[0];
-        var indexBuffer = _master.GpuBufferFactory.GetOrCreate(indexKey)[0];
+        var vertexBuffer = _master.GpuBufferFactory.Create(vertexKey)[0];
+        var indexBuffer = _master.GpuBufferFactory.Create(indexKey)[0];
 
         Upload(vertexBuffer, mesh.Vertices);
         Upload(indexBuffer, mesh.Indices);
@@ -74,13 +87,9 @@ internal unsafe class MeshFactory
         _meshes[handle] = new MeshGpuData(vertexBuffer,
             indexBuffer, (uint)mesh.Vertices.Length, (uint)mesh.Indices.Length,
             IndexType.Uint32);
+        _handles[mesh] = handle;
 
         return handle;
-    }
-
-    public bool TryGet(MeshHandle handle, out MeshGpuData mesh)
-    {
-        return _meshes.TryGetValue(handle, out mesh);
     }
 
     private void Upload<T>(GpuBuffer buffer, T[] source) where T : unmanaged
@@ -107,26 +116,15 @@ internal unsafe class MeshFactory
 
         _master.Vk.UnmapMemory(_master.VulkanDevice.Device, buffer.Memory);
     }
-    
-    
-    public void Destroy(MeshHandle handle)
-    {
-        if (_bufferKeys.Remove(handle, out var keys)) return;
 
-        _master.GpuBufferFactory.Release(keys.VertexKey);
-        _master.GpuBufferFactory.Release(keys.IndexKey);
-        _meshes.Remove(handle);
-    }
-    
     public void Dispose()
     {
-        foreach (var (_, keys) in _bufferKeys)
+        foreach (var mesh in _meshes.Values.ToArray())
         {
-            _master.GpuBufferFactory.Release(keys.VertexKey);
-            _master.GpuBufferFactory.Release(keys.IndexKey);
+            _master.GpuBufferFactory.Destroy([mesh.VertexBuffer, mesh.IndexBuffer]);
         }
 
-        _bufferKeys.Clear();
         _meshes.Clear();
+        _handles.Clear();
     }
 }

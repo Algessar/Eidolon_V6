@@ -2,6 +2,8 @@
 using Eidolon.Editor;
 using Eidolon.Engine;
 using Eidolon.Vulkan;
+using EidolonCore.Assets;
+using EidolonCore.ECS;
 using ImGuiNET;
 using Silk.NET.Input;
 using Silk.NET.Vulkan;
@@ -9,20 +11,17 @@ using Silk.NET.Windowing;
 
 namespace EidolonEngine;
 
-internal class MainRenderer
+internal class MainRenderer : IDisposable
 {
 	private VulkanMaster _master;
 	private InputManager _inputManager;
-	private CameraController? _cameraController;
 	private MeshFactory _meshFactory;
 	
     private ImGuiRenderer _imguiRenderer;
     private SceneRenderer _sceneRenderer;
-    private GameViewRenderer _gameViewRenderer;
+    private GridRenderer? _gridRenderer;
+    private ViewportSettings? _viewportSettings;
 
-
-    private DrawData _drawData;
-    
     private PipelineData _bootstrapPipelineData;
 
     public MainRenderer(VulkanMaster master)
@@ -35,14 +34,12 @@ internal class MainRenderer
 
     }
 
-    public void CreateRenderers(CompiledRenderGraph? initialGraph = null)
+    public void CreateRenderers(World world, AssetLibrary assets, CompiledRenderGraph? initialGraph = null)
     {
 	    
 	    ImGui.CreateContext();
 	    _bootstrapPipelineData = BuildBootstrapPipelineData(_master.SwapchainHandler);
-	    _drawData = BuildInitialDrawData(_bootstrapPipelineData);
 
-        
 	    if (_bootstrapPipelineData.RenderPass.Handle == 0)
 	    {
 		    throw new InvalidOperationException("Main pipeline render pass is null before ImGui initialization.");
@@ -50,10 +47,10 @@ internal class MainRenderer
 	    
 	    _inputManager = new InputManager(_master.GetWindow);
 	    _meshFactory = new MeshFactory(_master);
-	    _imguiRenderer = new ImGuiRenderer(_master, _inputManager);
-	    _sceneRenderer = new SceneRenderer(_master, _meshFactory);
-	    _gameViewRenderer = new GameViewRenderer(_master);
-	    _cameraController = new CameraController(_inputManager.Input, _sceneRenderer.Camera);
+	    _viewportSettings = new ViewportSettings();
+	    _gridRenderer = new GridRenderer(_master, _viewportSettings);
+	    _imguiRenderer = new ImGuiRenderer(_master, _inputManager, world, assets, _viewportSettings);
+	    _sceneRenderer = new SceneRenderer(_master, _meshFactory, world);
 	    
 	    _imguiRenderer.Initialize(_bootstrapPipelineData.RenderPass);
 	    
@@ -72,19 +69,19 @@ internal class MainRenderer
 
         window.Update += (delta) =>
         {
-	        if (_cameraController is not null)
-	        {
-		        _cameraController.Update((float)delta);
-	        }
-
 	        _sceneRenderer?.NewFrame();
-	        // _gameViewRenderer?.NewFrame(delta);
 	        _imguiRenderer?.NewFrame(
 		        (float)delta,
 		        new Vector2(window.Size.X, window.Size.Y),
 		        new Vector2(window.FramebufferSize.X, window.FramebufferSize.Y));
 	        // The editor UI knows how big the game view panel ended up this frame.
-	        _sceneRenderer?.SetGameViewSize(_imguiRenderer.GameViewSize);
+	        if (_imguiRenderer is not null)
+	        {
+		        _sceneRenderer?.SetGameViewSize(_imguiRenderer.GameViewSize);
+
+		        // Built after the UI so the grid follows any viewport changes made this frame.
+		        _gridRenderer?.NewFrame();
+	        }
         };
         
         window.Render += delta =>
@@ -94,36 +91,33 @@ internal class MainRenderer
 		        return;
 	        }
 
-	        var baseSubmissions = Array.Empty<DrawSubmission>(); 
-
 	        var sceneSubmissions = _sceneRenderer?.CurrentSubmissions ?? Array.Empty<DrawSubmission>();
-	        var gameViewSubmissions = _gameViewRenderer?.CurrentSubmissions ?? Array.Empty<DrawSubmission>();
+	        var gridSubmissions = _gridRenderer?.CurrentSubmissions ?? Array.Empty<DrawSubmission>();
 	        var uiSubmissions = _imguiRenderer?.CurrentSubmissions ?? Array.Empty<DrawSubmission>();
 
-	        var mergedSubmissions = new DrawSubmission[
-		        baseSubmissions.Length +
-		        sceneSubmissions.Length +
-		        gameViewSubmissions.Length +
-		        uiSubmissions.Length];
+	        var mergedSubmissions = new DrawSubmission[sceneSubmissions.Length + gridSubmissions.Length + uiSubmissions.Length];
+	        sceneSubmissions.CopyTo(mergedSubmissions, 0);
+	        gridSubmissions.CopyTo(mergedSubmissions, sceneSubmissions.Length);
+	        uiSubmissions.CopyTo(mergedSubmissions, sceneSubmissions.Length + gridSubmissions.Length);
 
-	        baseSubmissions.CopyTo(mergedSubmissions, 0);
-	        sceneSubmissions.CopyTo(mergedSubmissions, baseSubmissions.Length);
-	        
-	        gameViewSubmissions.CopyTo(mergedSubmissions, baseSubmissions.Length + sceneSubmissions.Length);
-	        uiSubmissions.CopyTo(mergedSubmissions, baseSubmissions.Length + sceneSubmissions.Length + gameViewSubmissions.Length);
+	        var drawData = new DrawData { Submissions = mergedSubmissions };
 
-	        _drawData.Submissions = mergedSubmissions;
-
-	        _master.FrameHandler.Draw(in _drawData);
-        };
-        
-        window.Closing += () =>
-        {
-	        _sceneRenderer?.Dispose();
-	        _meshFactory?.Dispose();
+	        _master.FrameHandler.Draw(in drawData);
         };
         
         window.Run();
+    }
+
+    /// <summary>
+    /// Releases the renderer-owned GPU resources. Called from <see cref="VulkanMaster.Dispose"/>
+    /// while the device is still alive.
+    /// </summary>
+    public void Dispose()
+    {
+        _imguiRenderer?.Dispose();
+        _gridRenderer?.Dispose();
+        _sceneRenderer?.Dispose();
+        _meshFactory?.Dispose();
     }
     
     private PipelineData BuildBootstrapPipelineData(SwapchainHandler swapchain)
@@ -169,42 +163,6 @@ internal class MainRenderer
 	    };
 
 	    return _master.PipelineFactory.GetOrCreate(pipelineKey);
-    }
-
-    
-    private DrawData BuildInitialDrawData(PipelineData pipelineData)
-    {
-	    var descriptorSet = _master.DescriptorFactory.GetDescriptorSet(0);
-
-	    return new DrawData
-	    {
-		    Submissions =
-		    [
-			    new DrawSubmission
-			    {
-				    PassType = RenderPassType.Geometry,
-				    PipelineData = pipelineData,
-				    DescriptorSet = descriptorSet,
-				    VertexBuffer = default,
-				    VertexOffset = 0,
-				    IndexBuffer = default,
-				    IndexOffset = 0,
-				    IndexType = IndexType.Uint16,
-				    VertexCount = 3,
-				    IndexCount = 0,
-				    InstanceCount = 1,
-				    FirstVertex = 0,
-				    FirstIndex = 0,
-				    VertexBase = 0,
-				    ScissorPolicy = SubmissionScissorPolicy.PassDefault,
-				    Scissor = default,
-				    ViewportPolicy = SubmissionViewportPolicy.PassDefault,
-				    Viewport = default,
-				    PushConstants = PushConstantPayload.Empty,
-				    ModelMatrix = Matrix4x4.Identity,
-			    }
-		    ]
-	    };
     }
 }
 

@@ -5,7 +5,7 @@ using Semaphore = Silk.NET.Vulkan.Semaphore;
 
 namespace Eidolon.Vulkan;
 
-internal unsafe class SwapchainHandler
+internal unsafe class SwapchainHandler : IDisposable
 {
     VulkanMaster _master;
     IWindow _window;
@@ -420,6 +420,11 @@ internal unsafe class SwapchainHandler
         CreateImageViews();
         CreateDepthResources();
         return true;
+    }
+
+    public void Dispose()
+    {
+        CleanupSwapchainResources();
     }
 
     private void CleanupSwapchainResources()

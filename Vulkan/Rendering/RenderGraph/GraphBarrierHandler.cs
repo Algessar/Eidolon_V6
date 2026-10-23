@@ -7,7 +7,7 @@ internal sealed unsafe class GraphBarrierHandler
 {
     private readonly VulkanMaster _master;
     private readonly GraphResourceRuntimeManager _runtimeManager;
-    private readonly bool _logRenderGraph = true;
+    private readonly bool _logRenderGraph;
 
     public GraphBarrierHandler(VulkanMaster master, GraphResourceRuntimeManager runtimeManager, bool logRenderGraph)
     {
