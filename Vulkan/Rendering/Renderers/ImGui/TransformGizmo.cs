@@ -87,6 +87,9 @@ internal sealed class TransformGizmo
     /// <summary>Quantise drags to whole steps (0.25 units, 15 degrees, 0.1 scale).</summary>
     public bool Snap { get; set; }
 
+    /// <summary>Whether the handles are drawn and clickable. Modal G/R/S transforms ignore it.</summary>
+    public bool ShowHandles { get; set; } = true;
+
     public GizmoAxis HoveredAxis { get; private set; }
 
     public GizmoAxis ActiveAxis { get; private set; }
@@ -155,8 +158,12 @@ internal sealed class TransformGizmo
             if (world.TryGetComponent<Transform>(_modalEntity, out var movedTransform))
                 modalTransform = movedTransform;
 
-            var modalOrigin = WorldPosition(modalTransform, world);
-            Draw(ImGui.GetWindowDrawList(), modalOrigin, GizmoScale(camera, modalOrigin));
+            if (ShowHandles)
+            {
+                var modalOrigin = WorldPosition(modalTransform, world);
+                Draw(ImGui.GetWindowDrawList(), modalOrigin, GizmoScale(camera, modalOrigin));
+            }
+
             return;
         }
 
@@ -167,7 +174,7 @@ internal sealed class TransformGizmo
         var overViewport = mouse.X >= imageMin.X && mouse.X <= imageMin.X + imageSize.X &&
                            mouse.Y >= imageMin.Y && mouse.Y <= imageMin.Y + imageSize.Y;
 
-        if (ActiveAxis == GizmoAxis.None && overViewport)
+        if (ShowHandles && ActiveAxis == GizmoAxis.None && overViewport)
         {
             HoveredAxis = FindHandleUnderCursor(origin, scale, mouse);
 
@@ -196,7 +203,8 @@ internal sealed class TransformGizmo
             }
         }
 
-        Draw(ImGui.GetWindowDrawList(), origin, scale);
+        if (ShowHandles)
+            Draw(ImGui.GetWindowDrawList(), origin, scale);
     }
 
     /// <summary>Captures everything the modal transform needs to stay stable for its whole run.</summary>
@@ -220,8 +228,17 @@ internal sealed class TransformGizmo
         _modalRight = right.LengthSquared() > 1e-6f ? Vector3.Normalize(right) : Vector3.UnitX;
         _modalUp = Vector3.Cross(_modalRight, forward);
 
-        var distance = Vector3.Distance(camera.Position, _modalStartWorldPosition);
-        _modalWorldPerPixel = ViewportCamera.WorldPerPixel(distance, camera.FieldOfView, _imageSize.Y);
+        // Screen-to-world scale: depth of the object, or the view distance when the selection is the
+        // camera itself (a camera sits exactly at its own origin, which would scale drags to nothing).
+        var depth = Vector3.Distance(camera.Position, _modalStartWorldPosition);
+
+        if (depth < 0.1f)
+            depth = Vector3.Distance(camera.Position, camera.Target);
+
+        if (depth < 0.1f)
+            depth = 1f;
+
+        _modalWorldPerPixel = ViewportCamera.WorldPerPixel(depth, camera.FieldOfView, _imageSize.Y);
     }
 
     /// <summary>

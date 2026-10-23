@@ -1,41 +1,4 @@
-﻿# Nexus
-
-Nexus is the over-arching system that defines Eidolon. It is the combination of physics,
-SDF, Animation and Machine Learning. The goal of Eidolon is to make these systems work together
-from the start.
-
-Phrased differently: Systems express intent, targets, and constraints. Nexus resolves those into authoritative 
-simulation state.
-
-**SDF:**
-SDF will be tightly bound to all World systems. While Raycasts and such will most likely still exist, distance queries and
-collision will be based on SDF gradients.
-
-- Collision
-- Distance queries
-- All the other SDF functions: min/max, difference/union etc
-- Possibly rendering: Ambient Occlusion, Depth of Field, calculating normals etc [undecided]
-- 
-
-
-**Physics:** 
-- XPBD based physics
-- SDF collision
-- Animation integration
-
-**Animation:**
-- Clear states
-- Physics integration
-- ML integration
-
-The animation system will likely require the most thought. The goal is the have a very clear Resolved State that
-runs after all other systems. 
-
-Proposed resolve state:
-
-___
-
-# Eidolon Nexus
+﻿# Eidolon Nexus
 
 ## Overview
 
@@ -46,13 +9,13 @@ Its primary systems are:
 - **XPBD** — physically based constraint solving and simulation
 - **SDF** — signed distance field generation and spatial queries
 - **Animation** — animation evaluation, procedural animation, pose generation and modification
-- **ML** — machine-learning-driven behavior, control and decision making
+- **ML** — machine-learning-driven behavior, control and decision-making
 
 The goal is not simply to provide four independent systems in one engine.
 
 The goal is for these systems to **work together as parts of a shared simulation model**, allowing animation, physics, spatial information and machine learning to influence one another without requiring direct coupling between their implementations.
 
-Nexus should make complex behaviors possible without requiring the user to manually bridge unrelated systems.
+Nexus should make complex behaviours possible without requiring the user to manually bridge unrelated systems.
 
 ---
 
@@ -519,7 +482,7 @@ The purpose of this flow is to establish the conceptual direction rather than di
 Before implementing the Nexus integration layer, investigate:
 
 1. **What exactly constitutes Nexus simulation state?**
-2. **Which state is desired state versus authoritative state?**
+2. **Which state is the desired state versus the authoritative state?**
 3. **How are partial state modifications represented?**
 4. **How are priorities and layers represented?**
 5. **How are constraints registered and resolved?**

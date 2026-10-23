@@ -2,6 +2,7 @@
 using EidolonEngine;
 using EidolonCore.Assets;
 using EidolonCore.ECS;
+using EidolonCore.Simulation;
 using Silk.NET.Maths;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.KHR;
@@ -45,18 +46,22 @@ internal class VulkanMaster : IDisposable
     public FrameHandler? FrameHandler { get; set; }
 
     private readonly MainRenderer _mainRenderer;
-    private readonly World _world;
+    private readonly SceneSession _session;
     private readonly AssetLibrary _assets;
 
     private bool _initialized;
     private bool _disposed;
     #endregion
 
-    public World World => _world;
+    /// <summary>The world currently being rendered: the runtime copy during play, else authored.</summary>
+    public World World => _session.Active;
 
-    public VulkanMaster(World world, AssetLibrary assets, CompiledRenderGraph? initialGraph = null)
+    /// <summary>Owns the authored world and, while play mode runs, the runtime copy.</summary>
+    public SceneSession Session => _session;
+
+    public VulkanMaster(SceneSession session, AssetLibrary assets, CompiledRenderGraph? initialGraph = null)
     {
-        _world = world;
+        _session = session;
         _assets = assets;
 
         // Compile in place in the deployed shader folder so this run picks up the result.
@@ -74,7 +79,7 @@ internal class VulkanMaster : IDisposable
         _window.Load += () =>
         {
             InitializeManagers();
-            _mainRenderer.CreateRenderers(_world, _assets, initialGraph);
+            _mainRenderer.CreateRenderers(_session, _assets, initialGraph);
         };
         
         _mainRenderer.Run(_window);

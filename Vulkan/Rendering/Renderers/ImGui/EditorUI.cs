@@ -4,6 +4,7 @@ using EidolonCore.Assets;
 using EidolonCore.ECS;
 using EidolonCore.Math;
 using EidolonCore.Rendering;
+using EidolonCore.Simulation;
 using ImGuiNET;
 using Silk.NET.Windowing;
 
@@ -28,12 +29,16 @@ internal unsafe class EditorUI
     private static readonly Vector4 PreviewColor = new(0.55f, 0.85f, 0.95f, 1f);
 
     private readonly IWindow _window;
-    private readonly World _world;
+    private readonly SceneSession _session;
     private readonly AssetLibrary _assets;
     private readonly AssetBrowserPanel _browser;
     private readonly ViewportSettings _viewport;
     private readonly TransformGizmo _transformGizmo = new();
 
+    /// <summary>The world being edited: the runtime copy during play, else the authored world.</summary>
+    private World _world => _session.Active;
+
+    private nint _editorViewTextureID;
     private nint _gameViewTextureID;
 
     private Entity? _selected;
@@ -48,10 +53,10 @@ internal unsafe class EditorUI
     private int _spawnCounter;
     private int _materialCounter;
 
-    public EditorUI(IWindow window, World world, AssetLibrary assets, ViewportSettings viewport)
+    public EditorUI(IWindow window, SceneSession session, AssetLibrary assets, ViewportSettings viewport)
     {
         _window = window;
-        _world = world;
+        _session = session;
         _assets = assets;
         _viewport = viewport;
         _browser = new AssetBrowserPanel(assets, SpawnAsset, SpawnImportedMesh);
@@ -63,7 +68,10 @@ internal unsafe class EditorUI
         var io = ImGui.GetIO();
         
         io.ConfigFlags |= ImGuiConfigFlags.DockingEnable;
-        io.ConfigFlags |= ImGuiConfigFlags.ViewportsEnable;
+        // This renderer submits draw data for the main Vulkan window only. Detached ImGui
+        // platform windows need their own window and Vulkan swapchain/rendering path, which
+        // is not implemented yet. Docking within the editor window remains supported.
+        io.ConfigFlags &= ~ImGuiConfigFlags.ViewportsEnable;
         
         float dpiScale = 0.99f;
         io.DisplaySize = new Vector2(_window.Size.X, _window.Size.Y);
@@ -89,6 +97,8 @@ internal unsafe class EditorUI
     public void Update()
     {
         DrawDockSpace();
+        DrawMainMenuBar();
+        DrawGameWindow();
         DrawGameViewWindow();
         DrawSceneWindow();
         DrawInspectorWindow();
@@ -104,9 +114,28 @@ internal unsafe class EditorUI
         // First-run placement only: once the window is docked its position comes from the layout.
         ImGui.SetNextWindowPos(new Vector2(1180f, 60f), ImGuiCond.FirstUseEver);
         ImGui.SetNextWindowSize(new Vector2(340f, 300f), ImGuiCond.FirstUseEver);
-        ImGui.Begin("Eidolon / Scene");
+        ImGui.Begin("Hierarchy");
 
-        ImGui.Text($"{_world.EntityCount} entities");
+        ImGui.Text(_session.InPlayMode
+            ? $"{_world.EntityCount} entities (runtime copy)"
+            : $"{_world.EntityCount} entities");
+
+        if (_session.LastError is { } playError)
+            ImGui.TextColored(ErrorColor, $"System failed, play stopped: {playError.Message}");
+
+        if (ImGui.BeginPopupContextWindow("##hierarchyCreate", ImGuiPopupFlags.MouseButtonRight))
+        {
+            if (ImGui.MenuItem("Add Game Camera"))
+                SpawnGameCamera();
+
+            if (ImGui.MenuItem("Add Cube"))
+                SpawnPrimitive(PrimitiveMeshes.Cube, "Cube");
+
+            if (ImGui.MenuItem("Add Plane"))
+                SpawnPrimitive(PrimitiveMeshes.Plane, "Plane");
+
+            ImGui.EndPopup();
+        }
 
         foreach (var root in Hierarchy.GetRoots(_world).ToArray())
             DrawEntityNode(root);
@@ -230,7 +259,7 @@ internal unsafe class EditorUI
     {
         ImGui.SetNextWindowPos(new Vector2(1180f, 380f), ImGuiCond.FirstUseEver);
         ImGui.SetNextWindowSize(new Vector2(340f, 360f), ImGuiCond.FirstUseEver);
-        ImGui.Begin("Eidolon / Inspector");
+        ImGui.Begin("Inspector");
 
         if (_selected is { } stale && !_world.IsAlive(stale))
             _selected = null;
@@ -252,11 +281,14 @@ internal unsafe class EditorUI
 
         ImGui.Separator();
 
+        ImGui.BeginDisabled(_session.InPlayMode);
         if (ImGui.Button("Delete entity"))
         {
             _world.DestroyEntity(entity);
             _selected = null;
         }
+
+        ImGui.EndDisabled();
 
         ImGui.End();
     }
@@ -321,35 +353,43 @@ internal unsafe class EditorUI
             material.BaseColor = color;
     }
 
+    /// <summary>Size of the editor viewport panel (drives the editor camera aspect).</summary>
+    public Vector2 EditorViewSize = new Vector2();
+
+    /// <summary>Size of the game view panel.</summary>
     public Vector2 GameViewSize = new Vector2();
 
     private void DrawGameViewWindow()
     {
         // Give the game view a usable size the first time the editor runs.
         ImGui.SetNextWindowSize(new Vector2(1280f, 720f), ImGuiCond.FirstUseEver);
-        ImGui.Begin("Eidolon / Game View");
+        ImGui.Begin("Scene");
 
+        DrawPlayToolbar();
         DrawViewportToolbar();
 
         //NOTE: this currently causes the Font Atlas to be rendered in the window.
         var available = ImGui.GetContentRegionAvail();
-        GameViewSize = available;
-        if (_gameViewTextureID != 0 && available.X > 1f && available.Y > 1f)
+        EditorViewSize = available;
+        if (_editorViewTextureID != 0 && available.X > 1f && available.Y > 1f)
         {
             var imageMin = ImGui.GetCursorScreenPos();
 
             // The scene is rendered with the Vulkan Y flip in the projection, so its
             // framebuffer already has +Y at the top; no extra UV flip is needed here.
-            ImGui.Image((nint)_gameViewTextureID, available);
+            ImGui.Image((nint)_editorViewTextureID, available);
 
             var hovering = ImGui.IsMouseHoveringRect(imageMin, imageMin + available);
             var modalBefore = _transformGizmo.IsModal;
 
             HandleTransformShortcuts(hovering, modalBefore);
 
+            // The Gizmo checkbox hides the handles; G/R/S keep working either way.
+            _transformGizmo.ShowHandles = _viewport.ShowGizmo;
+
             // Gizmo hover/drag is resolved before picking so a click on a handle moves the object
             // instead of re-selecting whatever is behind the gizmo.
-            var gizmoSelection = _previewEntity is null && _viewport.ShowGizmo ? _selected : null;
+            var gizmoSelection = _previewEntity is null ? _selected : null;
             _transformGizmo.Update(_world, gizmoSelection, FindCamera(), imageMin, available);
 
             // Camera navigation yields to a running transform.
@@ -427,6 +467,9 @@ internal unsafe class EditorUI
 
         if (io.MouseWheel != 0f)
             camera.Move((ViewportCamera.Dolly(camera.Position, camera.Target, io.MouseWheel) - camera.Position));
+
+        // Keep the entity transform in step so the camera sync cannot undo this move.
+        SyncCameraTransform(camera);
     }
 
     /// <summary>The selection's origin if there is one, otherwise the camera's own target.</summary>
@@ -441,6 +484,67 @@ internal unsafe class EditorUI
         }
 
         return camera.Target;
+    }
+
+    /// <summary>
+    /// Play mode controls. Entering play clones the authored world into the session's runtime
+    /// world; stopping drops it again, so anything done while playing is discarded.
+    /// </summary>
+    private void DrawPlayToolbar()
+    {
+        var playing = _session.InPlayMode;
+        var paused = _session.State == PlayState.Paused;
+
+        if (!playing)
+        {
+            if (ImGui.Button("Play"))
+                StartPlay();
+        }
+        else if (ImGui.Button(paused ? "Resume" : "Pause"))
+        {
+            if (paused)
+                _session.Resume();
+            else
+                _session.Pause();
+        }
+
+        ImGui.SameLine();
+
+        if (ImGui.Button("Stop") && playing)
+        {
+            _session.Stop();
+            SetStatus("Stopped: authored scene restored.", isError: false);
+        }
+
+        ImGui.SameLine();
+        ImGui.TextColored(playing ? SuccessColor : new Vector4(0.6f, 0.6f, 0.62f, 1f), _session.State.ToString());
+
+        ImGui.SameLine();
+        ImGui.TextDisabled(playing
+            ? $"runtime world: {_session.Active.EntityCount} entities"
+            : $"authored world: {_session.Active.EntityCount} entities");
+    }
+
+    private void StartPlay()
+    {
+        if (_session.InPlayMode)
+            return;
+
+        World runtime;
+
+        try
+        {
+            runtime = SceneCloner.Clone(_session.Authored);
+        }
+        catch (Exception exception)
+        {
+            SetStatus($"Could not start play mode: {exception.Message}", isError: true);
+            return;
+        }
+
+        _session.EnterPlay(runtime);
+
+        SetStatus($"Playing: {runtime.EntityCount} entities in the runtime world.", isError: false);
     }
 
     /// <summary>Viewport options: overlays, which gizmo, and snapping.</summary>
@@ -595,6 +699,7 @@ internal unsafe class EditorUI
                 continue;
 
             SnapCameraToDirection(camera, balls[i].Direction);
+            SyncCameraTransform(camera);
             break;
         }
     }
@@ -610,6 +715,20 @@ internal unsafe class EditorUI
         public float Depth { get; set; }
         public float Alpha { get; set; }
         public Vector2 Position { get; set; }
+    }
+
+    /// <summary>Writes the camera position back onto the entity transform that owns it.</summary>
+    private void SyncCameraTransform(Camera camera)
+    {
+        foreach (var entity in _world.GetEntitiesWith<Transform, Camera>())
+        {
+            if (!ReferenceEquals(_world.GetComponent<Camera>(entity), camera))
+                continue;
+
+            ref var transform = ref _world.GetComponent<Transform>(entity);
+            transform.Position = camera.Position;
+            return;
+        }
     }
 
     private static void SnapCameraToDirection(Camera camera, Vector3 direction)
@@ -763,9 +882,10 @@ internal unsafe class EditorUI
         return null;
     }
 
-    public void SetGameViewTexture(nint textureId)
+    public void SetViewTextures(nint editorViewTextureId, nint gameViewTextureId)
     {
-        _gameViewTextureID = textureId;
+        _editorViewTextureID = editorViewTextureId;
+        _gameViewTextureID = gameViewTextureId;
     }
 
     private void SpawnAsset(MeshAsset asset)
@@ -848,6 +968,183 @@ internal unsafe class EditorUI
         _statusIsError = isError;
     }
 
+    /// <summary>Top-level menu: create cameras and primitives, toggle overlays.</summary>
+    private void DrawMainMenuBar()
+    {
+        if (!ImGui.BeginMainMenuBar())
+            return;
+
+        if (ImGui.BeginMenu("File"))
+        {
+            if (ImGui.MenuItem("Save Scene"))
+                SaveScene();
+
+            if (ImGui.MenuItem("Load Scene"))
+                LoadScene();
+
+            ImGui.EndMenu();
+        }
+
+        if (ImGui.BeginMenu("Create"))
+        {
+            // Creating entities mid-play would only exist in the runtime copy, so it is disabled.
+            ImGui.BeginDisabled(_session.InPlayMode);
+
+            if (ImGui.MenuItem("Game Camera"))
+                SpawnGameCamera();
+
+            ImGui.Separator();
+
+            if (ImGui.MenuItem("Cube"))
+                SpawnPrimitive(PrimitiveMeshes.Cube, "Cube");
+
+            if (ImGui.MenuItem("Plane"))
+                SpawnPrimitive(PrimitiveMeshes.Plane, "Plane");
+
+            ImGui.EndDisabled();
+            ImGui.EndMenu();
+        }
+
+        if (ImGui.BeginMenu("View"))
+        {
+            if (ImGui.MenuItem("Grid", null, _viewport.ShowGrid))
+                _viewport.ShowGrid = !_viewport.ShowGrid;
+
+            if (ImGui.MenuItem("Gizmo", null, _viewport.ShowGizmo))
+                _viewport.ShowGizmo = !_viewport.ShowGizmo;
+
+            ImGui.EndMenu();
+        }
+
+        ImGui.EndMainMenuBar();
+    }
+
+    /// <summary>Read-only view through the game camera; nothing here can be edited.</summary>
+    private void DrawGameWindow()
+    {
+        ImGui.SetNextWindowSize(new Vector2(640f, 400f), ImGuiCond.FirstUseEver);
+        ImGui.Begin("Game");
+
+        var available = ImGui.GetContentRegionAvail();
+        GameViewSize = available;
+
+        if (HasGameCamera())
+        {
+            if (_gameViewTextureID != 0 && available.X > 1f && available.Y > 1f)
+                ImGui.Image((nint)_gameViewTextureID, available);
+            else
+                ImGui.TextDisabled("Game view texture unavailable");
+
+            PublishGameInput(ImGui.IsWindowHovered() && !ImGui.IsAnyItemActive());
+        }
+        else
+        {
+            ImGui.TextDisabled("No game camera. Add one from Create > Game Camera.");
+        }
+
+        ImGui.End();
+    }
+
+    /// <summary>
+    /// Samples gameplay input from ImGui and publishes it to the session. Only the game view feeds
+    /// it, and only while playing; everything else publishes an empty snapshot.
+    /// </summary>
+    private void PublishGameInput(bool gameViewHovered)
+    {
+        if (!_session.InPlayMode || !gameViewHovered || ImGui.GetIO().AppFocusLost)
+        {
+            _session.ClearInput();
+            return;
+        }
+
+        var io = ImGui.GetIO();
+
+        _session.SetInput(new GameInput(
+            io.MousePos,
+            io.MouseDelta,
+            io.MouseWheel,
+            io.MouseDown[0],
+            io.MouseDown[1],
+            io.MouseDown[2],
+            io.KeyShift,
+            io.KeyCtrl));
+    }
+
+    private static string ScenesDirectory => Path.Combine(AppContext.BaseDirectory, "Scenes");
+
+    private const string SceneFilter = "Eidolon scene (*.json)\0*.json\0All files (*.*)\0*.*\0\0";
+
+    private void SaveScene()
+    {
+        try
+        {
+            var chosen = FileDialog.TrySaveFile("Save scene", SceneFilter, "json", ScenesDirectory);
+
+            if (chosen is null)
+                return;
+
+            SceneSerializer.Save(_session.Authored, chosen, _viewport);
+            SetStatus($"Saved {_session.Authored.EntityCount} entities to {chosen}", isError: false);
+        }
+        catch (Exception exception)
+        {
+            SetStatus($"Save failed: {exception.Message}", isError: true);
+        }
+    }
+
+    private void LoadScene()
+    {
+        if (_session.InPlayMode)
+        {
+            SetStatus("Stop play mode before loading a scene.", isError: true);
+            return;
+        }
+
+        var chosen = FileDialog.TryPickFile("Load scene", SceneFilter, ScenesDirectory);
+
+        if (chosen is null)
+            return;
+
+        try
+        {
+            SceneSerializer.Load(chosen, _session.Authored, _assets, _viewport);
+            _selected = null;
+            _dragSource = null;
+            SetStatus($"Loaded {_session.Authored.EntityCount} entities from {chosen}", isError: false);
+        }
+        catch (Exception exception)
+        {
+            SetStatus($"Load failed: {exception.Message}", isError: true);
+        }
+    }
+
+    private bool HasGameCamera()
+    {
+        foreach (var entity in _world.GetEntitiesWith<Camera>())
+        {
+            if (_world.GetComponent<Camera>(entity).Kind == CameraKind.Game)
+                return true;
+        }
+
+        return false;
+    }
+
+    private void SpawnGameCamera()
+    {
+        var camera = FindCamera();
+        var position = camera?.Position ?? new Vector3(3f, 2f, 5f);
+        var target = camera?.Target ?? Vector3.Zero;
+
+        _selected = SceneSpawner.SpawnCamera(_world, position, target);
+        SetStatus($"Added game camera #{_selected?.Id}.", isError: false);
+    }
+
+    private void SpawnPrimitive(Mesh mesh, string name)
+    {
+        _selected = Spawn(mesh, name);
+        SetStatus($"Added {name}.", isError: false);
+    }
+
     private void DrawDockSpace()
     {
         var viewport = ImGui.GetMainViewport();
@@ -863,13 +1160,13 @@ internal unsafe class EditorUI
 
         ImGui.Begin(
             "##DockSpaceRoot",
+            ImGuiWindowFlags.NoDocking |
             ImGuiWindowFlags.NoTitleBar |
             ImGuiWindowFlags.NoCollapse |
             ImGuiWindowFlags.NoResize |
             ImGuiWindowFlags.NoMove |
             ImGuiWindowFlags.NoBringToFrontOnFocus |
-            ImGuiWindowFlags.NoNavFocus |
-            ImGuiWindowFlags.AlwaysAutoResize
+            ImGuiWindowFlags.NoNavFocus
         );
         ImGui.PopStyleVar(3);
         ImGui.PopStyleColor();

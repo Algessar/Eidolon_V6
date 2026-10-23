@@ -1,4 +1,4 @@
-﻿using System.Numerics;
+using System.Numerics;
 using EidolonCore.ECS;
 using EidolonCore.Rendering;
 
@@ -6,13 +6,26 @@ namespace Eidolon.Vulkan;
 
 //NOTE: This class is now the same as in an older working version.
 
+/// <summary>Which viewport a camera drives.</summary>
+public enum CameraKind
+{
+    /// <summary>Drives the editor viewport.</summary>
+    Editor,
+
+    /// <summary>Drives the game view.</summary>
+    Game,
+}
+
 /// <summary>
-/// Perspective camera. Lives on a scene entity as a component; the renderer uses the first
-/// entity that carries one.
+/// Perspective camera. Lives on a scene entity as a component; the renderer picks the first
+/// editor camera for the viewport and the first game camera for the game view.
 /// </summary>
 public class Camera : IComponent
 {
     private const float DegreesToRadians = MathF.PI / 180f;
+
+    /// <summary>Which viewport this camera drives.</summary>
+    public CameraKind Kind { get; set; } = CameraKind.Editor;
 
     public Vector3 Position { get; set; } = new(0, 0, 3f);
     public Vector3 Forward { get; private set; } = -Vector3.UnitZ;
@@ -35,6 +48,22 @@ public class Camera : IComponent
         
     }
 
+    /// <summary>Copies the camera for a snapshot, so play mode cannot move the authored view.</summary>
+    public Camera(Camera other)
+    {
+        Kind = other.Kind;
+        Position = other.Position;
+        Forward = other.Forward;
+        Target = other.Target;
+        Up = other.Up;
+        NearPlane = other.NearPlane;
+        FarPlane = other.FarPlane;
+        AspectRatio = other.AspectRatio;
+        FieldOfView = other.FieldOfView;
+        UseYawPitch = other.UseYawPitch;
+        YawRadians = other.YawRadians;
+        PitchRadians = other.PitchRadians;
+    }
     public void SetAspectRatio(float width, float height)
     {
         AspectRatio = width / height;

@@ -4,6 +4,7 @@ using Eidolon.Engine;
 using Eidolon.Vulkan;
 using EidolonCore.Assets;
 using EidolonCore.ECS;
+using EidolonCore.Simulation;
 using ImGuiNET;
 using Silk.NET.Input;
 using Silk.NET.Vulkan;
@@ -34,7 +35,7 @@ internal class MainRenderer : IDisposable
 
     }
 
-    public void CreateRenderers(World world, AssetLibrary assets, CompiledRenderGraph? initialGraph = null)
+    public void CreateRenderers(SceneSession session, AssetLibrary assets, CompiledRenderGraph? initialGraph = null)
     {
 	    
 	    ImGui.CreateContext();
@@ -49,8 +50,8 @@ internal class MainRenderer : IDisposable
 	    _meshFactory = new MeshFactory(_master);
 	    _viewportSettings = new ViewportSettings();
 	    _gridRenderer = new GridRenderer(_master, _viewportSettings);
-	    _imguiRenderer = new ImGuiRenderer(_master, _inputManager, world, assets, _viewportSettings);
-	    _sceneRenderer = new SceneRenderer(_master, _meshFactory, world);
+	    _imguiRenderer = new ImGuiRenderer(_master, _inputManager, session, assets, _viewportSettings);
+	    _sceneRenderer = new SceneRenderer(_master, _meshFactory, session);
 	    
 	    _imguiRenderer.Initialize(_bootstrapPipelineData.RenderPass);
 	    
@@ -69,6 +70,9 @@ internal class MainRenderer : IDisposable
 
         window.Update += (delta) =>
         {
+	        // Simulation only advances while play mode is running.
+	        _master.Session.Tick((float)delta);
+
 	        _sceneRenderer?.NewFrame();
 	        _imguiRenderer?.NewFrame(
 		        (float)delta,
@@ -77,7 +81,7 @@ internal class MainRenderer : IDisposable
 	        // The editor UI knows how big the game view panel ended up this frame.
 	        if (_imguiRenderer is not null)
 	        {
-		        _sceneRenderer?.SetGameViewSize(_imguiRenderer.GameViewSize);
+		        _sceneRenderer?.SetViewSizes(_imguiRenderer.EditorViewSize, _imguiRenderer.GameViewSize);
 
 		        // Built after the UI so the grid follows any viewport changes made this frame.
 		        _gridRenderer?.NewFrame();

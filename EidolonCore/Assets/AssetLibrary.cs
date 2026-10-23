@@ -101,7 +101,17 @@ public sealed class AssetLibrary
             return false;
         }
 
-        return _assetsByPath.TryGetValue(Path.GetFullPath(path), out asset);
+        try
+        {
+            return _assetsByPath.TryGetValue(Path.GetFullPath(path), out asset);
+        }
+        catch (ArgumentException)
+        {
+            // Treat malformed paths as a miss; callers of TryGetAsset should not have to
+            // pre-validate strings that may have come from a native UI drag payload.
+            asset = null;
+            return false;
+        }
     }
 
     /// <summary>Imports an OBJ file, returning the cached mesh if it was already loaded.</summary>

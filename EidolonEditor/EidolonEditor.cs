@@ -2,6 +2,7 @@
 using EidolonEngine;
 using EidolonCore.Assets;
 using EidolonCore.ECS;
+using EidolonCore.Simulation;
 
 
 namespace Eidolon.Editor;
@@ -21,8 +22,12 @@ public static class EidolonEditor
 
         DefaultScene.Populate(world, assets);
 
+        // The session owns the authored world and, later, the runtime copy used by play mode.
+        var session = new SceneSession(world);
+        session.AddSystem(new SpinSystem());
+
         var initialGraph = BuildInitialGraph(1920, 1080);
-        VulkanHost.Run(world, assets, initialGraph);
+        VulkanHost.Run(session, assets, initialGraph);
         Debug.Log("EidolonEditor shutting down!", VALIDATION_LAYERS.SUCCESS);
     }
 
@@ -46,6 +51,13 @@ public static class EidolonEditor
             ImageFormat.D32Float,
             FlagImageUsage.DepthStencilAttachment));
 
+        var editorColor = graph.CreateImage("EditorView", GraphImageDescription.Create(
+            ImageFormat.Rgba16Float,
+            FlagImageUsage.ColorAttachment | FlagImageUsage.Sampled));
+
+        var editorDepth = graph.CreateImage("EditorViewDepth", GraphImageDescription.Create(
+            ImageFormat.D32Float,
+            FlagImageUsage.DepthStencilAttachment));
         var backbuffer = graph.ImportImage("Backbuffer",
             GraphImageDescription.Create(ImageFormat.Bgra8Unorm,
                 FlagImageUsage.ColorAttachment | FlagImageUsage.Present));
@@ -63,7 +75,13 @@ public static class EidolonEditor
             .Write(gameView)
             .Write(gameViewDepth);
         
-        graph.AddPass("ImGui", RenderPassType.UI).Read(gameView).Write(backbuffer);
+        // The editor viewport: the same scene, rendered from the editor camera.
+        graph.AddPass("EditorView", RenderPassType.EditorView)
+            .Read(postColor)
+            .Write(editorColor)
+            .Write(editorDepth);
+
+        graph.AddPass("ImGui", RenderPassType.UI).Read(gameView).Read(editorColor).Write(backbuffer);
         graph.AddPass("Present", RenderPassType.Present)
             .Read(backbuffer);
         

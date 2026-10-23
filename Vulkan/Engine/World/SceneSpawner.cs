@@ -39,4 +39,25 @@ public static class SceneSpawner
 
         return SpawnMesh(world, mesh, material, origin, new Vector3(scale), rotation);
     }
+
+    /// <summary>
+    /// Spawns a camera entity. Game cameras drive the game view; editor cameras drive the
+    /// viewport (the default scene ships with one).
+    /// </summary>
+    public static Entity SpawnCamera(World world, Vector3 position, Vector3 target,
+        CameraKind kind = CameraKind.Game)
+    {
+        var camera = new Camera
+        {
+            Kind = kind,
+            Position = position,
+        };
+
+        camera.SetTarget(target);
+
+        var entity = world.CreateEntity();
+        world.SetComponent(entity, new Transform(position));
+        world.SetComponent(entity, camera);
+        return entity;
+    }
 }
