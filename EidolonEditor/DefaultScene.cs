@@ -1,6 +1,7 @@
-using System.Numerics;
+﻿using System.Numerics;
 using Eidolon.Vulkan;
 using EidolonCore.Assets;
+using EidolonCore.Simulation;
 using EidolonCore.ECS;
 using EidolonCore.Rendering;
 
@@ -54,8 +55,11 @@ public static class DefaultScene
         var mesh = assets.LoadObj(path);
         Debug.Log($"Default scene: imported {mesh}", VALIDATION_LAYERS.INFO);
 
-        SceneSpawner.SpawnMesh(world, mesh,
+        var icosahedron = SceneSpawner.SpawnMesh(world, mesh,
             new Material("Icosahedron", new Vector4(0.30f, 0.80f, 0.72f, 1f)),
             new Vector3(-0.2f, 0.4f, -2.3f), new Vector3(0.9f));
+
+        // Something visibly moving to prove play mode, systems and FrameTime are wired up.
+        world.SetComponent(icosahedron, new Spin { Axis = Vector3.UnitY, RadiansPerSecond = 1.2f });
     }
 }

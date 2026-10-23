@@ -9,7 +9,7 @@ Its primary systems are:
 - **XPBD** — physically based constraint solving and simulation
 - **SDF** — signed distance field generation and spatial queries
 - **Animation** — animation evaluation, procedural animation, pose generation and modification
-- **ML** — machine-learning-driven behavior, control and decision making
+- **ML** — machine-learning-driven behavior, control and decision-making
 
 The goal is not simply to provide four independent systems in one engine.
 

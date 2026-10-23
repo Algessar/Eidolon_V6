@@ -33,10 +33,32 @@ public class World
 
     public int EntityCount => _entities.Count;
 
+    /// <summary>Removes every entity and component, keeping the world usable.</summary>
+    public void Clear()
+    {
+        _entities.Clear();
+        _stores.Clear();
+    }
+
     public Entity CreateEntity()
     {
         var entity = new Entity(_nextId++);
         _entities.Add(entity);
+        return entity;
+    }
+
+    /// <summary>Recreates an entity with a known id, used when loading a saved scene.</summary>
+    /// <exception cref="InvalidOperationException">An entity with that id already exists.</exception>
+    public Entity CreateEntity(uint id)
+    {
+        var entity = new Entity(id);
+
+        if (!_entities.Add(entity))
+            throw new InvalidOperationException($"Entity {id} already exists.");
+
+        if (id >= _nextId)
+            _nextId = id + 1;
+
         return entity;
     }
 

@@ -15,6 +15,7 @@ internal static unsafe class FileDialog
     private const int OfnPathMustExist = 0x00000800;
     private const int OfnFileMustExist = 0x00001000;
     private const int OfnExplorer = 0x00080000;
+    private const int OfnOverwritePrompt = 0x00000002;
 
     /// <summary>
     /// Shows a modal open-file dialog. Returns the chosen path, or null when the user cancels.
@@ -59,6 +60,46 @@ internal static unsafe class FileDialog
 
     [DllImport("comdlg32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
     private static extern bool GetOpenFileNameW(ref OpenFileName openFileName);
+
+    [DllImport("comdlg32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
+    private static extern bool GetSaveFileNameW(ref OpenFileName openFileName);
+
+    /// <summary>Shows the native "save as" dialog. Returns the chosen path, or null when cancelled.</summary>
+    public static string? TrySaveFile(string title, string filter, string defaultExtension = "json",
+        string? initialDirectory = null)
+    {
+        if (!OperatingSystem.IsWindows())
+            return null;
+
+        var buffer = new char[32768];
+
+        fixed (char* filePointer = buffer)
+        {
+            var dialog = new OpenFileName
+            {
+                StructSize = Marshal.SizeOf<OpenFileName>(),
+                Owner = GetForegroundWindow(),
+                Filter = filter,
+                FilterIndex = 1,
+                File = (IntPtr)filePointer,
+                MaxFile = buffer.Length,
+                InitialDirectory = string.IsNullOrEmpty(initialDirectory) ? null : initialDirectory,
+                Title = title,
+                DefaultExtension = defaultExtension,
+                Flags = OfnExplorer | OfnPathMustExist | OfnOverwritePrompt,
+            };
+
+            if (!GetSaveFileNameW(ref dialog))
+                return null;
+        }
+
+        var length = Array.IndexOf(buffer, (char)0);
+
+        if (length < 0)
+            length = buffer.Length;
+
+        return length == 0 ? null : new string(buffer, 0, length);
+    }
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();

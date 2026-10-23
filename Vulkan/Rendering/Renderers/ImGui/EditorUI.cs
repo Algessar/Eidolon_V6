@@ -116,7 +116,12 @@ internal unsafe class EditorUI
         ImGui.SetNextWindowSize(new Vector2(340f, 300f), ImGuiCond.FirstUseEver);
         ImGui.Begin("Hierarchy");
 
-        ImGui.Text($"{_world.EntityCount} entities");
+        ImGui.Text(_session.InPlayMode
+            ? $"{_world.EntityCount} entities (runtime copy)"
+            : $"{_world.EntityCount} entities");
+
+        if (_session.LastError is { } playError)
+            ImGui.TextColored(ErrorColor, $"System failed, play stopped: {playError.Message}");
 
         if (ImGui.BeginPopupContextWindow("##hierarchyCreate", ImGuiPopupFlags.MouseButtonRight))
         {
@@ -276,11 +281,14 @@ internal unsafe class EditorUI
 
         ImGui.Separator();
 
+        ImGui.BeginDisabled(_session.InPlayMode);
         if (ImGui.Button("Delete entity"))
         {
             _world.DestroyEntity(entity);
             _selected = null;
         }
+
+        ImGui.EndDisabled();
 
         ImGui.End();
     }
@@ -522,7 +530,18 @@ internal unsafe class EditorUI
         if (_session.InPlayMode)
             return;
 
-        var runtime = SceneCloner.Clone(_session.Authored);
+        World runtime;
+
+        try
+        {
+            runtime = SceneCloner.Clone(_session.Authored);
+        }
+        catch (Exception exception)
+        {
+            SetStatus($"Could not start play mode: {exception.Message}", isError: true);
+            return;
+        }
+
         _session.EnterPlay(runtime);
 
         SetStatus($"Playing: {runtime.EntityCount} entities in the runtime world.", isError: false);
@@ -955,8 +974,22 @@ internal unsafe class EditorUI
         if (!ImGui.BeginMainMenuBar())
             return;
 
+        if (ImGui.BeginMenu("File"))
+        {
+            if (ImGui.MenuItem("Save Scene"))
+                SaveScene();
+
+            if (ImGui.MenuItem("Load Scene"))
+                LoadScene();
+
+            ImGui.EndMenu();
+        }
+
         if (ImGui.BeginMenu("Create"))
         {
+            // Creating entities mid-play would only exist in the runtime copy, so it is disabled.
+            ImGui.BeginDisabled(_session.InPlayMode);
+
             if (ImGui.MenuItem("Game Camera"))
                 SpawnGameCamera();
 
@@ -968,6 +1001,7 @@ internal unsafe class EditorUI
             if (ImGui.MenuItem("Plane"))
                 SpawnPrimitive(PrimitiveMeshes.Plane, "Plane");
 
+            ImGui.EndDisabled();
             ImGui.EndMenu();
         }
 
@@ -1017,7 +1051,7 @@ internal unsafe class EditorUI
     /// </summary>
     private void PublishGameInput(bool gameViewHovered)
     {
-        if (!_session.InPlayMode || !gameViewHovered)
+        if (!_session.InPlayMode || !gameViewHovered || ImGui.GetIO().AppFocusLost)
         {
             _session.ClearInput();
             return;
@@ -1034,6 +1068,54 @@ internal unsafe class EditorUI
             io.MouseDown[2],
             io.KeyShift,
             io.KeyCtrl));
+    }
+
+    private static string ScenesDirectory => Path.Combine(AppContext.BaseDirectory, "Scenes");
+
+    private const string SceneFilter = "Eidolon scene (*.json)\0*.json\0All files (*.*)\0*.*\0\0";
+
+    private void SaveScene()
+    {
+        try
+        {
+            var chosen = FileDialog.TrySaveFile("Save scene", SceneFilter, "json", ScenesDirectory);
+
+            if (chosen is null)
+                return;
+
+            SceneSerializer.Save(_session.Authored, chosen, _viewport);
+            SetStatus($"Saved {_session.Authored.EntityCount} entities to {chosen}", isError: false);
+        }
+        catch (Exception exception)
+        {
+            SetStatus($"Save failed: {exception.Message}", isError: true);
+        }
+    }
+
+    private void LoadScene()
+    {
+        if (_session.InPlayMode)
+        {
+            SetStatus("Stop play mode before loading a scene.", isError: true);
+            return;
+        }
+
+        var chosen = FileDialog.TryPickFile("Load scene", SceneFilter, ScenesDirectory);
+
+        if (chosen is null)
+            return;
+
+        try
+        {
+            SceneSerializer.Load(chosen, _session.Authored, _assets, _viewport);
+            _selected = null;
+            _dragSource = null;
+            SetStatus($"Loaded {_session.Authored.EntityCount} entities from {chosen}", isError: false);
+        }
+        catch (Exception exception)
+        {
+            SetStatus($"Load failed: {exception.Message}", isError: true);
+        }
     }
 
     private bool HasGameCamera()

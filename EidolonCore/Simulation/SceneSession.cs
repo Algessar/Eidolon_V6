@@ -62,6 +62,7 @@ public sealed class SceneSession
         Runtime = runtime;
         State = PlayState.Playing;
         _time = default;
+        LastError = null;
     }
 
     private readonly List<ISystem> _systems = [];
@@ -72,6 +73,9 @@ public sealed class SceneSession
 
     /// <summary>Simulation time of the current play session.</summary>
     public FrameTime Time => _time;
+
+    /// <summary>Exception thrown by a system during the last tick, if any.</summary>
+    public Exception? LastError { get; private set; }
 
     /// <summary>Input delivered to gameplay this frame; always <see cref="GameInput.None"/> while stopped.</summary>
     public GameInput Input { get; private set; }
@@ -90,20 +94,71 @@ public sealed class SceneSession
         _systems.Add(system);
     }
 
+    /// <summary>Simulation step length, in seconds. Defaults to 60 Hz.</summary>
+    public float FixedDelta { get; set; } = 1f / 60f;
+
     /// <summary>
-    /// Advances the runtime world by one step. Does nothing unless the session is playing, so
-    /// pause is simply "stop ticking" and stopping drops the world the systems were writing to.
+    /// Upper bound on simulation steps per frame, so a long stall cannot make the editor spend the
+    /// next frames catching up (the "spiral of death").
+    /// </summary>
+    public int MaxStepsPerTick { get; set; } = 8;
+
+    private float _accumulator;
+
+    /// <summary>
+    /// Feeds one frame of wall-clock time into the fixed-step accumulator. Does nothing unless the
+    /// session is playing, so pause is simply "stop ticking" and stopping drops the world the
+    /// systems were writing to.
     /// </summary>
     public void Tick(float delta)
     {
         if (State != PlayState.Playing)
             return;
 
-        _time = new FrameTime(delta, _time.Total + delta, _time.FrameNumber + 1);
+        if (delta > 0f)
+            _accumulator += delta;
+
+        var fixedDelta = FixedDelta > 1e-5f ? FixedDelta : 1e-5f;
+        var maxSteps = System.Math.Max(1, MaxStepsPerTick);
+        var steps = 0;
+
+        while (_accumulator >= fixedDelta && steps < maxSteps)
+        {
+            _accumulator -= fixedDelta;
+            steps++;
+
+            if (!Step(fixedDelta))
+                return;
+        }
+
+        // Time we could not simulate is dropped rather than queued up for later.
+        if (steps == maxSteps)
+            _accumulator = 0f;
+    }
+
+    /// <summary>Runs exactly one simulation step. Returns false when a system failed.</summary>
+    private bool Step(float fixedDelta)
+    {
+        _time = new FrameTime(fixedDelta, _time.Total + fixedDelta, _time.FrameNumber + 1);
 
         foreach (var system in _systems)
-            system.Update(Active, _time);
+        {
+            try
+            {
+                system.Update(Active, _time);
+            }
+            catch (Exception exception)
+            {
+                // A failing system must not leave the editor half in play mode: stop and report.
+                LastError = exception;
+                Stop();
+                return false;
+            }
+        }
+
+        return true;
     }
+
     /// <summary>Freezes the runtime world. Does nothing unless it is playing.</summary>
     public void Pause()
     {

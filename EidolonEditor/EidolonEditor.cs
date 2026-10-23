@@ -24,6 +24,7 @@ public static class EidolonEditor
 
         // The session owns the authored world and, later, the runtime copy used by play mode.
         var session = new SceneSession(world);
+        session.AddSystem(new SpinSystem());
 
         var initialGraph = BuildInitialGraph(1920, 1080);
         VulkanHost.Run(session, assets, initialGraph);

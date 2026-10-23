@@ -27,6 +27,7 @@ public class SimulationLoopTests
         var session = new SceneSession(authored);
         var system = new CountingSystem();
         session.AddSystem(system);
+        session.FixedDelta = 0.1f;
 
         session.Tick(0.1f);
         Assert.Equal(0, system.Calls);
@@ -55,14 +56,15 @@ public class SimulationLoopTests
         var session = new SceneSession(new World());
         var system = new CountingSystem();
         session.AddSystem(system);
+        session.FixedDelta = 0.25f;
 
         session.EnterPlay(new World());
         session.Tick(0.25f);
         session.Tick(0.5f);
 
         Assert.Equal(0.75f, session.Time.Total, 4);
-        Assert.Equal(2, session.Time.FrameNumber);
-        Assert.Equal(0.5f, system.Last.Delta, 4);
+        Assert.Equal(3, session.Time.FrameNumber);
+        Assert.Equal(0.25f, system.Last.Delta, 4);
     }
 
     [Fact]
@@ -83,7 +85,7 @@ public class SimulationLoopTests
     [Fact]
     public void TimeResetsOnEnterAndStop()
     {
-        var session = new SceneSession(new World());
+        var session = new SceneSession(new World()) { FixedDelta = 0.25f };
         session.EnterPlay(new World());
         session.Tick(1f);
         Assert.Equal(1f, session.Time.Total, 4);
@@ -116,5 +118,37 @@ public class SimulationLoopTests
         session.SetInput(input);
         session.Stop();
         Assert.Equal(GameInput.None, session.Input);
+    }
+
+    [Fact]
+    public void StepsUseTheFixedDeltaAndCarryLeftoverTime()
+    {
+        var session = new SceneSession(new World()) { FixedDelta = 0.1f };
+        var system = new CountingSystem();
+        session.AddSystem(system);
+        session.EnterPlay(new World());
+
+        session.Tick(0.25f);   // two whole steps, 0.05 left over
+        Assert.Equal(2, system.Calls);
+        Assert.Equal(0.1f, system.Last.Delta, 4);
+
+        session.Tick(0.06f);   // leftover plus new time makes a third step
+        Assert.Equal(3, system.Calls);
+        Assert.Equal(0.3f, session.Time.Total, 4);
+    }
+
+    [Fact]
+    public void LongStallIsCappedInsteadOfQueueingSteps()
+    {
+        var session = new SceneSession(new World()) { FixedDelta = 0.1f, MaxStepsPerTick = 3 };
+        var system = new CountingSystem();
+        session.AddSystem(system);
+        session.EnterPlay(new World());
+
+        session.Tick(5f);
+        Assert.Equal(3, system.Calls);
+
+        session.Tick(0f);
+        Assert.Equal(3, system.Calls);
     }
 }
