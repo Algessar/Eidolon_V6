@@ -65,10 +65,19 @@ internal static unsafe class EditorDragDrop
     {
         path = string.Empty;
 
-        if (payload.NativePtr is null || payload.DataSize == 0 || payload.Data == nint.Zero)
+        if (payload.NativePtr is null ||
+            !payload.IsDataType(AssetPayload) ||
+            payload.DataSize == 0 ||
+            payload.Data == nint.Zero)
             return false;
 
         path = Encoding.UTF8.GetString((byte*)payload.Data, (int)payload.DataSize);
+        // ImGui payloads and native string APIs may include a trailing NUL. It is a terminator,
+        // not part of the filesystem path.
+        var terminator = path.IndexOf('\0');
+        if (terminator >= 0)
+            path = path[..terminator];
+
         return path.Length > 0;
     }
 

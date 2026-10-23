@@ -1,4 +1,4 @@
-using Silk.NET.Vulkan;
+﻿using Silk.NET.Vulkan;
 
 namespace Eidolon.Vulkan;
 
@@ -44,7 +44,7 @@ internal unsafe class DescriptorFactory: IDisposable
         
         _defaultKey = DescriptorKey.Create(
             "b0:UniformBuffer:1:Vertex",
-            Constants.MAX_FRAMES_IN_FLIGHT,
+            Constants.MAX_FRAMES_IN_FLIGHT * ViewCount,
             DescriptorAllocationStrategy.PerFrame,
             [DescriptorType.UniformBuffer]);
 
@@ -82,20 +82,27 @@ internal unsafe class DescriptorFactory: IDisposable
     }
 
 
-    public DescriptorSet GetDescriptorSet(uint frameIndex)
+    /// <summary>How many independent views (editor + game) reuse the per-frame slots.</summary>
+    public const uint ViewCount = 2;
+
+    public DescriptorSet GetDescriptorSet(uint frameIndex, uint viewIndex = 0)
     {
-        return GetOrCreate(_defaultKey).GetSet(frameIndex);
+        return GetOrCreate(_defaultKey).GetSet(SlotIndex(frameIndex, viewIndex));
     }
+
+    private static uint SlotIndex(uint frameIndex, uint viewIndex) => frameIndex * ViewCount + viewIndex;
     
-    public GpuBuffer GetDefaultUniformBuffer(uint frameIndex)
+    public GpuBuffer GetDefaultUniformBuffer(uint frameIndex, uint viewIndex = 0)
     {
         if (_defaultUniformBuffers.Length == 0)
             throw new InvalidOperationException("Default uniform buffers are not initialized.");
 
-        if (frameIndex >= _defaultUniformBuffers.Length)
+        var slot = SlotIndex(frameIndex, viewIndex);
+
+        if (slot >= _defaultUniformBuffers.Length)
             throw new ArgumentOutOfRangeException(nameof(frameIndex));
 
-        return _defaultUniformBuffers[frameIndex];
+        return _defaultUniformBuffers[slot];
     }
 
 
@@ -213,7 +220,7 @@ internal unsafe class DescriptorFactory: IDisposable
             Size = (ulong)System.Runtime.InteropServices.Marshal.SizeOf<CameraUboData>(),
             Usage = BufferUsageFlags.UniformBufferBit,
             MemoryProperties = MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit,
-            Count = Constants.MAX_FRAMES_IN_FLIGHT,
+            Count = Constants.MAX_FRAMES_IN_FLIGHT * ViewCount,
             AllocationStrategy = GpuBufferAllocationStrategy.PerFrame,
         };
         

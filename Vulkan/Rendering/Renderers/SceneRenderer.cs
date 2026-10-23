@@ -1,9 +1,10 @@
-﻿using System.Numerics;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using Eidolon.Engine;
 using Eidolon.Vulkan;
 using EidolonCore.ECS;
 using EidolonCore.Rendering;
+using EidolonCore.Simulation;
 using Silk.NET.Vulkan;
 
 namespace EidolonEngine;
@@ -16,12 +17,15 @@ internal unsafe class SceneRenderer : IDisposable
 {
     private readonly VulkanMaster _master;
     private readonly MeshFactory _meshFactory;
-    private readonly World _world;
+    private readonly SceneSession _session;
     private readonly List<DrawSubmission> _submissions = [];
 
-    //NOTE: Size of the game view panel in the editor UI. The GameView image is the full
-    //swapchain and gets stretched into that panel, so matching the projection aspect to the
-    //panel keeps the scene free of distortion.
+    /// <summary>The world being rendered: the runtime copy during play, else the authored world.</summary>
+    private World _world => _session.Active;
+
+    //NOTE: The two view images are full swapchain sized and get stretched into their ImGui
+    //panels, so each camera's projection aspect has to match the panel it is displayed in.
+    private Vector2 _editorViewSize;
     private Vector2 _gameViewSize;
 
     private DescriptorSet _descriptorSet;
@@ -29,36 +33,56 @@ internal unsafe class SceneRenderer : IDisposable
 
     public DrawSubmission[] CurrentSubmissions { get; private set; } = Array.Empty<DrawSubmission>();
 
-    /// <summary>The scene camera, or null when the world has no entity carrying one.</summary>
-    public Camera? ActiveCamera { get; private set; }
+    /// <summary>Camera driving the editor viewport.</summary>
+    public Camera? EditorCamera { get; private set; }
 
-    public SceneRenderer(VulkanMaster master, MeshFactory meshFactory, World world)
+    /// <summary>Camera driving the game view; falls back to the editor camera when there is none.</summary>
+    public Camera? GameCamera { get; private set; }
+
+    public SceneRenderer(VulkanMaster master, MeshFactory meshFactory, SceneSession session)
     {
         _master = master;
         _meshFactory = meshFactory;
-        _world = world;
+        _session = session;
 
-        ActiveCamera = FindCamera();
-        Debug.Log($"SCENE RENDERER: {_world.EntityCount} entities, camera: {ActiveCamera is not null}",
-            VALIDATION_LAYERS.INFO);
+        RefreshCameras();
+        Debug.Log($"SCENE RENDERER: {_world.EntityCount} entities, editor camera: {EditorCamera is not null}, " +
+                  $"game camera: {GameCamera is not null}", VALIDATION_LAYERS.INFO);
     }
 
-    public void SetGameViewSize(Vector2 size)
+    public void SetViewSizes(Vector2 editorView, Vector2 gameView)
     {
-        if (size.X > 1f && size.Y > 1f)
-            _gameViewSize = size;
+        if (editorView.X > 1f && editorView.Y > 1f)
+            _editorViewSize = editorView;
+
+        if (gameView.X > 1f && gameView.Y > 1f)
+            _gameViewSize = gameView;
     }
 
     public void NewFrame()
     {
-        ActiveCamera = FindCamera();
+        RefreshCameras();
         BuildDrawSubmissions();
     }
 
-    private Camera? FindCamera()
+    private void RefreshCameras()
+    {
+        // The gizmo moves the entity transform, so every camera follows its own transform.
+        SceneCameras.SyncFromTransforms(_world);
+
+        EditorCamera = FindCamera(CameraKind.Editor, anyKind: true);
+        GameCamera = FindCamera(CameraKind.Game) ?? EditorCamera;
+    }
+
+    private Camera? FindCamera(CameraKind kind, bool anyKind = false)
     {
         foreach (var entity in _world.GetEntitiesWith<Camera>())
-            return _world.GetComponent<Camera>(entity);
+        {
+            var camera = _world.GetComponent<Camera>(entity);
+
+            if (anyKind || camera.Kind == kind)
+                return camera;
+        }
 
         return null;
     }
@@ -67,18 +91,31 @@ internal unsafe class SceneRenderer : IDisposable
     {
         EnsureGeometryResources();
 
-        var camera = ActiveCamera;
-        if (!_geometryPipeline.IsValid || camera is null)
+        if (!_geometryPipeline.IsValid)
         {
             CurrentSubmissions = Array.Empty<DrawSubmission>();
             return;
         }
 
-        var frameIndex = _master.FrameHandler?.CurrentFrame ?? 0;
-        _descriptorSet = _master.DescriptorFactory.GetDescriptorSet(frameIndex);
-        UpdateCameraUniformBuffer(camera, frameIndex);
-
         _submissions.Clear();
+        var frameIndex = _master.FrameHandler?.CurrentFrame ?? 0;
+
+        // View 0 is the editor viewport, view 1 the game view; both share the scene geometry.
+        AddView(frameIndex, viewIndex: 0, RenderPassType.EditorView, EditorCamera, _editorViewSize);
+
+        if (!ReferenceEquals(GameCamera, EditorCamera))
+            AddView(frameIndex, viewIndex: 1, RenderPassType.GameView, GameCamera, _gameViewSize);
+
+        CurrentSubmissions = _submissions.ToArray();
+    }
+
+    private void AddView(uint frameIndex, uint viewIndex, RenderPassType passType, Camera? camera, Vector2 viewSize)
+    {
+        if (camera is null)
+            return;
+
+        var descriptorSet = _master.DescriptorFactory.GetDescriptorSet(frameIndex, viewIndex);
+        UpdateCameraUniformBuffer(camera, frameIndex, viewIndex, viewSize);
 
         foreach (var entity in _world.GetEntitiesWith<Transform, MeshRenderer>())
         {
@@ -99,9 +136,9 @@ internal unsafe class SceneRenderer : IDisposable
 
             _submissions.Add(new DrawSubmission
             {
-                PassType = RenderPassType.GameView,
+                PassType = passType,
                 PipelineData = _geometryPipeline,
-                DescriptorSet = _descriptorSet,
+                DescriptorSet = descriptorSet,
                 VertexBuffer = mesh.VertexBuffer,
                 VertexOffset = 0,
                 IndexBuffer = mesh.IndexBuffer,
@@ -126,25 +163,16 @@ internal unsafe class SceneRenderer : IDisposable
                 ModelMatrix = model,
             });
         }
-
-        CurrentSubmissions = _submissions.ToArray();
     }
 
-    private void UpdateCameraUniformBuffer(Camera camera, uint frameIndex)
+    private void UpdateCameraUniformBuffer(Camera camera, uint frameIndex, uint viewIndex, Vector2 viewSize)
     {
-        if (_gameViewSize is { X: > 1f, Y: > 1f })
+        if (viewSize is { X: > 1f, Y: > 1f })
         {
-            camera.SetAspectRatio(_gameViewSize.X, _gameViewSize.Y);
-        }
-        else if (_master.FrameHandler is { } frameHandler &&
-                 (frameHandler.TryGetResourceExtent("GameView", out var sceneExtent) ||
-                  frameHandler.TryGetResourceExtent("SceneColor", out sceneExtent)) &&
-                 sceneExtent is { Width: > 0, Height: > 0 })
-        {
-            camera.SetAspectRatio(sceneExtent.Width, sceneExtent.Height);
+            camera.SetAspectRatio(viewSize.X, viewSize.Y);
         }
 
-        var buffer = _master.DescriptorFactory.GetDefaultUniformBuffer(frameIndex);
+        var buffer = _master.DescriptorFactory.GetDefaultUniformBuffer(frameIndex, viewIndex);
         if (!buffer.IsValid || !buffer.HostVisible)
             return;
 

@@ -42,6 +42,31 @@ public class World
 
     public bool IsAlive(Entity entity) => _entities.Contains(entity);
 
+    /// <summary>
+    /// Copies every entity and component into a new world, keeping entity ids so references
+    /// (selection, parents) stay valid across the copy.
+    /// </summary>
+    /// <param name="copiers">
+    /// Per-component-type copy functions. Components without an entry are copied by reference,
+    /// which is correct for value types and for shared immutable data (meshes), but not for
+    /// mutable classes - register those here.
+    /// </param>
+    public World Clone(IReadOnlyDictionary<Type, Func<IComponent, IComponent>>? copiers = null)
+    {
+        var clone = new World
+        {
+            _nextId = _nextId,
+        };
+
+        foreach (var entity in _entities)
+            clone._entities.Add(entity);
+
+        foreach (var store in _stores.Values)
+            store.CopyInto(clone, copiers);
+
+        return clone;
+    }
+
     /// <summary>Removes the entity and every component attached to it.</summary>
     /// <remarks>
     /// Children are orphaned, but their world transform is preserved: destroying a parent does not
@@ -181,6 +206,9 @@ public class World
         bool Has(Entity entity);
 
         bool Remove(Entity entity);
+
+        /// <summary>Copies every component of this type into <paramref name="target"/>.</summary>
+        void CopyInto(World target, IReadOnlyDictionary<Type, Func<IComponent, IComponent>>? copiers);
     }
 
     private sealed class ComponentStore<T> : IComponentStore where T : IComponent
@@ -192,6 +220,17 @@ public class World
         public bool Has(Entity entity) => _components.ContainsKey(entity);
 
         public bool Remove(Entity entity) => _components.Remove(entity);
+
+        public void CopyInto(World target, IReadOnlyDictionary<Type, Func<IComponent, IComponent>>? copiers)
+        {
+            Func<IComponent, IComponent>? copier = null;
+            copiers?.TryGetValue(typeof(T), out copier);
+
+            var destination = target.GetOrCreateStore<T>();
+
+            foreach (var (entity, component) in _components)
+                destination._components[entity] = copier is null ? component : (T)copier(component);
+        }
 
         public void Set(Entity entity, T component) => _components[entity] = component;
 

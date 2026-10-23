@@ -166,7 +166,7 @@ internal unsafe class PassExecutionHandler(VulkanMaster master, Func<uint, PassA
             AttachmentStoreOp.Store,
             hasDepth ? (isFirstDepthUse ? AttachmentLoadOp.Clear : AttachmentLoadOp.Load) : AttachmentLoadOp.DontCare,
             hasDepth ? AttachmentStoreOp.Store : AttachmentStoreOp.DontCare,
-            pass.Type is RenderPassType.Geometry or RenderPassType.GameView,
+            pass.Type is RenderPassType.Geometry or RenderPassType.GameView or RenderPassType.EditorView,
             pass.Type is RenderPassType.PostProcess or RenderPassType.UI,
             SampleCountFlags.Count1Bit);
     }

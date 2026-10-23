@@ -17,6 +17,12 @@ public sealed class MeshRenderer : IComponent
     {
     }
 
+    /// <summary>Copies the renderer for a snapshot: shares the mesh, copies the material.</summary>
+    public MeshRenderer(MeshRenderer other)
+    {
+        Mesh = other.Mesh;
+        Material = new Material(other.Material.Name, other.Material.BaseColor);
+    }
     public MeshRenderer(Mesh mesh, Material? material = null)
     {
         Mesh = mesh;

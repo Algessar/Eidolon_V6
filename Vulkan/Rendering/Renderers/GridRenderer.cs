@@ -1,4 +1,4 @@
-using System.Numerics;
+﻿using System.Numerics;
 using System.Runtime.InteropServices;
 using Eidolon.Vulkan;
 using EidolonCore.Rendering;
@@ -57,7 +57,7 @@ internal unsafe class GridRenderer : IDisposable
 
         _submissions.Add(new DrawSubmission
         {
-            PassType = RenderPassType.GameView,
+            PassType = RenderPassType.EditorView,
             PipelineData = _pipeline,
             DescriptorSet = _descriptorSet,
             VertexBuffer = _gridBuffer,
