@@ -3,56 +3,61 @@ using Buffer = Silk.NET.Vulkan.Buffer;
 
 namespace Eidolon.Vulkan;
 
-//TODO: Decide if this should be renamed (GpuBufferHandler or BufferHandler)
+/// <summary>
+/// Allocates device buffers. Ownership transfers to the caller: every buffer returned by
+/// <see cref="Create"/> must be handed back through <see cref="Destroy"/> (or left to
+/// <see cref="Dispose"/> at shutdown).
+/// </summary>
+/// <remarks>
+/// Buffers are deliberately NOT pooled or shared. They are host-visible and get written to
+/// directly (mesh uploads, per-frame UI geometry), so two allocations with identical
+/// characteristics must never alias the same VkBuffer.
+/// </remarks>
 internal unsafe class GpuBufferFactory : IDisposable
 {
     private readonly VulkanMaster _master;
-    private readonly Dictionary<GpuBufferKey, GpuBuffer[]> _cache = new();
+    private readonly Dictionary<ulong, GpuBuffer> _liveBuffers = new();
 
     public GpuBufferFactory(VulkanMaster master)
     {
         _master = master;
     }
 
-    public GpuBuffer[] GetOrCreate(GpuBufferKey key)
+    public GpuBuffer[] Create(GpuBufferKey key)
     {
-        if (_cache.TryGetValue(key, out var existing))
-            return existing;
-
         var buffers = new GpuBuffer[key.Count];
         for (var i = 0; i < key.Count; i++)
         {
             buffers[i] = CreateBuffer(key.Size, key.Usage, key.MemoryProperties);
+            _liveBuffers[buffers[i].Buffer.Handle] = buffers[i];
         }
 
-        _cache[key] = buffers;
         return buffers;
     }
 
-    public void Release(GpuBufferKey key)
+    public void Destroy(GpuBuffer buffer)
     {
-        if (!_cache.Remove(key, out var buffers))
+        if (!_liveBuffers.Remove(buffer.Buffer.Handle, out var tracked))
             return;
 
-        foreach (var buffer in buffers)
-        {
-            _master.Vk.DeviceWaitIdle(_master.VulkanDevice.Device); //TODO: temp fix, find a better solution to avoid CPU-GPU sync stall
+        //TODO: temp fix, find a better solution to avoid CPU-GPU sync stall
+        _master.Vk.DeviceWaitIdle(_master.VulkanDevice.Device);
 
+        DestroyBuffer(tracked);
+    }
+
+    public void Destroy(IEnumerable<GpuBuffer> buffers)
+    {
+        foreach (var buffer in buffers)
             Destroy(buffer);
-        }
     }
 
     public void Dispose()
     {
-        foreach (var group in _cache.Values)
-        {
-            foreach (var buffer in group)
-            {
-                Destroy(buffer);
-            }
-        }
+        foreach (var buffer in _liveBuffers.Values)
+            DestroyBuffer(buffer);
 
-        _cache.Clear();
+        _liveBuffers.Clear();
     }
 
     private GpuBuffer CreateBuffer(ulong size, BufferUsageFlags usage, MemoryPropertyFlags memoryProperties)
@@ -101,7 +106,7 @@ internal unsafe class GpuBufferFactory : IDisposable
         };
     }
 
-    private void Destroy(GpuBuffer buffer)
+    private void DestroyBuffer(GpuBuffer buffer)
     {
         if (!buffer.IsValid)
             return;

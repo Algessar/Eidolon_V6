@@ -774,11 +774,35 @@ internal unsafe class FrameHandler : IDisposable
 
     public void Dispose()
     {
-        _master.Vk.DeviceWaitIdle(_master.VulkanDevice.Device);
-
+        var device = _master.VulkanDevice.Device;
+        _master.Vk.DeviceWaitIdle(device);
 
         _graphResourceRuntimeManager.DestroyGraphResources();
         _passExecutionHandler.Reset();
+
+        // _imagesInFlight only aliases entries of _inFlightFences, so it is not destroyed here.
+        foreach (var semaphore in _waitSemaphore)
+        {
+            if (semaphore.Handle != 0)
+                _master.Vk.DestroySemaphore(device, semaphore, null);
+        }
+
+        foreach (var semaphore in _signalSemaphore)
+        {
+            if (semaphore.Handle != 0)
+                _master.Vk.DestroySemaphore(device, semaphore, null);
+        }
+
+        foreach (var fence in _inFlightFences)
+        {
+            if (fence.Handle != 0)
+                _master.Vk.DestroyFence(device, fence, null);
+        }
+
+        _waitSemaphore = Array.Empty<Semaphore>();
+        _signalSemaphore = Array.Empty<Semaphore>();
+        _inFlightFences = Array.Empty<Fence>();
+        _imagesInFlight = Array.Empty<Fence>();
     }
 
     #endregion Cleanup

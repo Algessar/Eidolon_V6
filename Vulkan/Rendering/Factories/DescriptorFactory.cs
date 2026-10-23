@@ -219,7 +219,7 @@ internal unsafe class DescriptorFactory: IDisposable
         
         //NOTE: to self; this is *descriptor* buffer info, so it's valid here.
         // For next time I think it should be in a BufferFactory.
-        var uniformBuffers = _master.GpuBufferFactory.GetOrCreate(key);
+        var uniformBuffers = _master.GpuBufferFactory.Create(key);
         _defaultUniformBuffers = uniformBuffers;
         for (var i = 0; i < data.Sets.Length; i++)
         {

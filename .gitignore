@@ -1,5 +1,8 @@
-bin/
+﻿bin/
 obj/
 /packages/
 riderModule.iml
 /_ReSharper.Caches/
+
+# ImGui persists the editor dock layout next to the executable / working directory.
+imgui.ini

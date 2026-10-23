@@ -11,3 +11,15 @@
 These systems should be designed to cooperate, not merely coexist. For example, 
 an ML agent should be able to control a character through the same animation and physics interfaces available to ordinary gameplay code. 
 An SDF should be usable by multiple systems without each implementing its own version of distance queries.
+
+
+### Short(er)-term goals
+
+###### In general there's a bunch of functionality from Blender that I'd like, so there's gonna be a lot of that.
+
+- **Browser and Import:** Browser functionality and OBJ/FBX import. Other file types can be added later. Argument can be made for USD as the main file-type though.
+- **Blender Keymaps:** For selection (e.g. lmb to select, rmb for menus) and general navigation (option to rotate around selection etc.) I want it to reflect how Blender does it to reduce friction when moving from one to the other.
+- **Blender Modes:** Somewhat unfinished thoughts, but I like how Blender handles Modes and Workspaces.
+- **Copy on Hover:** Being able to copy values without clicking on the field.
+- 
+

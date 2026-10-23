@@ -276,10 +276,18 @@ internal unsafe class VulkanDevice : IDisposable
 	public void Dispose()
 	{
 		_master.Vk.DeviceWaitIdle(_device);
-		
+
+		// Owned by this class; CommandHandler's pools are released by CommandHandler.Dispose.
+		if (_transientCommandPool.Handle != 0)
+		{
+			_master.Vk.DestroyCommandPool(_device, _transientCommandPool, null);
+			_transientCommandPool = default;
+		}
+
 		if (_device.Handle != 0)
 		{
 			_master.Vk.DestroyDevice(_device, null);
+			_device = default;
 		}
 		
 		

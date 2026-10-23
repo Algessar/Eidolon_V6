@@ -2,7 +2,7 @@ using Silk.NET.Vulkan;
 
 namespace Eidolon.Vulkan;
 
-internal unsafe class RenderPassFactory(VulkanMaster master)
+internal unsafe class RenderPassFactory(VulkanMaster master) : IDisposable
 {
     // Central handling for all buffers: the only place where buffers of any kind are disposed?
     VulkanMaster _master = master;
@@ -151,6 +151,17 @@ internal unsafe class RenderPassFactory(VulkanMaster master)
         
         _renderPassCache.Add(key, renderPass);
         return renderPass;
+    }
+
+    public void Dispose()
+    {
+        foreach (var renderPass in _renderPassCache.Values)
+        {
+            if (renderPass.Handle != 0)
+                _master.Vk.DestroyRenderPass(_master.VulkanDevice.Device, renderPass, null);
+        }
+
+        _renderPassCache.Clear();
     }
     
     private static RenderPassKey ToRenderPassKey(PassExecutionKey key)

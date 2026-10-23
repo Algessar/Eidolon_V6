@@ -171,11 +171,11 @@ internal unsafe class PipelineFactory
 
             var pushConstantRange = new PushConstantRange
             {
-                StageFlags = ShaderStageFlags.VertexBit,
+                StageFlags = key.PushConstantStages,
                 Offset = 0,
-                Size = (uint)Marshal.SizeOf<System.Numerics.Matrix4x4>()
+                Size = key.PushConstantSize
             };
-            Debug.Log($"Push constant range: {pushConstantRange.Size}");
+            Debug.Log($"Push constant range: {pushConstantRange.Size} ({pushConstantRange.StageFlags})");
             
             var layoutInfo = new PipelineLayoutCreateInfo
             {

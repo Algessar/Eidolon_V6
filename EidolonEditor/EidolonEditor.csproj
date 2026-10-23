@@ -14,6 +14,11 @@
       <ProjectReference Include="..\Vulkan\Vulkan.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <!-- Models, materials and other data the editor loads at runtime. -->
+      <None Include="Assets\**\*.*" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+
     <PropertyGroup>
         <ApplicationIcon>Assets\App.ico</ApplicationIcon>
     </PropertyGroup>

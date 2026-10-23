@@ -2,6 +2,8 @@
 using Eidolon.Editor;
 using Eidolon.Engine;
 using Eidolon.Vulkan;
+using EidolonCore.Assets;
+using EidolonCore.ECS;
 using ImGuiNET;
 using Silk.NET.Input;
 using Silk.NET.Vulkan;
@@ -9,7 +11,7 @@ using Silk.NET.Windowing;
 
 namespace EidolonEngine;
 
-internal class MainRenderer
+internal class MainRenderer : IDisposable
 {
 	private VulkanMaster _master;
 	private InputManager _inputManager;
@@ -31,7 +33,7 @@ internal class MainRenderer
 
     }
 
-    public void CreateRenderers(CompiledRenderGraph? initialGraph = null)
+    public void CreateRenderers(World world, AssetLibrary assets, CompiledRenderGraph? initialGraph = null)
     {
 	    
 	    ImGui.CreateContext();
@@ -44,9 +46,9 @@ internal class MainRenderer
 	    
 	    _inputManager = new InputManager(_master.GetWindow);
 	    _meshFactory = new MeshFactory(_master);
-	    _imguiRenderer = new ImGuiRenderer(_master, _inputManager);
-	    _sceneRenderer = new SceneRenderer(_master, _meshFactory);
-	    _cameraController = new CameraController(_inputManager.Input, _sceneRenderer.Camera);
+	    _imguiRenderer = new ImGuiRenderer(_master, _inputManager, world, assets);
+	    _sceneRenderer = new SceneRenderer(_master, _meshFactory, world);
+	    _cameraController = new CameraController(_inputManager.Input, _sceneRenderer.ActiveCamera);
 	    
 	    _imguiRenderer.Initialize(_bootstrapPipelineData.RenderPass);
 	    
@@ -101,13 +103,18 @@ internal class MainRenderer
 	        _master.FrameHandler.Draw(in drawData);
         };
         
-        window.Closing += () =>
-        {
-	        _sceneRenderer?.Dispose();
-	        _meshFactory?.Dispose();
-        };
-        
         window.Run();
+    }
+
+    /// <summary>
+    /// Releases the renderer-owned GPU resources. Called from <see cref="VulkanMaster.Dispose"/>
+    /// while the device is still alive.
+    /// </summary>
+    public void Dispose()
+    {
+        _imguiRenderer?.Dispose();
+        _sceneRenderer?.Dispose();
+        _meshFactory?.Dispose();
     }
     
     private PipelineData BuildBootstrapPipelineData(SwapchainHandler swapchain)

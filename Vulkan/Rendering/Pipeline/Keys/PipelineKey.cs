@@ -32,6 +32,12 @@ internal record struct PipelineKey
 
     public bool HasDepth;
 
+    /// <summary>Size in bytes of the push constant block the pipeline layout declares.</summary>
+    public uint PushConstantSize { get; init; } = 64;
+
+    /// <summary>Shader stages the push constant block is visible to.</summary>
+    public ShaderStageFlags PushConstantStages { get; init; } = ShaderStageFlags.VertexBit;
+
     // Required by the field initializers above; the required shader paths are supplied
     // by callers through object initializers.
     public PipelineKey()
@@ -40,6 +46,8 @@ internal record struct PipelineKey
         BlendState = BlendState.NoBlending;
         CullMode = CullModeBits.Back;
         Topology = PrimitiveTopology.PointList;
+        PushConstantSize = 64;
+        PushConstantStages = ShaderStageFlags.VertexBit;
     }
 }
 

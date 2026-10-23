@@ -83,10 +83,7 @@ internal sealed unsafe class UiGeometryUploader : IDisposable
         if (_vertexKey is { } key && key.Size >= vertexBytes)
             return;
 
-        if (_vertexKey is { } oldKey)
-        {
-            _master.GpuBufferFactory.Release(oldKey);
-        }
+        _master.GpuBufferFactory.Destroy(_uiVertexBuffers);
 
         var newKey = new GpuBufferKey
         {
@@ -98,7 +95,7 @@ internal sealed unsafe class UiGeometryUploader : IDisposable
             AllocationStrategy = GpuBufferAllocationStrategy.PerFrame
         };
 
-        _uiVertexBuffers = _master.GpuBufferFactory.GetOrCreate(newKey);
+        _uiVertexBuffers = _master.GpuBufferFactory.Create(newKey);
         _vertexKey = newKey;
     }
     
@@ -107,8 +104,7 @@ internal sealed unsafe class UiGeometryUploader : IDisposable
         if (_indexKey is { } key && key.Size >= indexBytes)
             return;
 
-        if (_indexKey is { } oldKey)
-            _master.GpuBufferFactory.Release(oldKey);
+        _master.GpuBufferFactory.Destroy(_uiIndexBuffers);
 
         var newKey = new GpuBufferKey
         {
@@ -120,25 +116,18 @@ internal sealed unsafe class UiGeometryUploader : IDisposable
             AllocationStrategy = GpuBufferAllocationStrategy.PerFrame
         };
 
-        _uiIndexBuffers = _master.GpuBufferFactory.GetOrCreate(newKey);
+        _uiIndexBuffers = _master.GpuBufferFactory.Create(newKey);
         _indexKey = newKey;
     }
 
     public void Dispose()
     {
-        if (_vertexKey is { } vertexKey)
-        {
-            _master.GpuBufferFactory.Release(vertexKey);
-            _vertexKey = null;
-        }
-
-        if (_indexKey is { } indexKey)
-        {
-            _master.GpuBufferFactory.Release(indexKey);
-            _indexKey = null;
-        }
+        _master.GpuBufferFactory.Destroy(_uiVertexBuffers);
+        _master.GpuBufferFactory.Destroy(_uiIndexBuffers);
 
         _uiVertexBuffers = Array.Empty<GpuBuffer>();
         _uiIndexBuffers = Array.Empty<GpuBuffer>();
+        _vertexKey = null;
+        _indexKey = null;
     }
 }

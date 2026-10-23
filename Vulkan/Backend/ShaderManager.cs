@@ -3,7 +3,7 @@ using Buffer = System.Buffer;
 
 namespace Eidolon.Vulkan.Rendering;
 
-internal unsafe class ShaderManager
+internal unsafe class ShaderManager : IDisposable
 {
     VulkanMaster _master;
     
@@ -76,5 +76,17 @@ internal unsafe class ShaderManager
             _cache[fileName] = shaderModule;
             return shaderModule;
         }
+    }
+
+    public void Dispose()
+    {
+        // Must run after the pipelines that were built from these modules are destroyed.
+        foreach (var shaderModule in _cache.Values)
+        {
+            if (shaderModule.Handle != 0)
+                _master.Vk.DestroyShaderModule(_master.VulkanDevice.Device, shaderModule, null);
+        }
+
+        _cache.Clear();
     }
 }

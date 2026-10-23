@@ -1,6 +1,8 @@
-
+﻿
 using System.Numerics;
 using Eidolon.Editor;
+using EidolonCore.Assets;
+using EidolonCore.ECS;
 using EidolonCore.Math;
 using ImGuiNET;
 using Silk.NET.Input;
@@ -18,6 +20,8 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     [Header("UI and Input")]
     private EditorUI _editorUI;
     readonly InputManager _inputManager;
+    private readonly World _world;
+    private readonly AssetLibrary _assets;
 
     
     
@@ -43,25 +47,20 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     private ImGuiDrawData CurrentDrawData { get; set; } = ImGuiDrawData.Empty;
     public DrawSubmission[] CurrentSubmissions { get; private set; } = Array.Empty<DrawSubmission>();
     
-    public uint LastVertexCount { get; private set; }
-    public uint LastIndexCount { get; private set; }
-    public int LastCommandListCount { get; private set; }
-    
-    [Header("Debug")]
-    bool _showDemoWindow = false;
-    
 
 
     private RenderPass _renderPass;
     
     public Vector2 GameViewSize => _editorUI.GameViewSize;
     
-    public ImGuiRenderer(VulkanMaster master, InputManager input)
+    public ImGuiRenderer(VulkanMaster master, InputManager input, World world, AssetLibrary assets)
     {
         _master = master;
         _uiGeometryUploader = new UiGeometryUploader(master);
         _master.FrameHandler?.OnSwapchainRecreated += OnSwapchainRecreated;
         _inputManager = input;
+        _world = world;
+        _assets = assets;
     }
     public void Initialize( RenderPass renderPass)
     {
@@ -85,7 +84,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         io.Fonts.ClearTexData();
         CreatePipeline(renderPass);
 
-        _editorUI = new EditorUI(_master.GetWindow);
+        _editorUI = new EditorUI(_master.GetWindow, _world, _assets);
         
         Debug.Log("ImGuiRenderer initialized", VALIDATION_LAYERS.INFO);
     }
@@ -102,7 +101,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         io.DisplayFramebufferScale = new Vector2(
             framebufferSize.X / safeWindowWidth,
             framebufferSize.Y / safeWindowHeight);
-        io.DeltaTime = MathF.Max(1f / 1000f, delta);
+        // A modal OS dialog blocks the loop, so cap the frame time the UI sees afterwards.`r`n        io.DeltaTime = Math.Clamp(delta, 1f / 1000f, 1f / 10f);
         
         _inputManager.UpdateInput(ImGui.GetIO());
         ImGui.NewFrame();
@@ -110,22 +109,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         var hasGameViewTexture = UpdateGameViewTextureBinding();
         _editorUI.SetGameViewTexture(hasGameViewTexture ? _GameViewTextureId : 0);
         _editorUI.Update();
-        BuildUI();
         FinalizeFrame();
-    }
-
-    private void BuildUI()
-    {
-        ImGui.Begin("Eidolon / Render Graph");
-        ImGui.Text("ImGui is integrated in the frame lifecycle.");
-        ImGui.Text($"CmdLists: {LastCommandListCount}, Vtx: {LastVertexCount}, Idx: {LastIndexCount}");
-        ImGui.Checkbox("Show ImGui Demo Window", ref _showDemoWindow);
-        ImGui.End();
-
-        if (_showDemoWindow)
-        {
-            ImGui.ShowDemoWindow(ref _showDemoWindow);
-        }
     }
 
     private void FinalizeFrame()
@@ -133,10 +117,6 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         ImGui.Render();
         var drawData = ImGui.GetDrawData();
 
-        LastVertexCount = !drawData.Valid ? 0 : (uint)drawData.TotalVtxCount;
-        LastIndexCount = !drawData.Valid ? 0 : (uint)drawData.TotalIdxCount;
-        LastCommandListCount = !drawData.Valid ? 0 : drawData.CmdListsCount;
-        
         CurrentDrawData = ConvertDrawData(drawData);
     }
 
@@ -663,7 +643,11 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     
     public void Dispose()
     {
+        _master.FrameHandler?.OnSwapchainRecreated -= OnSwapchainRecreated;
+
         _uiGeometryUploader.Dispose();
+
+        // Descriptor sets reference the font image, so the pool goes first.
         if (_descriptorPool.Handle != 0)
         {
             _master.Vk.DestroyDescriptorPool(_master.VulkanDevice.Device, _descriptorPool, null);
@@ -674,6 +658,30 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         {
             _master.Vk.DestroyDescriptorSetLayout(_master.VulkanDevice.Device, _descriptorSetLayout, null);
             _descriptorSetLayout = default;
+        }
+
+        if (_fontSampler.Handle != 0)
+        {
+            _master.Vk.DestroySampler(_master.VulkanDevice.Device, _fontSampler, null);
+            _fontSampler = default;
+        }
+
+        if (_fontImageView.Handle != 0)
+        {
+            _master.Vk.DestroyImageView(_master.VulkanDevice.Device, _fontImageView, null);
+            _fontImageView = default;
+        }
+
+        if (_fontImage.Handle != 0)
+        {
+            _master.Vk.DestroyImage(_master.VulkanDevice.Device, _fontImage, null);
+            _fontImage = default;
+        }
+
+        if (_fontImageMemory.Handle != 0)
+        {
+            _master.Vk.FreeMemory(_master.VulkanDevice.Device, _fontImageMemory, null);
+            _fontImageMemory = default;
         }
     }
 }
