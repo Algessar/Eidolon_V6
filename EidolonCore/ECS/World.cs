@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -42,24 +43,46 @@ public class World
     public bool IsAlive(Entity entity) => _entities.Contains(entity);
 
     /// <summary>Removes the entity and every component attached to it.</summary>
+    /// <remarks>
+    /// Children are orphaned, but their world transform is preserved: destroying a parent does not
+    /// teleport everything that was under it.
+    /// </remarks>
     public bool DestroyEntity(Entity entity)
     {
         if (!_entities.Remove(entity))
             return false;
 
+        // World matrices have to be captured while the doomed transform is still around.
+        List<(Entity Entity, Matrix4x4 Matrix)>? orphans = null;
+
+        if (TryGetStore<Transform>(out var transformsBefore))
+        {
+            foreach (var other in transformsBefore.Entities)
+            {
+                if (transformsBefore.TryGet(other, out var transform) && transform.Parent == entity)
+                    (orphans ??= []).Add((other, transform.GetWorldMatrix(this)));
+            }
+        }
+
         foreach (var store in _stores.Values)
             store.Remove(entity);
 
-        // Orphan any children rather than leaving them pointing at a dead entity.
-        if (TryGetStore<Transform>(out var transforms))
+        if (orphans is not null && TryGetStore<Transform>(out var transforms))
         {
-            foreach (var other in transforms.Entities)
+            foreach (var (orphan, worldMatrix) in orphans)
             {
-                if (transforms.TryGet(other, out var transform) && transform.Parent == entity)
+                if (!transforms.TryGet(orphan, out var transform))
+                    continue;
+
+                if (Matrix4x4.Decompose(worldMatrix, out var scale, out var rotation, out var translation))
                 {
-                    transform.Parent = default;
-                    transforms.Set(other, transform);
+                    transform.Position = translation;
+                    transform.Rotation = rotation;
+                    transform.Scale = scale;
                 }
+
+                transform.Parent = default;
+                transforms.Set(orphan, transform);
             }
         }
 

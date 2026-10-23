@@ -22,6 +22,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     readonly InputManager _inputManager;
     private readonly World _world;
     private readonly AssetLibrary _assets;
+    private readonly ViewportSettings _gizmo;
 
     
     
@@ -53,7 +54,8 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     
     public Vector2 GameViewSize => _editorUI.GameViewSize;
     
-    public ImGuiRenderer(VulkanMaster master, InputManager input, World world, AssetLibrary assets)
+    public ImGuiRenderer(VulkanMaster master, InputManager input, World world, AssetLibrary assets,
+        ViewportSettings gizmo)
     {
         _master = master;
         _uiGeometryUploader = new UiGeometryUploader(master);
@@ -61,6 +63,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         _inputManager = input;
         _world = world;
         _assets = assets;
+        _gizmo = gizmo;
     }
     public void Initialize( RenderPass renderPass)
     {
@@ -84,7 +87,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         io.Fonts.ClearTexData();
         CreatePipeline(renderPass);
 
-        _editorUI = new EditorUI(_master.GetWindow, _world, _assets);
+        _editorUI = new EditorUI(_master.GetWindow, _world, _assets, _gizmo);
         
         Debug.Log("ImGuiRenderer initialized", VALIDATION_LAYERS.INFO);
     }
@@ -101,7 +104,8 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         io.DisplayFramebufferScale = new Vector2(
             framebufferSize.X / safeWindowWidth,
             framebufferSize.Y / safeWindowHeight);
-        // A modal OS dialog blocks the loop, so cap the frame time the UI sees afterwards.`r`n        io.DeltaTime = Math.Clamp(delta, 1f / 1000f, 1f / 10f);
+        // A modal OS dialog blocks the loop, so cap the frame time the UI sees afterwards.
+        io.DeltaTime = Mathf.Clamp(delta, 1f / 1000f, 1f / 10f);
         
         _inputManager.UpdateInput(ImGui.GetIO());
         ImGui.NewFrame();

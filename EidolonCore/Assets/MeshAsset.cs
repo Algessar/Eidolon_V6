@@ -12,6 +12,9 @@ public sealed class MeshAsset
 
     public string Name { get; }
 
+    /// <summary>Path relative to the asset root, using '/' separators; handy for search results.</summary>
+    public string RelativePath { get; }
+
     public long SizeInBytes { get; }
 
     /// <summary>The parsed mesh, or null until the asset has been imported.</summary>
@@ -19,10 +22,11 @@ public sealed class MeshAsset
 
     public bool IsLoaded => Mesh is not null;
 
-    internal MeshAsset(string path, string name, long sizeInBytes)
+    internal MeshAsset(string path, string name, string relativePath, long sizeInBytes)
     {
         Path = path;
         Name = name;
+        RelativePath = relativePath;
         SizeInBytes = sizeInBytes;
     }
 

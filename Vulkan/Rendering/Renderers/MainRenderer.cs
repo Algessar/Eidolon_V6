@@ -15,11 +15,12 @@ internal class MainRenderer : IDisposable
 {
 	private VulkanMaster _master;
 	private InputManager _inputManager;
-	private CameraController? _cameraController;
 	private MeshFactory _meshFactory;
 	
     private ImGuiRenderer _imguiRenderer;
     private SceneRenderer _sceneRenderer;
+    private GridRenderer? _gridRenderer;
+    private ViewportSettings? _viewportSettings;
 
     private PipelineData _bootstrapPipelineData;
 
@@ -46,9 +47,10 @@ internal class MainRenderer : IDisposable
 	    
 	    _inputManager = new InputManager(_master.GetWindow);
 	    _meshFactory = new MeshFactory(_master);
-	    _imguiRenderer = new ImGuiRenderer(_master, _inputManager, world, assets);
+	    _viewportSettings = new ViewportSettings();
+	    _gridRenderer = new GridRenderer(_master, _viewportSettings);
+	    _imguiRenderer = new ImGuiRenderer(_master, _inputManager, world, assets, _viewportSettings);
 	    _sceneRenderer = new SceneRenderer(_master, _meshFactory, world);
-	    _cameraController = new CameraController(_inputManager.Input, _sceneRenderer.ActiveCamera);
 	    
 	    _imguiRenderer.Initialize(_bootstrapPipelineData.RenderPass);
 	    
@@ -67,11 +69,6 @@ internal class MainRenderer : IDisposable
 
         window.Update += (delta) =>
         {
-	        if (_cameraController is not null)
-	        {
-		        _cameraController.Update((float)delta);
-	        }
-
 	        _sceneRenderer?.NewFrame();
 	        _imguiRenderer?.NewFrame(
 		        (float)delta,
@@ -81,6 +78,9 @@ internal class MainRenderer : IDisposable
 	        if (_imguiRenderer is not null)
 	        {
 		        _sceneRenderer?.SetGameViewSize(_imguiRenderer.GameViewSize);
+
+		        // Built after the UI so the grid follows any viewport changes made this frame.
+		        _gridRenderer?.NewFrame();
 	        }
         };
         
@@ -92,11 +92,13 @@ internal class MainRenderer : IDisposable
 	        }
 
 	        var sceneSubmissions = _sceneRenderer?.CurrentSubmissions ?? Array.Empty<DrawSubmission>();
+	        var gridSubmissions = _gridRenderer?.CurrentSubmissions ?? Array.Empty<DrawSubmission>();
 	        var uiSubmissions = _imguiRenderer?.CurrentSubmissions ?? Array.Empty<DrawSubmission>();
 
-	        var mergedSubmissions = new DrawSubmission[sceneSubmissions.Length + uiSubmissions.Length];
+	        var mergedSubmissions = new DrawSubmission[sceneSubmissions.Length + gridSubmissions.Length + uiSubmissions.Length];
 	        sceneSubmissions.CopyTo(mergedSubmissions, 0);
-	        uiSubmissions.CopyTo(mergedSubmissions, sceneSubmissions.Length);
+	        gridSubmissions.CopyTo(mergedSubmissions, sceneSubmissions.Length);
+	        uiSubmissions.CopyTo(mergedSubmissions, sceneSubmissions.Length + gridSubmissions.Length);
 
 	        var drawData = new DrawData { Submissions = mergedSubmissions };
 
@@ -113,6 +115,7 @@ internal class MainRenderer : IDisposable
     public void Dispose()
     {
         _imguiRenderer?.Dispose();
+        _gridRenderer?.Dispose();
         _sceneRenderer?.Dispose();
         _meshFactory?.Dispose();
     }

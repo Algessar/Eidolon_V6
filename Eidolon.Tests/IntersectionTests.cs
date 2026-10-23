@@ -129,10 +129,38 @@ public class IntersectionTests
         var parent = world.CreateEntity();
         world.SetComponent(parent, new Transform(new Vector3(0, 0, -20)));
 
-        // Local offset +10 puts the cube at world (0,0,-10).
-        var child = SceneSpawner.SpawnMesh(world, PrimitiveMeshes.Cube, new Material(), new Vector3(0, 0, 10), Vector3.One);
+        // Authored at world (0,0,-10); parenting keeps it there and stores a local +10 offset.
+        var child = SceneSpawner.SpawnMesh(world, PrimitiveMeshes.Cube, new Material(), new Vector3(0, 0, -10), Vector3.One);
         Assert.True(Hierarchy.TrySetParent(world, child, parent));
 
+        VectorAssert.Near(new Vector3(0, 0, 10), world.GetComponent<Transform>(child).Position);
         Assert.Equal(child, ScenePicker.Pick(world, new Ray(Vector3.Zero, new Vector3(0, 0, -1))));
+    }
+
+    [Fact]
+    public void TryPickReportsTheWorldSpaceHitPoint()
+    {
+        var world = new World();
+        SceneSpawner.SpawnMesh(world, PrimitiveMeshes.Cube, new Material(), Vector3.Zero, Vector3.One);
+
+        var ray = new Ray(new Vector3(0, 0, 5), new Vector3(0, 0, -1));
+        Assert.True(ScenePicker.TryPick(world, ray, out _, out var point));
+
+        // The cube spans -0.5..0.5, so a ray down -Z from +5 hits its +Z face at z = 0.5.
+        VectorAssert.Near(new Vector3(0, 0, 0.5f), point);
+    }
+
+    [Fact]
+    public void TryPickSkipsTheIgnoredEntity()
+    {
+        var world = new World();
+        var ignored = SceneSpawner.SpawnMesh(world, PrimitiveMeshes.Cube, new Material(), Vector3.Zero, Vector3.One);
+        var behind = SceneSpawner.SpawnMesh(world, PrimitiveMeshes.Cube, new Material(), new Vector3(0, 0, -5), Vector3.One);
+
+        var ray = new Ray(new Vector3(0, 0, 5), new Vector3(0, 0, -1));
+
+        Assert.True(ScenePicker.TryPick(world, ray, out var hit, out var point, ignored));
+        Assert.Equal(behind, hit);
+        VectorAssert.Near(new Vector3(0, 0, -4.5f), point);
     }
 }

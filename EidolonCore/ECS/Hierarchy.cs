@@ -1,3 +1,5 @@
+using System.Numerics;
+
 namespace EidolonCore.ECS;
 
 /// <summary>Parent/child relationships between transforms.</summary>
@@ -7,8 +9,13 @@ public static class Hierarchy
     /// Parents <paramref name="child"/> under <paramref name="parent"/>, or makes it a root when
     /// <paramref name="parent"/> is invalid.
     /// </summary>
+    /// <param name="preserveWorldTransform">
+    /// When true (the default) the child's local transform is recomputed so it stays exactly where
+    /// it is in the world. Reparenting is otherwise a jump scare: the local transform is unchanged,
+    /// so the entity teleports by the new parent's transform.
+    /// </param>
     /// <returns>False when the change is impossible or would create a cycle.</returns>
-    public static bool TrySetParent(World world, Entity child, Entity parent)
+    public static bool TrySetParent(World world, Entity child, Entity parent, bool preserveWorldTransform = true)
     {
         if (!world.IsAlive(child) || !world.HasComponent<Transform>(child))
             return false;
@@ -23,8 +30,32 @@ public static class Hierarchy
                 return false;
         }
 
+        Matrix4x4 worldMatrix = default;
+
+        if (preserveWorldTransform)
+            worldMatrix = world.GetComponent<Transform>(child).GetWorldMatrix(world);
+
         ref var transform = ref world.GetComponent<Transform>(child);
         transform.Parent = parent;
+
+        if (!preserveWorldTransform)
+            return true;
+
+        var parentMatrix = Matrix4x4.Identity;
+
+        if (parent.IsValid && world.TryGetComponent<Transform>(parent, out var parentTransform))
+            parentMatrix = parentTransform.GetWorldMatrix(world);
+
+        if (!Matrix4x4.Invert(parentMatrix, out var inverseParent))
+            return true;
+
+        // A non-invertible parent (zero scale) leaves the local transform alone.
+        if (!Matrix4x4.Decompose(worldMatrix * inverseParent, out var scale, out var rotation, out var translation))
+            return true;
+
+        transform.Scale = scale;
+        transform.Rotation = rotation;
+        transform.Position = translation;
         return true;
     }
 

@@ -698,8 +698,12 @@ internal unsafe class FrameHandler : IDisposable
             return false;
         }
 
-        // Wait for the device to be completely idle
-        // _master.Vk.DeviceWaitIdle(_master.VulkanDevice.Device);
+        // Everything below destroys or resets resources that in-flight command buffers still
+        // reference (swapchain, per-frame semaphores, command buffers, and - via the
+        // OnSwapchainRecreated subscribers - descriptor pools/sets). Those buffers are only
+        // guaranteed to be finished once the whole device is idle; waiting on the single
+        // current frame's fence is not enough.
+        _master.Vk.DeviceWaitIdle(_master.VulkanDevice.Device);
 
         if (!HasValidFramebufferSize())
         {
