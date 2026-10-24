@@ -514,10 +514,6 @@ internal unsafe class EditorUI
 
         var io = ImGui.GetIO();
 
-        // Orbit around the view target. Panning moves the target with the view, so rotating after
-        // a pan stays where you panned to instead of snapping back to the selection.
-        var pivot = camera.Target;
-
         if (ImGui.IsMouseDown(ImGuiMouseButton.Middle))
         {
             var delta = io.MouseDelta;
@@ -538,8 +534,17 @@ internal unsafe class EditorUI
             }
             else
             {
+                var pivot = _viewport.OrbitAroundSelected && TryGetSelectedCenter(out var selectedCenter)
+                    ? selectedCenter
+                    : camera.Target;
+
                 camera.Position = ViewportCamera.Orbit(camera.Position, pivot, delta.X * 0.01f, delta.Y * 0.01f);
-                camera.Target = pivot;
+
+                // Orbit the view target by the same amount. Replacing it with the selection
+                // would snap the view to the selection as soon as middle-mouse is pressed.
+                // Moving the complete camera rig keeps the selected item under the same screen
+                // position while the camera path still rotates around it.
+                camera.Target = ViewportCamera.Orbit(camera.Target, pivot, delta.X * 0.01f, delta.Y * 0.01f);
             }
         }
 
@@ -617,6 +622,11 @@ internal unsafe class EditorUI
         var showGrid = _viewport.ShowGrid;
         if (ImGui.Checkbox("Grid", ref showGrid))
             _viewport.ShowGrid = showGrid;
+
+        ImGui.SameLine();
+        var orbitAroundSelected = _viewport.OrbitAroundSelected;
+        if (ImGui.Checkbox("Orbit Selected", ref orbitAroundSelected))
+            _viewport.OrbitAroundSelected = orbitAroundSelected;
 
         ImGui.SameLine();
         var showGizmo = _viewport.ShowGizmo;
@@ -791,26 +801,56 @@ internal unsafe class EditorUI
         if (FindCamera() is not { } camera || _selected is not { } entity || !_world.IsAlive(entity))
             return;
 
-        var origin = new Vector3(0f, 0.5f, 0f);
+        if (!TryGetSelectedCenter(out var origin))
+            origin = new Vector3(0f, 0.5f, 0f);
+
         var radius = 1f;
 
-        if (_world.TryGetComponent<Transform>(entity, out var transform))
+        if (_world.TryGetComponent<Transform>(entity, out var transform) &&
+            _world.TryGetComponent<MeshRenderer>(entity, out var renderer) && renderer.Mesh is { } mesh)
         {
             var matrix = transform.GetWorldMatrix(_world);
-            origin = new Vector3(matrix.M41, matrix.M42, matrix.M43);
-
-            if (_world.TryGetComponent<MeshRenderer>(entity, out var renderer) && renderer.Mesh is { } mesh)
-                radius = MathF.Max(0.25f, mesh.LocalBounds.MaxDimension * 0.5f * transform.Scale.Length() / MathF.Sqrt(3f));
+            if (Matrix4x4.Decompose(matrix, out var worldScale, out _, out _))
+                radius = MathF.Max(0.5f,
+                    mesh.LocalBounds.MaxDimension * 0.5f * worldScale.Length() / MathF.Sqrt(3f));
         }
 
         var direction = camera.Target - camera.Position;
         direction = direction.LengthSquared() < 1e-6f ? new Vector3(0f, 0f, -1f) : Vector3.Normalize(direction);
 
-        var distance = radius * 3f;
+        // Never frame from inside the object: selections without geometry still get a usable view.
+        var distance = MathF.Max(2.5f, radius * 4f);
         camera.Position = origin - direction * distance;
         camera.Target = origin;
 
         SyncCameraTransform(camera);
+    }
+
+    /// <summary>Gets the selected entity's visible centre in world space.</summary>
+    private bool TryGetSelectedCenter(out Vector3 center)
+    {
+        center = default;
+
+        if (_selected is not { } entity || !_world.IsAlive(entity))
+            return false;
+
+        if (_world.TryGetComponent<Transform>(entity, out var transform))
+        {
+            var worldMatrix = transform.GetWorldMatrix(_world);
+            var localCenter = _world.TryGetComponent<MeshRenderer>(entity, out var renderer) && renderer.Mesh is { } mesh
+                ? mesh.LocalBounds.Center
+                : Vector3.Zero;
+            center = Vector3.Transform(localCenter, worldMatrix);
+            return true;
+        }
+
+        if (_world.TryGetComponent<Camera>(entity, out var selectedCamera))
+        {
+            center = selectedCamera.Position;
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>Writes the camera position back onto the entity transform that owns it.</summary>
@@ -822,9 +862,30 @@ internal unsafe class EditorUI
                 continue;
 
             ref var transform = ref _world.GetComponent<Transform>(entity);
-            transform.Position = camera.Position;
-            transform.Rotation = SceneCameras.RotationFrom(camera.Target - camera.Position);
-            camera.TransformRotation = transform.Rotation;
+            var worldRotation = SceneCameras.RotationFrom(camera.Target - camera.Position);
+
+            if (transform.Parent.IsValid &&
+                _world.TryGetComponent<Transform>(transform.Parent, out var parent) &&
+                Matrix4x4.Invert(parent.GetWorldMatrix(_world), out var inverseParent))
+            {
+                transform.Position = Vector3.Transform(camera.Position, inverseParent);
+
+                var parentRotation = Matrix4x4.Decompose(parent.GetWorldMatrix(_world), out _, out var rotation, out _)
+                    ? rotation
+                    : Quaternion.Identity;
+                var inverseParentRotation = Quaternion.Inverse(parentRotation);
+                var localRotation = Matrix4x4.CreateFromQuaternion(worldRotation) *
+                                    Matrix4x4.CreateFromQuaternion(inverseParentRotation);
+                transform.Rotation = Quaternion.Normalize(Quaternion.CreateFromRotationMatrix(localRotation));
+            }
+            else
+            {
+                transform.Position = camera.Position;
+                transform.Rotation = worldRotation;
+            }
+
+            // SceneCameras tracks the decomposed world rotation, not the local rotation.
+            camera.TransformRotation = worldRotation;
             return;
         }
     }

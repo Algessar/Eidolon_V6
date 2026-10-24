@@ -141,6 +141,7 @@ internal class InputManager
             // Letters
             { Key.A, ImGuiKey.A },
             { Key.C, ImGuiKey.C },
+            { Key.F, ImGuiKey.F },
             { Key.G, ImGuiKey.G },
             { Key.R, ImGuiKey.R },
             { Key.S, ImGuiKey.S },
