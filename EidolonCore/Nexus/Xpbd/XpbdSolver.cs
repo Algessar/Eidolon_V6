@@ -40,10 +40,19 @@ public struct XpbdParticle
 public interface IXpbdConstraint
 {
     /// <summary>Clears the accumulator at the start of a step.</summary>
-    void BeginStep();
+    void BeginStep(Span<XpbdParticle> particles, float deltaTime);
 
     /// <summary>Projects the particle positions once. Called once per solver iteration.</summary>
     void Solve(Span<XpbdParticle> particles, float deltaTime);
+}
+
+/// <summary>
+/// Optional constraint hook that runs after velocities are recovered, for constraints that need
+/// to redistribute momentum (rigid bodies recovering angular velocity, for example).
+/// </summary>
+public interface IXpbdPostStep
+{
+    void AfterVelocityUpdate(Span<XpbdParticle> particles, float deltaTime);
 }
 
 /// <summary>
@@ -108,7 +117,7 @@ public sealed class XpbdSolver
         }
 
         foreach (var constraint in _constraints)
-            constraint.BeginStep();
+            constraint.BeginStep(particles, deltaTime);
 
         for (var iteration = 0; iteration < Iterations; iteration++)
         {
@@ -122,6 +131,12 @@ public sealed class XpbdSolver
                 continue;
 
             particle.Velocity = (particle.Position - particle.PreviousPosition) / deltaTime;
+        }
+
+        foreach (var constraint in _constraints)
+        {
+            if (constraint is IXpbdPostStep postStep)
+                postStep.AfterVelocityUpdate(particles, deltaTime);
         }
     }
 }
@@ -142,7 +157,7 @@ public sealed class DistanceConstraint(int a, int b, float restLength, float com
 
     public float Compliance { get; } = compliance;
 
-    public void BeginStep() => _lambda = 0f;
+    public void BeginStep(Span<XpbdParticle> particles, float deltaTime) => _lambda = 0f;
 
     public void Solve(Span<XpbdParticle> particles, float deltaTime)
     {

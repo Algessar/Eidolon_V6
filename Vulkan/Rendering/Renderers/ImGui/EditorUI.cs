@@ -2,6 +2,7 @@ using System.Numerics;
 using Eidolon.Vulkan;
 using EidolonCore.Assets;
 using EidolonCore.ECS;
+using EidolonCore.Nexus;
 using EidolonCore.Math;
 using EidolonCore.Rendering;
 using EidolonCore.Simulation;
@@ -279,6 +280,8 @@ internal unsafe class EditorUI
         if (_world.TryGetComponent<MeshRenderer>(entity, out var meshRenderer))
             DrawMeshRendererInspector(meshRenderer);
 
+        DrawOptionalComponents(entity);
+
         ImGui.Separator();
 
         ImGui.BeginDisabled(_session.InPlayMode);
@@ -291,6 +294,72 @@ internal unsafe class EditorUI
         ImGui.EndDisabled();
 
         ImGui.End();
+    }
+
+    /// <summary>Optional components on the selected entity, with an add menu for the ones it lacks.</summary>
+    private void DrawOptionalComponents(Entity entity)
+    {
+        if (_world.TryGetComponent<Spin>(entity, out var spin))
+        {
+            if (ImGui.CollapsingHeader("Spin", ImGuiTreeNodeFlags.DefaultOpen))
+            {
+                var axis = spin.Axis;
+                var speed = spin.RadiansPerSecond;
+
+                if (ImGui.DragFloat3("Axis", ref axis, 0.02f))
+                    spin.Axis = axis;
+
+                if (ImGui.DragFloat("Radians / second", ref speed, 0.05f))
+                    spin.RadiansPerSecond = speed;
+
+                if (ImGui.Button("Remove Spin"))
+                    _world.RemoveComponent<Spin>(entity);
+                else
+                    _world.SetComponent(entity, spin);
+            }
+        }
+
+        if (_world.TryGetComponent<XpbdBody>(entity, out var body))
+        {
+            if (ImGui.CollapsingHeader("Rigid Body", ImGuiTreeNodeFlags.DefaultOpen))
+            {
+                var halfExtents = body.HalfExtents;
+                var contactRadius = body.ContactRadius;
+                var inverseMass = body.InverseMass;
+                var stiffness = body.Stiffness;
+
+                if (ImGui.DragFloat3("Half extents", ref halfExtents, 0.02f))
+                    body.HalfExtents = halfExtents;
+
+                if (ImGui.DragFloat("Contact radius", ref contactRadius, 0.005f, 0.001f, 0.25f))
+                    body.ContactRadius = contactRadius;
+
+                if (ImGui.DragFloat("Inverse mass", ref inverseMass, 0.02f, 0f, 10f))
+                    body.InverseMass = inverseMass;
+
+                if (ImGui.DragFloat("Stiffness", ref stiffness, 0.01f, 0.05f, 1f))
+                    body.Stiffness = stiffness;
+
+                if (ImGui.Button("Remove Rigid Body"))
+                    _world.RemoveComponent<XpbdBody>(entity);
+                else
+                    _world.SetComponent(entity, body);
+            }
+        }
+
+        if (ImGui.Button("Add Component"))
+            ImGui.OpenPopup("##addComponent");
+
+        if (ImGui.BeginPopup("##addComponent"))
+        {
+            if (!_world.HasComponent<Spin>(entity) && ImGui.MenuItem("Spin"))
+                _world.SetComponent(entity, new Spin());
+
+            if (!_world.HasComponent<XpbdBody>(entity) && ImGui.MenuItem("Rigid Body"))
+                _world.SetComponent(entity, new XpbdBody());
+
+            ImGui.EndPopup();
+        }
     }
 
     private void DrawTransformInspector(Entity entity)
@@ -420,6 +489,12 @@ internal unsafe class EditorUI
         if (_selected is not { } selected || !_world.IsAlive(selected))
             return;
 
+        if (ImGui.IsKeyPressed(ImGuiKey.F))
+        {
+            FrameSelected();
+            return;
+        }
+
         if (ImGui.IsKeyPressed(ImGuiKey.G))
             _transformGizmo.RequestModal(GizmoMode.Translate);
         else if (ImGui.IsKeyPressed(ImGuiKey.R))
@@ -438,7 +513,10 @@ internal unsafe class EditorUI
             return;
 
         var io = ImGui.GetIO();
-        var pivot = ViewPivot(camera);
+
+        // Orbit around the view target. Panning moves the target with the view, so rotating after
+        // a pan stays where you panned to instead of snapping back to the selection.
+        var pivot = camera.Target;
 
         if (ImGui.IsMouseDown(ImGuiMouseButton.Middle))
         {
@@ -470,20 +548,6 @@ internal unsafe class EditorUI
 
         // Keep the entity transform in step so the camera sync cannot undo this move.
         SyncCameraTransform(camera);
-    }
-
-    /// <summary>The selection's origin if there is one, otherwise the camera's own target.</summary>
-    private Vector3 ViewPivot(Camera camera)
-    {
-        if (_selected is { } entity &&
-            _world.IsAlive(entity) &&
-            _world.TryGetComponent<Transform>(entity, out var transform))
-        {
-            var matrix = transform.GetWorldMatrix(_world);
-            return new Vector3(matrix.M41, matrix.M42, matrix.M43);
-        }
-
-        return camera.Target;
     }
 
     /// <summary>
@@ -717,6 +781,38 @@ internal unsafe class EditorUI
         public Vector2 Position { get; set; }
     }
 
+    /// <summary>
+    /// Frames the selection: aims the view at it and pulls back far enough to see it whole. This is
+    /// the explicit operator that replaces the old "frame whatever is selected on every rotate"
+    /// behaviour.
+    /// </summary>
+    private void FrameSelected()
+    {
+        if (FindCamera() is not { } camera || _selected is not { } entity || !_world.IsAlive(entity))
+            return;
+
+        var origin = new Vector3(0f, 0.5f, 0f);
+        var radius = 1f;
+
+        if (_world.TryGetComponent<Transform>(entity, out var transform))
+        {
+            var matrix = transform.GetWorldMatrix(_world);
+            origin = new Vector3(matrix.M41, matrix.M42, matrix.M43);
+
+            if (_world.TryGetComponent<MeshRenderer>(entity, out var renderer) && renderer.Mesh is { } mesh)
+                radius = MathF.Max(0.25f, mesh.LocalBounds.MaxDimension * 0.5f * transform.Scale.Length() / MathF.Sqrt(3f));
+        }
+
+        var direction = camera.Target - camera.Position;
+        direction = direction.LengthSquared() < 1e-6f ? new Vector3(0f, 0f, -1f) : Vector3.Normalize(direction);
+
+        var distance = radius * 3f;
+        camera.Position = origin - direction * distance;
+        camera.Target = origin;
+
+        SyncCameraTransform(camera);
+    }
+
     /// <summary>Writes the camera position back onto the entity transform that owns it.</summary>
     private void SyncCameraTransform(Camera camera)
     {
@@ -727,6 +823,8 @@ internal unsafe class EditorUI
 
             ref var transform = ref _world.GetComponent<Transform>(entity);
             transform.Position = camera.Position;
+            transform.Rotation = SceneCameras.RotationFrom(camera.Target - camera.Position);
+            camera.TransformRotation = transform.Rotation;
             return;
         }
     }
@@ -1009,6 +1107,9 @@ internal unsafe class EditorUI
         {
             if (ImGui.MenuItem("Grid", null, _viewport.ShowGrid))
                 _viewport.ShowGrid = !_viewport.ShowGrid;
+
+            if (ImGui.MenuItem("Frame Selected", "F"))
+                FrameSelected();
 
             if (ImGui.MenuItem("Gizmo", null, _viewport.ShowGizmo))
                 _viewport.ShowGizmo = !_viewport.ShowGizmo;

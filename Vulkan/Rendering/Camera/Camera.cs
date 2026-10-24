@@ -1,4 +1,4 @@
-using System.Numerics;
+﻿using System.Numerics;
 using EidolonCore.ECS;
 using EidolonCore.Rendering;
 
@@ -23,6 +23,12 @@ public enum CameraKind
 public class Camera : IComponent
 {
     private const float DegreesToRadians = MathF.PI / 180f;
+
+    /// <summary>
+    /// Rotation last applied from the entity transform. Bookkeeping only: it lets the sync tell
+    /// 'the transform was rotated' apart from 'the editor moved the camera'.
+    /// </summary>
+    public Quaternion TransformRotation { get; set; } = Quaternion.Identity;
 
     /// <summary>Which viewport this camera drives.</summary>
     public CameraKind Kind { get; set; } = CameraKind.Editor;
@@ -52,6 +58,7 @@ public class Camera : IComponent
     public Camera(Camera other)
     {
         Kind = other.Kind;
+        TransformRotation = other.TransformRotation;
         Position = other.Position;
         Forward = other.Forward;
         Target = other.Target;

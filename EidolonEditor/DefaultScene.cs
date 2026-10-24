@@ -1,4 +1,5 @@
-﻿using System.Numerics;
+﻿using EidolonCore.Nexus;
+using System.Numerics;
 using Eidolon.Vulkan;
 using EidolonCore.Assets;
 using EidolonCore.Simulation;
@@ -24,9 +25,13 @@ public static class DefaultScene
             new Material("Ground", new Vector4(0.34f, 0.36f, 0.42f, 1f)),
             new Vector3(0f, -0.5f, 0f), new Vector3(12f, 1f, 12f));
 
-        SceneSpawner.SpawnMesh(world, PrimitiveMeshes.Cube,
+        // Lifted and tilted so play mode visibly drops and settles it onto the ground.`
+        var fallingBox = SceneSpawner.SpawnMesh(world, PrimitiveMeshes.Cube,
             new Material("Red Plastic", new Vector4(0.85f, 0.25f, 0.28f, 1f)),
-            Vector3.Zero, Vector3.One);
+            new Vector3(0f, 2.2f, 0f), Vector3.One,
+            Quaternion.CreateFromYawPitchRoll(0.3f, 0.2f, 0.5f));
+
+        world.SetComponent(fallingBox, new XpbdBody { HalfExtents = new Vector3(0.5f), ContactRadius = 0.02f });
 
         SceneSpawner.SpawnMesh(world, PrimitiveMeshes.Cube,
             new Material("Blue Plastic", new Vector4(0.25f, 0.45f, 0.90f, 1f)),

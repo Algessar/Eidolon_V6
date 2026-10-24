@@ -2,6 +2,7 @@
 using EidolonEngine;
 using EidolonCore.Assets;
 using EidolonCore.ECS;
+using EidolonCore.Nexus;
 using EidolonCore.Simulation;
 
 
@@ -25,6 +26,7 @@ public static class EidolonEditor
         // The session owns the authored world and, later, the runtime copy used by play mode.
         var session = new SceneSession(world);
         session.AddSystem(new SpinSystem());
+        session.AddSystem(new XpbdWorldSystem());
 
         var initialGraph = BuildInitialGraph(1920, 1080);
         VulkanHost.Run(session, assets, initialGraph);
