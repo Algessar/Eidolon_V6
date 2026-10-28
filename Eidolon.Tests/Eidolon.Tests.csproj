@@ -22,6 +22,8 @@
     <ItemGroup>
         <ProjectReference Include="..\EidolonCore\EidolonCore.csproj" />
         <ProjectReference Include="..\Vulkan\Vulkan.csproj" />
+        <!-- Tests exercise the game as a consumer of the engine, exactly like the editor does. -->
+        <ProjectReference Include="..\EidolonGame\EidolonGame.csproj" />
     </ItemGroup>
 
 </Project>

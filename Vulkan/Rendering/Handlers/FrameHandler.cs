@@ -6,8 +6,6 @@ using Semaphore = Silk.NET.Vulkan.Semaphore;
 
 namespace Eidolon.Vulkan;
 
-//TODO: Resizing the window creates black bands. Put on hold for now, but should be fixed eventually.
-
 internal unsafe class FrameHandler : IDisposable
 {
     public event Action OnSwapchainRecreated;

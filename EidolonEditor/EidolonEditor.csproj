@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
@@ -12,6 +12,8 @@
       <ProjectReference Include="..\EidolonCore\EidolonCore.csproj" />
       <ProjectReference Include="..\EidolonEngine\EidolonEngine.csproj" />
       <ProjectReference Include="..\Vulkan\Vulkan.csproj" />
+      <!-- The host references a game; the engine and this editor never learn what it contains. -->
+      <ProjectReference Include="..\EidolonGame\EidolonGame.csproj" />
     </ItemGroup>
 
     <ItemGroup>

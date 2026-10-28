@@ -2,6 +2,7 @@ using System.Numerics;
 using Eidolon.Vulkan;
 using EidolonCore.Assets;
 using EidolonCore.ECS;
+using EidolonCore.Nexus;
 using EidolonCore.Math;
 using EidolonCore.Rendering;
 using EidolonCore.Simulation;
@@ -133,6 +134,12 @@ internal unsafe class EditorUI
 
             if (ImGui.MenuItem("Add Plane"))
                 SpawnPrimitive(PrimitiveMeshes.Plane, "Plane");
+
+            if (ImGui.MenuItem("Add Sphere"))
+                SpawnPrimitive(PrimitiveMeshes.Sphere, "Sphere");
+
+            if (ImGui.MenuItem("Add Capsule"))
+                SpawnPrimitive(PrimitiveMeshes.Capsule, "Capsule");
 
             ImGui.EndPopup();
         }
@@ -279,6 +286,8 @@ internal unsafe class EditorUI
         if (_world.TryGetComponent<MeshRenderer>(entity, out var meshRenderer))
             DrawMeshRendererInspector(meshRenderer);
 
+        DrawOptionalComponents(entity);
+
         ImGui.Separator();
 
         ImGui.BeginDisabled(_session.InPlayMode);
@@ -293,6 +302,171 @@ internal unsafe class EditorUI
         ImGui.End();
     }
 
+    /// <summary>Optional components on the selected entity, with an add menu for the ones it lacks.</summary>
+    private void DrawOptionalComponents(Entity entity)
+    {
+        if (_world.TryGetComponent<Spin>(entity, out var spin))
+        {
+            if (ImGui.CollapsingHeader("Spin", ImGuiTreeNodeFlags.DefaultOpen))
+            {
+                var axis = spin.Axis;
+                var speed = spin.RadiansPerSecond;
+
+                if (ImGui.DragFloat3("Axis", ref axis, 0.02f))
+                    spin.Axis = axis;
+
+                if (ImGui.DragFloat("Radians / second", ref speed, 0.05f))
+                    spin.RadiansPerSecond = speed;
+
+                if (ImGui.Button("Remove Spin"))
+                    _world.RemoveComponent<Spin>(entity);
+                else
+                    _world.SetComponent(entity, spin);
+            }
+        }
+
+        if (_world.TryGetComponent<XpbdBody>(entity, out var body))
+        {
+            if (ImGui.CollapsingHeader("Rigid Body", ImGuiTreeNodeFlags.DefaultOpen))
+            {
+                if (ImGui.BeginCombo("Shape", body.Shape.ToString()))
+                {
+                    foreach (var candidate in Enum.GetValues<XpbdShape>())
+                    {
+                        if (ImGui.Selectable(candidate.ToString(), candidate == body.Shape))
+                            body.Shape = candidate;
+                    }
+
+                    ImGui.EndCombo();
+                }
+
+                switch (body.Shape)
+                {
+                    case XpbdShape.Sphere:
+                    {
+                        var radius = body.Radius;
+
+                        if (ImGui.DragFloat("Radius", ref radius, 0.01f, 0.01f, 20f))
+                            body.Radius = radius;
+
+                        break;
+                    }
+
+                    case XpbdShape.Capsule:
+                    {
+                        var radius = body.Radius;
+                        var segment = body.SegmentLength;
+
+                        if (ImGui.DragFloat("Radius", ref radius, 0.01f, 0.01f, 20f))
+                            body.Radius = radius;
+
+                        if (ImGui.DragFloat("Segment length", ref segment, 0.01f, 0f, 20f))
+                            body.SegmentLength = segment;
+
+                        break;
+                    }
+
+                    default:
+                    {
+                        var halfExtents = body.HalfExtents;
+                        var contactRadius = body.ContactRadius;
+
+                        if (ImGui.DragFloat3("Half extents", ref halfExtents, 0.02f))
+                            body.HalfExtents = halfExtents;
+
+                        if (ImGui.DragFloat("Contact radius", ref contactRadius, 0.005f, 0.001f, 0.25f))
+                            body.ContactRadius = contactRadius;
+
+                        break;
+                    }
+                }
+
+                // A body with no inverse mass is pinned: it collides but nothing can move it.
+                var isStatic = body.InverseMass <= 0f;
+
+                if (ImGui.Checkbox("Static", ref isStatic))
+                    body.InverseMass = isStatic ? 0f : 1f;
+
+                var inverseMass = body.InverseMass;
+
+                if (ImGui.DragFloat("Inverse mass", ref inverseMass, 0.02f, 0f, 10f))
+                    body.InverseMass = inverseMass;
+
+                var stiffness = body.Stiffness;
+
+                if (ImGui.DragFloat("Stiffness", ref stiffness, 0.01f, 0.05f, 1f))
+                    body.Stiffness = stiffness;
+
+                if (ImGui.Button("Remove Rigid Body"))
+                    _world.RemoveComponent<XpbdBody>(entity);
+                else
+                    _world.SetComponent(entity, body);
+            }
+        }
+
+        if (ImGui.Button("Add Component"))
+            ImGui.OpenPopup("##addComponent");
+
+        if (ImGui.BeginPopup("##addComponent"))
+        {
+            if (!_world.HasComponent<Spin>(entity) && ImGui.MenuItem("Spin"))
+                _world.SetComponent(entity, new Spin());
+
+            if (!_world.HasComponent<XpbdBody>(entity) && ImGui.MenuItem("Rigid Body"))
+                _world.SetComponent(entity, BodyFromMesh(entity));
+
+            ImGui.EndPopup();
+        }
+    }
+
+    /// <summary>
+    /// Guesses a body from what the entity already is: a cube becomes a box of the same size, a sphere
+    /// or capsule the matching primitive, and anything imported gets the box default.
+    /// </summary>
+    /// <remarks>
+    /// This only seeds the component; every value stays editable, because a mesh is a presentation of
+    /// the shape rather than its definition.
+    /// </remarks>
+    private XpbdBody BodyFromMesh(Entity entity)
+    {
+        var body = new XpbdBody();
+
+        if (!_world.TryGetComponent<Transform>(entity, out var transform) ||
+            !_world.TryGetComponent<MeshRenderer>(entity, out var renderer) ||
+            renderer.Mesh is not { } mesh)
+        {
+            return body;
+        }
+
+        var scale = Matrix4x4.Decompose(transform.GetWorldMatrix(_world), out var worldScale, out _, out _)
+            ? worldScale
+            : transform.Scale;
+
+        var size = mesh.LocalBounds.Size;
+        var worldSize = new Vector3(
+            MathF.Abs(scale.X) * size.X,
+            MathF.Abs(scale.Y) * size.Y,
+            MathF.Abs(scale.Z) * size.Z);
+
+        if (ReferenceEquals(mesh, PrimitiveMeshes.Sphere))
+        {
+            body.Shape = XpbdShape.Sphere;
+            body.Radius = MathF.Max(worldSize.X, MathF.Max(worldSize.Y, worldSize.Z)) * 0.5f;
+            return body;
+        }
+
+        if (ReferenceEquals(mesh, PrimitiveMeshes.Capsule))
+        {
+            body.Shape = XpbdShape.Capsule;
+            body.Radius = MathF.Max(worldSize.X, worldSize.Z) * 0.5f;
+            body.SegmentLength = MathF.Max(0f, worldSize.Y - worldSize.X);
+            return body;
+        }
+
+        body.HalfExtents = worldSize * 0.5f;
+        return body;
+    }
+
     private void DrawTransformInspector(Entity entity)
     {
         if (!ImGui.CollapsingHeader("Transform", ImGuiTreeNodeFlags.DefaultOpen))
@@ -302,23 +476,23 @@ internal unsafe class EditorUI
 
         ImGui.DragFloat3("Position", ref transform.Position, 0.05f);
 
-        // Rotation is stored as a quaternion but edited as yaw/pitch/roll, which is the form a
-        // person can actually reason about.
-        var (yaw, pitch, roll) = transform.Rotation.ToYawPitchRoll();
-        var yawDegrees = yaw * Mathf.Rad2Deg;
-        var pitchDegrees = pitch * Mathf.Rad2Deg;
-        var rollDegrees = roll * Mathf.Rad2Deg;
+        // Rotation is a quaternion in the engine but three numbers in the inspector. The axes are
+        // named for what they are: camera terms would be wrong on an entity that is not a camera.
+        var (x, y, z) = transform.Rotation.ToEulerAngles();
+        var xDegrees = x * Mathf.Rad2Deg;
+        var yDegrees = y * Mathf.Rad2Deg;
+        var zDegrees = z * Mathf.Rad2Deg;
 
-        var rotated = ImGui.DragFloat("Yaw", ref yawDegrees, 0.5f);
-        rotated |= ImGui.DragFloat("Pitch", ref pitchDegrees, 0.5f);
-        rotated |= ImGui.DragFloat("Roll", ref rollDegrees, 0.5f);
+        var rotated = ImGui.DragFloat("Rotation X", ref xDegrees, 0.5f);
+        rotated |= ImGui.DragFloat("Rotation Y", ref yDegrees, 0.5f);
+        rotated |= ImGui.DragFloat("Rotation Z", ref zDegrees, 0.5f);
 
         if (rotated)
         {
-            transform.Rotation = Quaternion.CreateFromYawPitchRoll(
-                yawDegrees * Mathf.Deg2Rad,
-                pitchDegrees * Mathf.Deg2Rad,
-                rollDegrees * Mathf.Deg2Rad);
+            transform.Rotation = QuaternionExtensions.FromEulerAngles(
+                xDegrees * Mathf.Deg2Rad,
+                yDegrees * Mathf.Deg2Rad,
+                zDegrees * Mathf.Deg2Rad);
         }
 
         ImGui.DragFloat3("Scale", ref transform.Scale, 0.05f);
@@ -420,6 +594,12 @@ internal unsafe class EditorUI
         if (_selected is not { } selected || !_world.IsAlive(selected))
             return;
 
+        if (ImGui.IsKeyPressed(ImGuiKey.F))
+        {
+            FrameSelected();
+            return;
+        }
+
         if (ImGui.IsKeyPressed(ImGuiKey.G))
             _transformGizmo.RequestModal(GizmoMode.Translate);
         else if (ImGui.IsKeyPressed(ImGuiKey.R))
@@ -438,7 +618,6 @@ internal unsafe class EditorUI
             return;
 
         var io = ImGui.GetIO();
-        var pivot = ViewPivot(camera);
 
         if (ImGui.IsMouseDown(ImGuiMouseButton.Middle))
         {
@@ -460,8 +639,17 @@ internal unsafe class EditorUI
             }
             else
             {
+                var pivot = _viewport.OrbitAroundSelected && TryGetSelectedCenter(out var selectedCenter)
+                    ? selectedCenter
+                    : camera.Target;
+
                 camera.Position = ViewportCamera.Orbit(camera.Position, pivot, delta.X * 0.01f, delta.Y * 0.01f);
-                camera.Target = pivot;
+
+                // Orbit the view target by the same amount. Replacing it with the selection
+                // would snap the view to the selection as soon as middle-mouse is pressed.
+                // Moving the complete camera rig keeps the selected item under the same screen
+                // position while the camera path still rotates around it.
+                camera.Target = ViewportCamera.Orbit(camera.Target, pivot, delta.X * 0.01f, delta.Y * 0.01f);
             }
         }
 
@@ -470,20 +658,6 @@ internal unsafe class EditorUI
 
         // Keep the entity transform in step so the camera sync cannot undo this move.
         SyncCameraTransform(camera);
-    }
-
-    /// <summary>The selection's origin if there is one, otherwise the camera's own target.</summary>
-    private Vector3 ViewPivot(Camera camera)
-    {
-        if (_selected is { } entity &&
-            _world.IsAlive(entity) &&
-            _world.TryGetComponent<Transform>(entity, out var transform))
-        {
-            var matrix = transform.GetWorldMatrix(_world);
-            return new Vector3(matrix.M41, matrix.M42, matrix.M43);
-        }
-
-        return camera.Target;
     }
 
     /// <summary>
@@ -555,6 +729,11 @@ internal unsafe class EditorUI
             _viewport.ShowGrid = showGrid;
 
         ImGui.SameLine();
+        var orbitAroundSelected = _viewport.OrbitAroundSelected;
+        if (ImGui.Checkbox("Orbit Selected", ref orbitAroundSelected))
+            _viewport.OrbitAroundSelected = orbitAroundSelected;
+
+        ImGui.SameLine();
         var showGizmo = _viewport.ShowGizmo;
         if (ImGui.Checkbox("Gizmo", ref showGizmo))
             _viewport.ShowGizmo = showGizmo;
@@ -623,7 +802,7 @@ internal unsafe class EditorUI
         if (IsMouseOverViewWidget(imageMin, imageSize))
             return;
 
-        if (TryRayFromGameView(imageMin, imageSize, out var ray) && FindCamera() is not null)
+        if (TryRayFromGameView(imageMin, imageSize, out var ray) && FindGameCamera() is not null)
             _selected = ScenePicker.Pick(_world, ray);
     }
 
@@ -717,6 +896,68 @@ internal unsafe class EditorUI
         public Vector2 Position { get; set; }
     }
 
+    /// <summary>
+    /// Frames the selection: aims the view at it and pulls back far enough to see it whole. This is
+    /// the explicit operator that replaces the old "frame whatever is selected on every rotate"
+    /// behaviour.
+    /// </summary>
+    private void FrameSelected()
+    {
+        if (FindCamera() is not { } camera || _selected is not { } entity || !_world.IsAlive(entity))
+            return;
+
+        if (!TryGetSelectedCenter(out var origin))
+            origin = new Vector3(0f, 0.5f, 0f);
+
+        var radius = 1f;
+
+        if (_world.TryGetComponent<Transform>(entity, out var transform) &&
+            _world.TryGetComponent<MeshRenderer>(entity, out var renderer) && renderer.Mesh is { } mesh)
+        {
+            var matrix = transform.GetWorldMatrix(_world);
+            if (Matrix4x4.Decompose(matrix, out var worldScale, out _, out _))
+                radius = MathF.Max(0.5f,
+                    mesh.LocalBounds.MaxDimension * 0.5f * worldScale.Length() / MathF.Sqrt(3f));
+        }
+
+        var direction = camera.Target - camera.Position;
+        direction = direction.LengthSquared() < 1e-6f ? new Vector3(0f, 0f, -1f) : Vector3.Normalize(direction);
+
+        // Never frame from inside the object: selections without geometry still get a usable view.
+        var distance = MathF.Max(2.5f, radius * 4f);
+        camera.Position = origin - direction * distance;
+        camera.Target = origin;
+
+        SyncCameraTransform(camera);
+    }
+
+    /// <summary>Gets the selected entity's visible centre in world space.</summary>
+    private bool TryGetSelectedCenter(out Vector3 center)
+    {
+        center = default;
+
+        if (_selected is not { } entity || !_world.IsAlive(entity))
+            return false;
+
+        if (_world.TryGetComponent<Transform>(entity, out var transform))
+        {
+            var worldMatrix = transform.GetWorldMatrix(_world);
+            var localCenter = _world.TryGetComponent<MeshRenderer>(entity, out var renderer) && renderer.Mesh is { } mesh
+                ? mesh.LocalBounds.Center
+                : Vector3.Zero;
+            center = Vector3.Transform(localCenter, worldMatrix);
+            return true;
+        }
+
+        if (_world.TryGetComponent<Camera>(entity, out var selectedCamera))
+        {
+            center = selectedCamera.Position;
+            return true;
+        }
+
+        return false;
+    }
+
     /// <summary>Writes the camera position back onto the entity transform that owns it.</summary>
     private void SyncCameraTransform(Camera camera)
     {
@@ -726,7 +967,13 @@ internal unsafe class EditorUI
                 continue;
 
             ref var transform = ref _world.GetComponent<Transform>(entity);
-            transform.Position = camera.Position;
+            var worldRotation = CameraOrientation.RotationFrom(camera.Target - camera.Position);
+
+            // The camera moves in world space; the entity that owns it may be parented.
+            transform.TrySetWorldPose(_world, camera.Position, worldRotation);
+
+            // SceneCameras tracks the decomposed world rotation, not the local rotation.
+            camera.TransformRotation = worldRotation;
             return;
         }
     }
@@ -745,7 +992,7 @@ internal unsafe class EditorUI
     {
         ray = default;
 
-        if (imageSize.X <= 0f || imageSize.Y <= 0f || FindCamera() is not { } camera)
+        if (imageSize.X <= 0f || imageSize.Y <= 0f || FindGameCamera() is not { } camera)
             return false;
 
         var mouse = ImGui.GetMousePos();
@@ -874,7 +1121,32 @@ internal unsafe class EditorUI
     private static float FittedScale(Mesh mesh) =>
         mesh.LocalBounds.MaxDimension > 1e-6f ? 1f / mesh.LocalBounds.MaxDimension : 1f;
 
-    private Camera? FindCamera()
+    /// <summary>
+    /// The camera the viewport renders through: the editor camera, or any camera when a scene has none,
+    /// because the viewport breaks without one.
+    /// </summary>
+    /// <remarks>
+    /// A scene may also carry a game camera, and that one must not win just because it was found first.
+    /// </remarks>
+    private Camera? FindCamera() => FindCamera(CameraKind.Editor) ?? FindAnyCamera();
+
+    /// <summary>The camera the game view renders through, falling back to the viewport's.</summary>
+    private Camera? FindGameCamera() => FindCamera(CameraKind.Game) ?? FindCamera();
+
+    private Camera? FindCamera(CameraKind kind)
+    {
+        foreach (var entity in _world.GetEntitiesWith<Camera>())
+        {
+            var camera = _world.GetComponent<Camera>(entity);
+
+            if (camera.Kind == kind)
+                return camera;
+        }
+
+        return null;
+    }
+
+    private Camera? FindAnyCamera()
     {
         foreach (var entity in _world.GetEntitiesWith<Camera>())
             return _world.GetComponent<Camera>(entity);
@@ -1001,6 +1273,12 @@ internal unsafe class EditorUI
             if (ImGui.MenuItem("Plane"))
                 SpawnPrimitive(PrimitiveMeshes.Plane, "Plane");
 
+            if (ImGui.MenuItem("Sphere"))
+                SpawnPrimitive(PrimitiveMeshes.Sphere, "Sphere");
+
+            if (ImGui.MenuItem("Capsule"))
+                SpawnPrimitive(PrimitiveMeshes.Capsule, "Capsule");
+
             ImGui.EndDisabled();
             ImGui.EndMenu();
         }
@@ -1009,6 +1287,9 @@ internal unsafe class EditorUI
         {
             if (ImGui.MenuItem("Grid", null, _viewport.ShowGrid))
                 _viewport.ShowGrid = !_viewport.ShowGrid;
+
+            if (ImGui.MenuItem("Frame Selected", "F"))
+                FrameSelected();
 
             if (ImGui.MenuItem("Gizmo", null, _viewport.ShowGizmo))
                 _viewport.ShowGizmo = !_viewport.ShowGizmo;
@@ -1066,8 +1347,29 @@ internal unsafe class EditorUI
             io.MouseDown[0],
             io.MouseDown[1],
             io.MouseDown[2],
-            io.KeyShift,
-            io.KeyCtrl));
+            SampleGameKeys()));
+    }
+
+    /// <summary>Packs the gameplay keys out of ImGui's current keyboard state.</summary>
+    private static GameKey SampleGameKeys()
+    {
+        var keys = GameKey.None;
+
+        if (ImGui.IsKeyDown(ImGuiKey.W)) keys |= GameKey.W;
+        if (ImGui.IsKeyDown(ImGuiKey.A)) keys |= GameKey.A;
+        if (ImGui.IsKeyDown(ImGuiKey.S)) keys |= GameKey.S;
+        if (ImGui.IsKeyDown(ImGuiKey.D)) keys |= GameKey.D;
+        if (ImGui.IsKeyDown(ImGuiKey.Q)) keys |= GameKey.Q;
+        if (ImGui.IsKeyDown(ImGuiKey.E)) keys |= GameKey.E;
+        if (ImGui.IsKeyDown(ImGuiKey.Space)) keys |= GameKey.Space;
+        if (ImGui.IsKeyDown(ImGuiKey.ModShift)) keys |= GameKey.Shift;
+        if (ImGui.IsKeyDown(ImGuiKey.ModCtrl)) keys |= GameKey.Control;
+        if (ImGui.IsKeyDown(ImGuiKey.LeftArrow)) keys |= GameKey.Left;
+        if (ImGui.IsKeyDown(ImGuiKey.RightArrow)) keys |= GameKey.Right;
+        if (ImGui.IsKeyDown(ImGuiKey.UpArrow)) keys |= GameKey.Up;
+        if (ImGui.IsKeyDown(ImGuiKey.DownArrow)) keys |= GameKey.Down;
+
+        return keys;
     }
 
     private static string ScenesDirectory => Path.Combine(AppContext.BaseDirectory, "Scenes");

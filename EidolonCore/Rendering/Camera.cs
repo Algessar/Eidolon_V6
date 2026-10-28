@@ -1,8 +1,7 @@
 using System.Numerics;
 using EidolonCore.ECS;
-using EidolonCore.Rendering;
 
-namespace Eidolon.Vulkan;
+namespace EidolonCore.Rendering;
 
 //NOTE: This class is now the same as in an older working version.
 
@@ -23,6 +22,12 @@ public enum CameraKind
 public class Camera : IComponent
 {
     private const float DegreesToRadians = MathF.PI / 180f;
+
+    /// <summary>
+    /// Rotation last applied from the entity transform. Bookkeeping only: it lets the sync tell
+    /// 'the transform was rotated' apart from 'the editor moved the camera'.
+    /// </summary>
+    public Quaternion TransformRotation { get; set; } = Quaternion.Identity;
 
     /// <summary>Which viewport this camera drives.</summary>
     public CameraKind Kind { get; set; } = CameraKind.Editor;
@@ -52,6 +57,7 @@ public class Camera : IComponent
     public Camera(Camera other)
     {
         Kind = other.Kind;
+        TransformRotation = other.TransformRotation;
         Position = other.Position;
         Forward = other.Forward;
         Target = other.Target;
@@ -85,7 +91,12 @@ public class Camera : IComponent
         return Matrix4x4.CreateLookAt(Position, Target, Up);
     }
     
-    //NOTE: Use this. From old working project.
+    /// <summary>Perspective projection in Vulkan's clip space: Y is flipped and Z runs 0..1.</summary>
+    /// <remarks>
+    /// The engine's camera carries the projection its only backend needs. A second backend would have to
+    /// apply its own clip-space convention here rather than at every call site; picking already assumes
+    /// this one, which is why it is documented rather than hidden.
+    /// </remarks>
     public Matrix4x4 ProjectionMatrix
     {
         get
@@ -169,7 +180,7 @@ public class Camera : IComponent
 
     private void UpdateTargetFromYawPitch()
     {
-        var clampedPitch = Math.Clamp(PitchRadians, -89 * DegreesToRadians, 89f * DegreesToRadians);
+        var clampedPitch = System.Math.Clamp(PitchRadians, -89 * DegreesToRadians, 89f * DegreesToRadians);
         var forward = new Vector3(
             MathF.Cos(YawRadians) * MathF.Cos(clampedPitch),
             MathF.Sin(clampedPitch),

@@ -3,6 +3,7 @@ using Eidolon.Editor;
 using Eidolon.Vulkan;
 using EidolonCore.Assets;
 using EidolonCore.ECS;
+using EidolonCore.Nexus;
 using EidolonCore.Rendering;
 using EidolonCore.Simulation;
 
@@ -42,6 +43,13 @@ public sealed class SceneSerializerTests : IDisposable
         world.SetComponent(child, new MeshRenderer(PrimitiveMeshes.Cube,
             new Material("Red Plastic", new Vector4(0.8f, 0.2f, 0.3f, 1f))));
         world.SetComponent(child, new Spin { Axis = Vector3.UnitZ, RadiansPerSecond = 2.5f });
+        world.SetComponent(child, new XpbdBody
+        {
+            Shape = XpbdShape.Capsule,
+            Radius = 0.25f,
+            SegmentLength = 0.75f,
+            InverseMass = 0f,
+        });
 
         var camera = world.CreateEntity();
         world.SetComponent(camera, new Transform(new Vector3(3, 2, 5)));
@@ -87,6 +95,12 @@ public sealed class SceneSerializerTests : IDisposable
         var spin = loaded.GetComponent<Spin>(child);
         VectorAssert.Near(Vector3.UnitZ, spin.Axis);
         Assert.Equal(2.5f, spin.RadiansPerSecond, 4);
+
+        var body = loaded.GetComponent<XpbdBody>(child);
+        Assert.Equal(XpbdShape.Capsule, body.Shape);
+        Assert.Equal(0.25f, body.Radius, 4);
+        Assert.Equal(0.75f, body.SegmentLength, 4);
+        Assert.Equal(0f, body.InverseMass);
     }
 
     [Fact]

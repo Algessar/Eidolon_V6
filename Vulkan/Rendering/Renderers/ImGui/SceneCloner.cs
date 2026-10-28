@@ -1,5 +1,5 @@
-using Eidolon.Vulkan;
 using EidolonCore.ECS;
+using EidolonCore.Rendering;
 
 namespace Eidolon.Editor;
 

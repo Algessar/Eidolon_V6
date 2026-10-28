@@ -1,12 +1,15 @@
 using EidolonCore.ECS;
-using EidolonCore.Rendering;
 
-namespace Eidolon.Vulkan;
+namespace EidolonCore.Rendering;
 
 /// <summary>
 /// Marks an entity as drawable. The mesh is CPU-side data; the renderer uploads it to the GPU
 /// the first time it sees it and caches the result, so this component never holds a device handle.
 /// </summary>
+/// <remarks>
+/// Scene data rather than renderer state: a game says what it wants drawn without knowing how, which is
+/// why the component lives in the engine while the code that draws it lives in the renderer.
+/// </remarks>
 public sealed class MeshRenderer : IComponent
 {
     public Mesh? Mesh;

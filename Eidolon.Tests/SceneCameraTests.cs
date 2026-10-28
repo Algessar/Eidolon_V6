@@ -1,6 +1,7 @@
 using System.Numerics;
 using Eidolon.Vulkan;
 using EidolonCore.ECS;
+using EidolonCore.Rendering;
 
 namespace Eidolon.Tests;
 
@@ -83,5 +84,35 @@ public class SceneCameraTests
         SceneCameras.SyncFromTransforms(world);
 
         Assert.Equal(target, world.GetComponent<Camera>(entity).Target);
+    }
+
+    [Fact]
+    public void RotatingTheTransformTurnsTheView()
+    {
+        var world = new World();
+        var entity = CameraEntity(world, new Vector3(0f, 0f, 5f), Vector3.Zero);
+
+        // Look direction starts down -Z; rotate the entity a quarter turn about Y.
+        SceneCameras.SyncFromTransforms(world);
+
+        ref var transform = ref world.GetComponent<Transform>(entity);
+        transform.Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 2f);
+
+        SceneCameras.SyncFromTransforms(world);
+
+        var camera = world.GetComponent<Camera>(entity);
+        var direction = Vector3.Normalize(camera.Target - camera.Position);
+
+        // Local -Z rotated +90 deg about Y points down -X.
+        VectorAssert.Near(new Vector3(-1f, 0f, 0f), direction, 0.01f);
+    }
+
+    [Fact]
+    public void RotationHelpersRoundTrip()
+    {
+        var forward = Vector3.Normalize(new Vector3(0.3f, -0.2f, -1f));
+        var rotation = CameraOrientation.RotationFrom(forward);
+
+        VectorAssert.Near(forward, CameraOrientation.ForwardFrom(rotation), 0.01f);
     }
 }

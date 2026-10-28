@@ -11,6 +11,9 @@ public sealed class ViewportSettings
     /// <summary>Draw the transform gizmo for the current selection.</summary>
     public bool ShowGizmo { get; set; } = true;
 
+    /// <summary>Use the selected entity's world-space centre as the viewport orbit pivot.</summary>
+    public bool OrbitAroundSelected { get; set; } = true;
+
     /// <summary>Height of the grid plane. Sits just above the demo scene's ground.</summary>
     public float GridHeight { get; set; } = -0.498f;
 

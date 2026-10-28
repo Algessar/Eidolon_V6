@@ -1,5 +1,6 @@
 using System.Numerics;
 using EidolonCore.ECS;
+using EidolonCore.Rendering;
 
 namespace Eidolon.Vulkan;
 
@@ -8,28 +9,42 @@ namespace Eidolon.Vulkan;
 /// </summary>
 /// <remarks>
 /// A camera entity has both a <see cref="Transform"/> and a <see cref="Camera"/>. The transform is
-/// what the editor's gizmo moves, so the camera has to follow it; the look direction is preserved by
-/// moving the target along with the position, otherwise moving a camera would swing the view back
-/// towards wherever it used to be aimed.
+/// what the editor's gizmo and gameplay move, so the camera follows it: moving preserves the look
+/// direction, while rotating it turns the view.
 /// </remarks>
 public static class SceneCameras
 {
-    /// <summary>Pushes every camera entity's world position into its camera component.</summary>
+    /// <summary>Pushes every camera entity's transform into its camera component.</summary>
     public static void SyncFromTransforms(World world)
     {
         foreach (var entity in world.GetEntitiesWith<Transform, Camera>())
         {
-            var matrix = world.GetComponent<Transform>(entity).GetWorldMatrix(world);
-            var position = new Vector3(matrix.M41, matrix.M42, matrix.M43);
+            var transform = world.GetComponent<Transform>(entity);
+            var position = transform.GetWorldPosition(world);
+            var rotation = transform.GetWorldRotation(world);
 
             ref var camera = ref world.GetComponent<Camera>(entity);
-            var delta = position - camera.Position;
 
-            if (delta.LengthSquared() < 1e-12f)
-                continue;
+            var distance = Vector3.Distance(camera.Target, camera.Position);
+            if (distance < 0.1f)
+                distance = 1f;
 
-            camera.Target += delta;
-            camera.Position = position;
+            var positionDelta = position - camera.Position;
+            var rotated = MathF.Abs(Quaternion.Dot(rotation, camera.TransformRotation)) < 1f - 1e-4f;
+
+            if (rotated)
+            {
+                // The transform was rotated: turn the view instead of re-aiming it.
+                camera.Position = position;
+                camera.Target = position + CameraOrientation.ForwardFrom(rotation) * distance;
+            }
+            else if (positionDelta.LengthSquared() > 1e-12f)
+            {
+                camera.Position = position;
+                camera.Target += positionDelta;
+            }
+
+            camera.TransformRotation = rotation;
         }
     }
 }

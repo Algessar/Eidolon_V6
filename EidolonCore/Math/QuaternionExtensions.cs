@@ -2,32 +2,42 @@ using System.Numerics;
 
 namespace EidolonCore.Math;
 
-/// <summary>Conversion between quaternions and yaw/pitch/roll (YXZ) Euler angles.</summary>
+/// <summary>Conversion between quaternions and XYZ Euler angles.</summary>
+/// <remarks>
+/// Euler angles exist for authoring, not for simulation: they are the form an inspector can show as
+/// three numbers and animation curves can interpolate, while the engine keeps quaternions. The order
+/// is XYZ, matching a point rotated about X, then Y, then Z, which is what Blender and Unity's
+/// inspector present by default.
+/// </remarks>
 public static class QuaternionExtensions
 {
     /// <summary>
-    /// Decomposes a rotation into yaw, pitch and roll in radians. This is the inverse of
-    /// <see cref="Quaternion.CreateFromYawPitchRoll"/>.
+    /// Decomposes a rotation into X, Y and Z angles in radians.
     /// </summary>
-    public static (float Yaw, float Pitch, float Roll) ToYawPitchRoll(this Quaternion rotation)
+    /// <remarks>
+    /// At gimbal lock (Y at ±90 degrees) the X and Z axes are driven along the same axis, so the two
+    /// angles cannot be recovered separately: X is reported as zero and Z carries the whole twist.
+    /// Rebuilding from the reported angles still reproduces the original rotation.
+    /// </remarks>
+    public static (float X, float Y, float Z) ToEulerAngles(this Quaternion rotation)
     {
-        var x = rotation.X;
-        var y = rotation.Y;
-        var z = rotation.Z;
-        var w = rotation.W;
+        var matrix = Matrix4x4.CreateFromQuaternion(Quaternion.Normalize(rotation));
 
-        // Elements of the equivalent column-vector rotation matrix. Row/column indices are
-        // spelled out because the sign errors here are very easy to make.
-        var row1Col2 = 2f * (y * z - x * w);
-        var row1Col0 = 2f * (x * y + z * w);
-        var row1Col1 = 1f - 2f * (x * x + z * z);
-        var row0Col2 = 2f * (x * z + y * w);
-        var row2Col2 = 1f - 2f * (x * x + y * y);
+        // A quarter turn about Y collapses the X and Z rows onto each other, so the usual atan2
+        // pairs lose their independent meaning. Detect that and fall back to a single twist.
+        var locked = MathF.Abs(matrix.M13) >= 0.99999f;
 
-        var pitch = MathF.Asin(Mathf.Clamp(-row1Col2, -1f, 1f));
-        var roll = MathF.Atan2(row1Col0, row1Col1);
-        var yaw = MathF.Atan2(row0Col2, row2Col2);
+        var y = MathF.Asin(Mathf.Clamp(-matrix.M13, -1f, 1f));
+        var x = locked ? 0f : MathF.Atan2(matrix.M23, matrix.M33);
+        var z = locked ? MathF.Atan2(-matrix.M21, matrix.M22) : MathF.Atan2(matrix.M12, matrix.M11);
 
-        return (yaw, pitch, roll);
+        return (x, y, z);
     }
+
+    /// <summary>Builds a rotation from X, Y and Z angles in radians, applied in that order.</summary>
+    public static Quaternion FromEulerAngles(float x, float y, float z) =>
+        Quaternion.Normalize(Quaternion.CreateFromRotationMatrix(
+            Matrix4x4.CreateRotationX(x) *
+            Matrix4x4.CreateRotationY(y) *
+            Matrix4x4.CreateRotationZ(z)));
 }

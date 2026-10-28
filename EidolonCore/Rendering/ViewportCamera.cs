@@ -22,8 +22,13 @@ public static class ViewportCamera
 
     /// <summary>
     /// Rotates <paramref name="position"/> around <paramref name="pivot"/> on a sphere, so the
-    /// distance to the pivot is preserved. Positive yaw orbits to the right, positive pitch rises.
+    /// distance to the pivot is preserved. Positive pitch rises.
     /// </summary>
+    /// <remarks>
+    /// Positive yaw swings the camera towards its own left, so the scene turns with the drag, which is
+    /// the same grab-the-scene feel as <see cref="Pan"/>. Turning the camera the other way instead
+    /// would make a drag right move the scene left while a pan right moves it right.
+    /// </remarks>
     public static Vector3 Orbit(Vector3 position, Vector3 pivot, float yawDelta, float pitchDelta)
     {
         var offset = position - pivot;
@@ -32,16 +37,23 @@ public static class ViewportCamera
         if (radius < 1e-4f)
             return position;
 
-        var yaw = MathF.Atan2(offset.Z, offset.X);
         var pitch = MathF.Asin(System.Math.Clamp(offset.Y / radius, -1f, 1f));
+        var clampedPitch = System.Math.Clamp(pitch + pitchDelta, -MaxPitch, MaxPitch);
+        var appliedPitch = clampedPitch - pitch;
 
-        yaw += yawDelta;
-        pitch = System.Math.Clamp(pitch + pitchDelta, -MaxPitch, MaxPitch);
+        // Apply real rotations rather than rebuilding the point from independent spherical
+        // coordinates. The same yaw/pitch can then be applied to both camera position and
+        // target, keeping the view rigid while it orbits an arbitrary pivot. System.Numerics
+        // rotates row vectors, so a positive angle about +Y already turns the world the other way;
+        // negating it here is what makes positive yaw drag the scene along with the mouse.
+        var yawed = Vector3.Transform(offset, Matrix4x4.CreateFromAxisAngle(Vector3.UnitY, -yawDelta));
+        var horizontal = new Vector3(yawed.X, 0f, yawed.Z);
+        if (horizontal.LengthSquared() < 1e-8f)
+            return pivot + yawed;
 
-        var cosPitch = MathF.Cos(pitch);
-        var direction = new Vector3(cosPitch * MathF.Cos(yaw), MathF.Sin(pitch), cosPitch * MathF.Sin(yaw));
-
-        return pivot + direction * radius;
+        var pitchAxis = Vector3.Normalize(Vector3.Cross(horizontal, Vector3.UnitY));
+        var rotated = Vector3.Transform(yawed, Matrix4x4.CreateFromAxisAngle(pitchAxis, appliedPitch));
+        return pivot + rotated;
     }
 
     /// <summary>Screen-space drag converted into a world-space pan offset.</summary>

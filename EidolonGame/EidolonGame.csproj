@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <LangVersion>14</LangVersion>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <!-- The game depends on the engine; nothing in the engine may depend on the game. -->
+    <ItemGroup>
+        <ProjectReference Include="..\EidolonCore\EidolonCore.csproj" />
+    </ItemGroup>
+
+</Project>

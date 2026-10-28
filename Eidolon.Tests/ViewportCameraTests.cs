@@ -24,8 +24,22 @@ public class ViewportCameraTests
 
         var moved = ViewportCamera.Orbit(position, pivot, MathF.PI / 2f, 0f);
 
-        // atan2(z, x) of (0,0,5) is pi/2; adding pi/2 puts the camera on -X.
+        // Dragging right (positive yaw) has to swing the camera to its own left, onto -X, so the
+        // scene turns the way the mouse drags it. Pan uses the same grab-the-scene convention.
         VectorAssert.Near(new Vector3(-5f, 0f, 0f), moved);
+        VectorAssert.Near(new Vector3(5f, 0f, 0f), ViewportCamera.Orbit(position, pivot, -MathF.PI / 2f, 0f));
+    }
+
+    [Fact]
+    public void OrbitStillRisesAfterYawing()
+    {
+        // The pitch axis is derived from the already yawed offset, so a camera that has been yawed
+        // around to -X must still be lifted by a positive pitch rather than tilted the other way.
+        var yawed = ViewportCamera.Orbit(new Vector3(0f, 0f, 5f), Vector3.Zero, MathF.PI / 2f, 0f);
+        var raised = ViewportCamera.Orbit(yawed, Vector3.Zero, 0f, 0.5f);
+
+        Assert.True(raised.Y > 1f, $"expected the camera to rise, got {raised}");
+        Assert.Equal(5f, Vector3.Distance(raised, Vector3.Zero), 3);
     }
 
     [Fact]
