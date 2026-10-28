@@ -99,7 +99,9 @@ public class SimulationLoopTests
     public void InputIsOnlyDeliveredWhilePlaying()
     {
         var session = new SceneSession(new World());
-        var input = new GameInput(new Vector2(10, 20), new Vector2(1, 0), 0f, true, false, false, false, false);
+
+        var input = new GameInput(new Vector2(10, 20), new Vector2(1, 0), 0f, true, false, false,
+            GameKey.W | GameKey.Shift);
 
         session.SetInput(input);
         Assert.Equal(GameInput.None, session.Input);

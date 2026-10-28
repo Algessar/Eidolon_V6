@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using Eidolon.Vulkan;
 using EidolonCore.Assets;
 using EidolonCore.ECS;
+using EidolonCore.Nexus;
 using EidolonCore.Rendering;
 using EidolonCore.Simulation;
 
@@ -20,7 +21,9 @@ namespace Eidolon.Editor;
 /// </remarks>
 public static class SceneSerializer
 {
-    private const int CurrentVersion = 1;
+    // 2 adds rigid bodies. Bumped rather than extended silently: an older build must refuse a newer
+    // file instead of loading it with the physics stripped out.
+    private const int CurrentVersion = 2;
 
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -107,6 +110,11 @@ public static class SceneSerializer
                     RadiansPerSecond = spin.RadiansPerSecond,
                 });
             }
+
+            if (saved.XpbdBody is { } body)
+            {
+                world.SetComponent(entity, CaptureBody(body));
+            }
         }
     }
 
@@ -163,6 +171,20 @@ public static class SceneSerializer
             };
         }
 
+        if (world.TryGetComponent<XpbdBody>(entity, out var body))
+        {
+            saved.XpbdBody = new XpbdBodyData
+            {
+                Shape = body.Shape.ToString(),
+                HalfExtents = ToArray(body.HalfExtents),
+                Radius = body.Radius,
+                SegmentLength = body.SegmentLength,
+                ContactRadius = body.ContactRadius,
+                InverseMass = body.InverseMass,
+                Stiffness = body.Stiffness,
+            };
+        }
+
         return saved;
     }
 
@@ -177,6 +199,12 @@ public static class SceneSerializer
         if (string.Equals(mesh.Name, PrimitiveMeshes.Plane.Name, StringComparison.OrdinalIgnoreCase))
             return PrimitiveMeshes.Plane;
 
+        if (string.Equals(mesh.Name, PrimitiveMeshes.Sphere.Name, StringComparison.OrdinalIgnoreCase))
+            return PrimitiveMeshes.Sphere;
+
+        if (string.Equals(mesh.Name, PrimitiveMeshes.Capsule.Name, StringComparison.OrdinalIgnoreCase))
+            return PrimitiveMeshes.Capsule;
+
         foreach (var asset in assets.Catalog)
         {
             if (string.Equals(asset.Name, mesh.Name, StringComparison.OrdinalIgnoreCase) &&
@@ -189,6 +217,17 @@ public static class SceneSerializer
         Debug.Log($"Scene load: no mesh named '{mesh.Name}'", VALIDATION_LAYERS.WARNING);
         return null;
     }
+
+    private static XpbdBody CaptureBody(XpbdBodyData data) => new()
+    {
+        Shape = Enum.TryParse<XpbdShape>(data.Shape, out var shape) ? shape : XpbdShape.Box,
+        HalfExtents = data.HalfExtents is { Length: 3 } ? ToVector(data.HalfExtents) : new Vector3(0.5f),
+        Radius = data.Radius,
+        SegmentLength = data.SegmentLength,
+        ContactRadius = data.ContactRadius,
+        InverseMass = data.InverseMass,
+        Stiffness = data.Stiffness,
+    };
 
     private static Camera CaptureCamera(CameraData data)
     {
@@ -258,6 +297,8 @@ public static class SceneSerializer
         public CameraData? Camera { get; set; }
 
         public SpinData? Spin { get; set; }
+
+        public XpbdBodyData? XpbdBody { get; set; }
     }
 
     private sealed class TransformData
@@ -306,5 +347,22 @@ public static class SceneSerializer
         public float[]? Axis { get; set; }
 
         public float RadiansPerSecond { get; set; }
+    }
+
+    private sealed class XpbdBodyData
+    {
+        public string Shape { get; set; } = "Box";
+
+        public float[]? HalfExtents { get; set; }
+
+        public float Radius { get; set; } = 0.5f;
+
+        public float SegmentLength { get; set; } = 1f;
+
+        public float ContactRadius { get; set; } = 0.02f;
+
+        public float InverseMass { get; set; } = 1f;
+
+        public float Stiffness { get; set; } = 1f;
     }
 }

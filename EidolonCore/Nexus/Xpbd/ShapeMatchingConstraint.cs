@@ -169,13 +169,25 @@ public sealed class ShapeMatchingConstraint : IXpbdConstraint, IXpbdPostStep
         // The 4x4 identity corner has to be valid or Matrix4x4.Invert treats it as singular.
         covariance.M44 = 1f;
 
-        if (!TryExtractRotation(covariance, out var rotation))
-            return;
+        // The centroid stands even when the rotation cannot be recovered: a body of particles that
+        // cannot span a volume (a single-particle sphere) has no orientation, but it still has to
+        // report where it is.
+        Centroid = centroid;
 
-        _rotation = rotation;
+        // Particles on one line or in one plane have no unique orientation, and the polar iteration
+        // would turn rounding noise into a plausible-looking but wrong rotation. Squeezed clouds do
+        // happen - contacts against a flat surface push particles into a plane - so the rotation is
+        // simply left as it was. The projection below still runs, which is what lets the body spring
+        // back into shape instead of collapsing for good.
+        var trace = covariance.M11 + covariance.M22 + covariance.M33;
+        var spansVolume = trace > 1e-12f &&
+                          MathF.Abs(covariance.GetDeterminant()) > 1e-8f * trace * trace * trace;
+
+        if (spansVolume && TryExtractRotation(covariance, out var recovered))
+            _rotation = recovered;
 
         // System.Numerics transforms row vectors, so the maths-convention rotation is transposed.
-        var rowRotation = Matrix4x4.Transpose(rotation);
+        var rowRotation = Matrix4x4.Transpose(_rotation);
 
         for (var slot = 0; slot < _indices.Length; slot++)
         {
@@ -188,7 +200,6 @@ public sealed class ShapeMatchingConstraint : IXpbdConstraint, IXpbdPostStep
             particle.Position = Vector3.Lerp(particle.Position, goal, Stiffness);
         }
 
-        Centroid = centroid;
         Rotation = Quaternion.Normalize(Quaternion.CreateFromRotationMatrix(rowRotation));
     }
 
@@ -223,33 +234,128 @@ public sealed class ShapeMatchingConstraint : IXpbdConstraint, IXpbdPostStep
     }
 }
 
+/// <summary>
+/// What the solver needs to treat a body as a collision shape: the rigid constraint holding its
+/// particles, the particles that ride on its surface, and the radius those particles collide with.
+/// </summary>
+/// <remarks>
+/// The contact radius differs by shape because the particle layout does. A box is approximated by a
+/// lattice of points, so the radius is a small slack that keeps them just off a surface; a sphere and a
+/// capsule are swept spheres, so their radius is the shape's own radius and the contact is exact.
+/// </remarks>
+public readonly record struct XpbdBodyGeometry(ShapeMatchingConstraint Shape, int[] ContactParticles,
+    float ContactRadius);
+
 /// <summary>Creates the common body shapes as particle clouds plus their shape-matching constraint.</summary>
 public static class XpbdBodies
 {
+    /// <summary>Particles per axis in a box body, i.e. corners, edges, faces and centre are all sampled.</summary>
+    private const int BoxLattice = 3;
     /// <summary>
-    /// Adds the eight corners of a box to the solver and keeps them rigid. Rotation is recovered
-    /// from the corners, so the body can tumble and be read back as a transform.
+    /// Adds a box to the solver as a three-by-three-by-three lattice of particles and keeps them rigid.
+    /// Rotation is recovered from the lattice, so the body can tumble and be read back as a transform.
     /// </summary>
-    public static ShapeMatchingConstraint AddBox(XpbdSolver solver, Vector3 center, Vector3 halfExtents,
-        Quaternion? rotation = null, float particleInverseMass = 1f, float stiffness = 1f)
+    /// <remarks>
+    /// The lattice matters for collision, not just for mass: corners alone leave the middle of a face
+    /// unsampled, so a box would sink through anything smaller than itself that sits under its centre.
+    /// Face and edge points are what let it rest on a platform it overhangs.
+    /// </remarks>
+    public static XpbdBodyGeometry AddBox(XpbdSolver solver, Vector3 center, Vector3 halfExtents,
+        Quaternion? rotation = null, float particleInverseMass = 1f, float stiffness = 1f,
+        float contactRadius = 0.02f)
     {
         var bodyRotation = rotation ?? Quaternion.Identity;
-        var indices = new int[8];
-        var rest = new Vector3[8];
+        var indices = new int[BoxLattice * BoxLattice * BoxLattice];
+        var rest = new Vector3[indices.Length];
+        var slot = 0;
 
-        for (var corner = 0; corner < 8; corner++)
+        for (var x = 0; x < BoxLattice; x++)
         {
-            var local = new Vector3(
-                (corner & 1) == 0 ? -halfExtents.X : halfExtents.X,
-                (corner & 2) == 0 ? -halfExtents.Y : halfExtents.Y,
-                (corner & 4) == 0 ? -halfExtents.Z : halfExtents.Z);
+            for (var y = 0; y < BoxLattice; y++)
+            {
+                for (var z = 0; z < BoxLattice; z++)
+                {
+                    var local = new Vector3(
+                        AxisOffset(x) * halfExtents.X,
+                        AxisOffset(y) * halfExtents.Y,
+                        AxisOffset(z) * halfExtents.Z);
 
-            rest[corner] = local;
-            indices[corner] = solver.AddParticle(center + Vector3.Transform(local, bodyRotation), particleInverseMass);
+                    rest[slot] = local;
+                    indices[slot] = solver.AddParticle(
+                        center + Vector3.Transform(local, bodyRotation), particleInverseMass);
+
+                    slot++;
+                }
+            }
         }
 
         var constraint = new ShapeMatchingConstraint(indices, rest, stiffness);
         solver.AddConstraint(constraint);
-        return constraint;
+
+        return new XpbdBodyGeometry(constraint, indices, contactRadius);
+    }
+
+    /// <summary>-1, 0 or +1 across the lattice axis.</summary>
+    private static float AxisOffset(int step) => step - 1;
+
+    /// <summary>
+    /// Adds a sphere as a single particle at its centre. The particle's contact radius is the sphere's
+    /// radius, so a sphere collides exactly rather than approximately, and it has no orientation to
+    /// track because a sphere rotating is indistinguishable from one that is not.
+    /// </summary>
+    public static XpbdBodyGeometry AddSphere(XpbdSolver solver, Vector3 center, float radius,
+        float particleInverseMass = 1f, float stiffness = 1f)
+    {
+        if (radius <= 0f)
+            throw new ArgumentOutOfRangeException(nameof(radius));
+
+        var indices = new[] { solver.AddParticle(center, particleInverseMass) };
+        var constraint = new ShapeMatchingConstraint(indices, [Vector3.Zero], stiffness);
+        solver.AddConstraint(constraint);
+
+        return new XpbdBodyGeometry(constraint, indices, radius);
+    }
+
+    /// <summary>
+    /// Adds a capsule as two end-of-segment particles, each colliding with the capsule's radius: the
+    /// swept spheres along that segment are exactly the capsule, so contacts are exact and the body
+    /// may tip and roll freely.
+    /// </summary>
+    /// <param name="segmentLength">Length of the axis between the two cap centres, caps excluded.</param>
+    public static XpbdBodyGeometry AddCapsule(XpbdSolver solver, Vector3 center, float radius,
+        float segmentLength, Quaternion? rotation = null, float particleInverseMass = 1f, float stiffness = 1f)
+    {
+        if (radius <= 0f)
+            throw new ArgumentOutOfRangeException(nameof(radius));
+
+        if (segmentLength < 0f)
+            throw new ArgumentOutOfRangeException(nameof(segmentLength));
+
+        var bodyRotation = rotation ?? Quaternion.Identity;
+        var half = segmentLength * 0.5f;
+
+        // Two particles on the surface carry the contacts. The other four sit on the caps' equators and
+        // carry no contacts at all: they are there so the point set spans a volume, which is what lets
+        // the shape match recover a rotation for a capsule that tips or rolls. They are arranged
+        // symmetrically so the body's centroid stays the capsule's own centre.
+        Vector3[] rest =
+        [
+            new(0f, -half, 0f),
+            new(0f, half, 0f),
+            new(radius, half, 0f),
+            new(-radius, half, 0f),
+            new(0f, -half, radius),
+            new(0f, -half, -radius),
+        ];
+
+        var indices = new int[rest.Length];
+
+        for (var slot = 0; slot < rest.Length; slot++)
+            indices[slot] = solver.AddParticle(center + Vector3.Transform(rest[slot], bodyRotation), particleInverseMass);
+
+        var constraint = new ShapeMatchingConstraint(indices, rest, stiffness);
+        solver.AddConstraint(constraint);
+
+        return new XpbdBodyGeometry(constraint, [indices[0], indices[1]], radius);
     }
 }

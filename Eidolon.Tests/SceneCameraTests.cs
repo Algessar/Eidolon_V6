@@ -1,6 +1,7 @@
 using System.Numerics;
 using Eidolon.Vulkan;
 using EidolonCore.ECS;
+using EidolonCore.Rendering;
 
 namespace Eidolon.Tests;
 
@@ -110,8 +111,8 @@ public class SceneCameraTests
     public void RotationHelpersRoundTrip()
     {
         var forward = Vector3.Normalize(new Vector3(0.3f, -0.2f, -1f));
-        var rotation = SceneCameras.RotationFrom(forward);
+        var rotation = CameraOrientation.RotationFrom(forward);
 
-        VectorAssert.Near(forward, SceneCameras.ForwardFrom(rotation), 0.01f);
+        VectorAssert.Near(forward, CameraOrientation.ForwardFrom(rotation), 0.01f);
     }
 }

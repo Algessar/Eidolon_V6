@@ -121,14 +121,10 @@ public class World
                 if (!transforms.TryGet(orphan, out var transform))
                     continue;
 
-                if (Matrix4x4.Decompose(worldMatrix, out var scale, out var rotation, out var translation))
-                {
-                    transform.Position = translation;
-                    transform.Rotation = rotation;
-                    transform.Scale = scale;
-                }
-
+                // The parent is already gone, so writing the captured world matrix lands the
+                // orphan in exactly the same place it was in before.
                 transform.Parent = default;
+                transform.TrySetWorldMatrix(this, worldMatrix);
                 transforms.Set(orphan, transform);
             }
         }

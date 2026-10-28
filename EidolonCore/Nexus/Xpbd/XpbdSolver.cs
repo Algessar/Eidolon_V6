@@ -73,6 +73,16 @@ public sealed class XpbdSolver
     /// <summary>Solver iterations per step. More iterations means stiffer constraints.</summary>
     public int Iterations { get; set; } = 8;
 
+    /// <summary>
+    /// Velocity lost per second, as a fraction. Zero is an undamped simulation.
+    /// </summary>
+    /// <remarks>
+    /// Damping stands in for friction, which contacts do not model yet: without it a box that has
+    /// been pushed keeps sliding at the same speed forever, which is correct for a frictionless
+    /// surface and useless as a demo.
+    /// </remarks>
+    public float Damping { get; set; }
+
     public IReadOnlyList<XpbdParticle> Particles => _particles;
 
     public IReadOnlyList<IXpbdConstraint> Constraints => _constraints;
@@ -113,6 +123,10 @@ public sealed class XpbdSolver
             }
 
             particle.Velocity += Gravity * deltaTime;
+
+            if (Damping > 0f)
+                particle.Velocity *= MathF.Max(0f, 1f - Damping * deltaTime);
+
             particle.Position += particle.Velocity * deltaTime;
         }
 

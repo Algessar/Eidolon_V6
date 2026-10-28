@@ -135,6 +135,12 @@ internal unsafe class EditorUI
             if (ImGui.MenuItem("Add Plane"))
                 SpawnPrimitive(PrimitiveMeshes.Plane, "Plane");
 
+            if (ImGui.MenuItem("Add Sphere"))
+                SpawnPrimitive(PrimitiveMeshes.Sphere, "Sphere");
+
+            if (ImGui.MenuItem("Add Capsule"))
+                SpawnPrimitive(PrimitiveMeshes.Capsule, "Capsule");
+
             ImGui.EndPopup();
         }
 
@@ -323,19 +329,70 @@ internal unsafe class EditorUI
         {
             if (ImGui.CollapsingHeader("Rigid Body", ImGuiTreeNodeFlags.DefaultOpen))
             {
-                var halfExtents = body.HalfExtents;
-                var contactRadius = body.ContactRadius;
+                if (ImGui.BeginCombo("Shape", body.Shape.ToString()))
+                {
+                    foreach (var candidate in Enum.GetValues<XpbdShape>())
+                    {
+                        if (ImGui.Selectable(candidate.ToString(), candidate == body.Shape))
+                            body.Shape = candidate;
+                    }
+
+                    ImGui.EndCombo();
+                }
+
+                switch (body.Shape)
+                {
+                    case XpbdShape.Sphere:
+                    {
+                        var radius = body.Radius;
+
+                        if (ImGui.DragFloat("Radius", ref radius, 0.01f, 0.01f, 20f))
+                            body.Radius = radius;
+
+                        break;
+                    }
+
+                    case XpbdShape.Capsule:
+                    {
+                        var radius = body.Radius;
+                        var segment = body.SegmentLength;
+
+                        if (ImGui.DragFloat("Radius", ref radius, 0.01f, 0.01f, 20f))
+                            body.Radius = radius;
+
+                        if (ImGui.DragFloat("Segment length", ref segment, 0.01f, 0f, 20f))
+                            body.SegmentLength = segment;
+
+                        break;
+                    }
+
+                    default:
+                    {
+                        var halfExtents = body.HalfExtents;
+                        var contactRadius = body.ContactRadius;
+
+                        if (ImGui.DragFloat3("Half extents", ref halfExtents, 0.02f))
+                            body.HalfExtents = halfExtents;
+
+                        if (ImGui.DragFloat("Contact radius", ref contactRadius, 0.005f, 0.001f, 0.25f))
+                            body.ContactRadius = contactRadius;
+
+                        break;
+                    }
+                }
+
+                // A body with no inverse mass is pinned: it collides but nothing can move it.
+                var isStatic = body.InverseMass <= 0f;
+
+                if (ImGui.Checkbox("Static", ref isStatic))
+                    body.InverseMass = isStatic ? 0f : 1f;
+
                 var inverseMass = body.InverseMass;
-                var stiffness = body.Stiffness;
-
-                if (ImGui.DragFloat3("Half extents", ref halfExtents, 0.02f))
-                    body.HalfExtents = halfExtents;
-
-                if (ImGui.DragFloat("Contact radius", ref contactRadius, 0.005f, 0.001f, 0.25f))
-                    body.ContactRadius = contactRadius;
 
                 if (ImGui.DragFloat("Inverse mass", ref inverseMass, 0.02f, 0f, 10f))
                     body.InverseMass = inverseMass;
+
+                var stiffness = body.Stiffness;
 
                 if (ImGui.DragFloat("Stiffness", ref stiffness, 0.01f, 0.05f, 1f))
                     body.Stiffness = stiffness;
@@ -356,10 +413,58 @@ internal unsafe class EditorUI
                 _world.SetComponent(entity, new Spin());
 
             if (!_world.HasComponent<XpbdBody>(entity) && ImGui.MenuItem("Rigid Body"))
-                _world.SetComponent(entity, new XpbdBody());
+                _world.SetComponent(entity, BodyFromMesh(entity));
 
             ImGui.EndPopup();
         }
+    }
+
+    /// <summary>
+    /// Guesses a body from what the entity already is: a cube becomes a box of the same size, a sphere
+    /// or capsule the matching primitive, and anything imported gets the box default.
+    /// </summary>
+    /// <remarks>
+    /// This only seeds the component; every value stays editable, because a mesh is a presentation of
+    /// the shape rather than its definition.
+    /// </remarks>
+    private XpbdBody BodyFromMesh(Entity entity)
+    {
+        var body = new XpbdBody();
+
+        if (!_world.TryGetComponent<Transform>(entity, out var transform) ||
+            !_world.TryGetComponent<MeshRenderer>(entity, out var renderer) ||
+            renderer.Mesh is not { } mesh)
+        {
+            return body;
+        }
+
+        var scale = Matrix4x4.Decompose(transform.GetWorldMatrix(_world), out var worldScale, out _, out _)
+            ? worldScale
+            : transform.Scale;
+
+        var size = mesh.LocalBounds.Size;
+        var worldSize = new Vector3(
+            MathF.Abs(scale.X) * size.X,
+            MathF.Abs(scale.Y) * size.Y,
+            MathF.Abs(scale.Z) * size.Z);
+
+        if (ReferenceEquals(mesh, PrimitiveMeshes.Sphere))
+        {
+            body.Shape = XpbdShape.Sphere;
+            body.Radius = MathF.Max(worldSize.X, MathF.Max(worldSize.Y, worldSize.Z)) * 0.5f;
+            return body;
+        }
+
+        if (ReferenceEquals(mesh, PrimitiveMeshes.Capsule))
+        {
+            body.Shape = XpbdShape.Capsule;
+            body.Radius = MathF.Max(worldSize.X, worldSize.Z) * 0.5f;
+            body.SegmentLength = MathF.Max(0f, worldSize.Y - worldSize.X);
+            return body;
+        }
+
+        body.HalfExtents = worldSize * 0.5f;
+        return body;
     }
 
     private void DrawTransformInspector(Entity entity)
@@ -371,23 +476,23 @@ internal unsafe class EditorUI
 
         ImGui.DragFloat3("Position", ref transform.Position, 0.05f);
 
-        // Rotation is stored as a quaternion but edited as yaw/pitch/roll, which is the form a
-        // person can actually reason about.
-        var (yaw, pitch, roll) = transform.Rotation.ToYawPitchRoll();
-        var yawDegrees = yaw * Mathf.Rad2Deg;
-        var pitchDegrees = pitch * Mathf.Rad2Deg;
-        var rollDegrees = roll * Mathf.Rad2Deg;
+        // Rotation is a quaternion in the engine but three numbers in the inspector. The axes are
+        // named for what they are: camera terms would be wrong on an entity that is not a camera.
+        var (x, y, z) = transform.Rotation.ToEulerAngles();
+        var xDegrees = x * Mathf.Rad2Deg;
+        var yDegrees = y * Mathf.Rad2Deg;
+        var zDegrees = z * Mathf.Rad2Deg;
 
-        var rotated = ImGui.DragFloat("Yaw", ref yawDegrees, 0.5f);
-        rotated |= ImGui.DragFloat("Pitch", ref pitchDegrees, 0.5f);
-        rotated |= ImGui.DragFloat("Roll", ref rollDegrees, 0.5f);
+        var rotated = ImGui.DragFloat("Rotation X", ref xDegrees, 0.5f);
+        rotated |= ImGui.DragFloat("Rotation Y", ref yDegrees, 0.5f);
+        rotated |= ImGui.DragFloat("Rotation Z", ref zDegrees, 0.5f);
 
         if (rotated)
         {
-            transform.Rotation = Quaternion.CreateFromYawPitchRoll(
-                yawDegrees * Mathf.Deg2Rad,
-                pitchDegrees * Mathf.Deg2Rad,
-                rollDegrees * Mathf.Deg2Rad);
+            transform.Rotation = QuaternionExtensions.FromEulerAngles(
+                xDegrees * Mathf.Deg2Rad,
+                yDegrees * Mathf.Deg2Rad,
+                zDegrees * Mathf.Deg2Rad);
         }
 
         ImGui.DragFloat3("Scale", ref transform.Scale, 0.05f);
@@ -697,7 +802,7 @@ internal unsafe class EditorUI
         if (IsMouseOverViewWidget(imageMin, imageSize))
             return;
 
-        if (TryRayFromGameView(imageMin, imageSize, out var ray) && FindCamera() is not null)
+        if (TryRayFromGameView(imageMin, imageSize, out var ray) && FindGameCamera() is not null)
             _selected = ScenePicker.Pick(_world, ray);
     }
 
@@ -862,27 +967,10 @@ internal unsafe class EditorUI
                 continue;
 
             ref var transform = ref _world.GetComponent<Transform>(entity);
-            var worldRotation = SceneCameras.RotationFrom(camera.Target - camera.Position);
+            var worldRotation = CameraOrientation.RotationFrom(camera.Target - camera.Position);
 
-            if (transform.Parent.IsValid &&
-                _world.TryGetComponent<Transform>(transform.Parent, out var parent) &&
-                Matrix4x4.Invert(parent.GetWorldMatrix(_world), out var inverseParent))
-            {
-                transform.Position = Vector3.Transform(camera.Position, inverseParent);
-
-                var parentRotation = Matrix4x4.Decompose(parent.GetWorldMatrix(_world), out _, out var rotation, out _)
-                    ? rotation
-                    : Quaternion.Identity;
-                var inverseParentRotation = Quaternion.Inverse(parentRotation);
-                var localRotation = Matrix4x4.CreateFromQuaternion(worldRotation) *
-                                    Matrix4x4.CreateFromQuaternion(inverseParentRotation);
-                transform.Rotation = Quaternion.Normalize(Quaternion.CreateFromRotationMatrix(localRotation));
-            }
-            else
-            {
-                transform.Position = camera.Position;
-                transform.Rotation = worldRotation;
-            }
+            // The camera moves in world space; the entity that owns it may be parented.
+            transform.TrySetWorldPose(_world, camera.Position, worldRotation);
 
             // SceneCameras tracks the decomposed world rotation, not the local rotation.
             camera.TransformRotation = worldRotation;
@@ -904,7 +992,7 @@ internal unsafe class EditorUI
     {
         ray = default;
 
-        if (imageSize.X <= 0f || imageSize.Y <= 0f || FindCamera() is not { } camera)
+        if (imageSize.X <= 0f || imageSize.Y <= 0f || FindGameCamera() is not { } camera)
             return false;
 
         var mouse = ImGui.GetMousePos();
@@ -1033,7 +1121,32 @@ internal unsafe class EditorUI
     private static float FittedScale(Mesh mesh) =>
         mesh.LocalBounds.MaxDimension > 1e-6f ? 1f / mesh.LocalBounds.MaxDimension : 1f;
 
-    private Camera? FindCamera()
+    /// <summary>
+    /// The camera the viewport renders through: the editor camera, or any camera when a scene has none,
+    /// because the viewport breaks without one.
+    /// </summary>
+    /// <remarks>
+    /// A scene may also carry a game camera, and that one must not win just because it was found first.
+    /// </remarks>
+    private Camera? FindCamera() => FindCamera(CameraKind.Editor) ?? FindAnyCamera();
+
+    /// <summary>The camera the game view renders through, falling back to the viewport's.</summary>
+    private Camera? FindGameCamera() => FindCamera(CameraKind.Game) ?? FindCamera();
+
+    private Camera? FindCamera(CameraKind kind)
+    {
+        foreach (var entity in _world.GetEntitiesWith<Camera>())
+        {
+            var camera = _world.GetComponent<Camera>(entity);
+
+            if (camera.Kind == kind)
+                return camera;
+        }
+
+        return null;
+    }
+
+    private Camera? FindAnyCamera()
     {
         foreach (var entity in _world.GetEntitiesWith<Camera>())
             return _world.GetComponent<Camera>(entity);
@@ -1160,6 +1273,12 @@ internal unsafe class EditorUI
             if (ImGui.MenuItem("Plane"))
                 SpawnPrimitive(PrimitiveMeshes.Plane, "Plane");
 
+            if (ImGui.MenuItem("Sphere"))
+                SpawnPrimitive(PrimitiveMeshes.Sphere, "Sphere");
+
+            if (ImGui.MenuItem("Capsule"))
+                SpawnPrimitive(PrimitiveMeshes.Capsule, "Capsule");
+
             ImGui.EndDisabled();
             ImGui.EndMenu();
         }
@@ -1228,8 +1347,29 @@ internal unsafe class EditorUI
             io.MouseDown[0],
             io.MouseDown[1],
             io.MouseDown[2],
-            io.KeyShift,
-            io.KeyCtrl));
+            SampleGameKeys()));
+    }
+
+    /// <summary>Packs the gameplay keys out of ImGui's current keyboard state.</summary>
+    private static GameKey SampleGameKeys()
+    {
+        var keys = GameKey.None;
+
+        if (ImGui.IsKeyDown(ImGuiKey.W)) keys |= GameKey.W;
+        if (ImGui.IsKeyDown(ImGuiKey.A)) keys |= GameKey.A;
+        if (ImGui.IsKeyDown(ImGuiKey.S)) keys |= GameKey.S;
+        if (ImGui.IsKeyDown(ImGuiKey.D)) keys |= GameKey.D;
+        if (ImGui.IsKeyDown(ImGuiKey.Q)) keys |= GameKey.Q;
+        if (ImGui.IsKeyDown(ImGuiKey.E)) keys |= GameKey.E;
+        if (ImGui.IsKeyDown(ImGuiKey.Space)) keys |= GameKey.Space;
+        if (ImGui.IsKeyDown(ImGuiKey.ModShift)) keys |= GameKey.Shift;
+        if (ImGui.IsKeyDown(ImGuiKey.ModCtrl)) keys |= GameKey.Control;
+        if (ImGui.IsKeyDown(ImGuiKey.LeftArrow)) keys |= GameKey.Left;
+        if (ImGui.IsKeyDown(ImGuiKey.RightArrow)) keys |= GameKey.Right;
+        if (ImGui.IsKeyDown(ImGuiKey.UpArrow)) keys |= GameKey.Up;
+        if (ImGui.IsKeyDown(ImGuiKey.DownArrow)) keys |= GameKey.Down;
+
+        return keys;
     }
 
     private static string ScenesDirectory => Path.Combine(AppContext.BaseDirectory, "Scenes");

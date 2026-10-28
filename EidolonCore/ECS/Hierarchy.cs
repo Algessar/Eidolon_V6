@@ -41,21 +41,8 @@ public static class Hierarchy
         if (!preserveWorldTransform)
             return true;
 
-        var parentMatrix = Matrix4x4.Identity;
-
-        if (parent.IsValid && world.TryGetComponent<Transform>(parent, out var parentTransform))
-            parentMatrix = parentTransform.GetWorldMatrix(world);
-
-        if (!Matrix4x4.Invert(parentMatrix, out var inverseParent))
-            return true;
-
         // A non-invertible parent (zero scale) leaves the local transform alone.
-        if (!Matrix4x4.Decompose(worldMatrix * inverseParent, out var scale, out var rotation, out var translation))
-            return true;
-
-        transform.Scale = scale;
-        transform.Rotation = rotation;
-        transform.Position = translation;
+        transform.TrySetWorldMatrix(world, worldMatrix);
         return true;
     }
 

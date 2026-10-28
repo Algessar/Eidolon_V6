@@ -62,7 +62,6 @@ internal sealed class TransformGizmo
     private Vector3 _dragStartScale;
     private float _dragStartScreenRadius;
     private Quaternion _dragStartWorldRotation;
-    private Quaternion _dragParentRotation;
     private Vector3 _dragStartRingVector;
 
     // Blender-style modal transform (G / R / S): no button held, mouse follows until confirm/cancel.
@@ -76,7 +75,6 @@ internal sealed class TransformGizmo
     private Vector3 _modalStartWorldPosition;
     private Vector3 _modalStartScale;
     private Quaternion _modalStartWorldRotation;
-    private Quaternion _modalParentRotation;
     private Vector3 _modalRight;
     private Vector3 _modalUp;
     private Vector3 _modalForward;
@@ -160,14 +158,14 @@ internal sealed class TransformGizmo
 
             if (ShowHandles)
             {
-                var modalOrigin = WorldPosition(modalTransform, world);
+                var modalOrigin = modalTransform.GetWorldPosition(world);
                 Draw(ImGui.GetWindowDrawList(), modalOrigin, GizmoScale(camera, modalOrigin));
             }
 
             return;
         }
 
-        var origin = WorldPosition(transform, world);
+        var origin = transform.GetWorldPosition(world);
         var scale = GizmoScale(camera, origin);
 
         var mouse = ImGui.GetMousePos();
@@ -199,7 +197,7 @@ internal sealed class TransformGizmo
                 HoveredAxis = ActiveAxis;
 
                 if (world.TryGetComponent<Transform>(entity, out var moved))
-                    origin = WorldPosition(moved, world);
+                    origin = moved.GetWorldPosition(world);
             }
         }
 
@@ -216,10 +214,9 @@ internal sealed class TransformGizmo
         _modalAxis = GizmoAxis.None;
         _modalStartMouse = ImGui.GetMousePos();
 
-        _modalStartWorldPosition = WorldPosition(transform, world);
+        _modalStartWorldPosition = transform.GetWorldPosition(world);
         _modalStartScale = transform.Scale;
-        _modalStartWorldRotation = RotationOf(transform.GetWorldMatrix(world));
-        _modalParentRotation = ParentRotation(transform, world);
+        _modalStartWorldRotation = transform.GetWorldRotation(world);
 
         var forward = Vector3.Normalize(camera.Target - camera.Position);
         var right = Vector3.Cross(forward, camera.Up);
@@ -351,7 +348,7 @@ internal sealed class TransformGizmo
 
             ref var transform = ref world.GetComponent<Transform>(_modalEntity);
             transform.Scale = _modalStartScale;
-            transform.Rotation = LocalRotation(_modalStartWorldRotation, _modalParentRotation);
+            transform.TrySetWorldRotation(world, _modalStartWorldRotation);
         }
 
         _modal = false;
@@ -365,30 +362,20 @@ internal sealed class TransformGizmo
             MathF.Round(value.Z / step) * step);
 
     /// <summary>Applies a world-space rotation on top of a stored orientation, in the parent's space.</summary>
-    private void SetWorldRotation(World world, Entity entity, Quaternion startWorldRotation, Matrix4x4 delta)
+    private static void SetWorldRotation(World world, Entity entity, Quaternion startWorldRotation, Matrix4x4 delta)
     {
-        var worldRotation = Matrix4x4.CreateFromQuaternion(startWorldRotation) * delta;
+        var worldRotation = Quaternion.Normalize(Quaternion.CreateFromRotationMatrix(
+            Matrix4x4.CreateFromQuaternion(startWorldRotation) * delta));
 
         ref var transform = ref world.GetComponent<Transform>(entity);
-        transform.Rotation = LocalRotation(worldRotation, _modalParentRotation);
+        transform.TrySetWorldRotation(world, worldRotation);
     }
 
-    private static Quaternion LocalRotation(Matrix4x4 worldRotation, Quaternion parentRotation) =>
-        LocalRotation(Quaternion.CreateFromRotationMatrix(worldRotation), parentRotation);
-
-    private static Quaternion LocalRotation(Quaternion worldRotation, Quaternion parentRotation)
+    /// <summary>Moves an entity to a world position, converting into its parent's space if needed.</summary>
+    private static void SetWorldPosition(World world, Entity entity, Vector3 worldPosition)
     {
-        if (!Matrix4x4.Invert(Matrix4x4.CreateFromQuaternion(parentRotation), out var inverseParent))
-            return Quaternion.Normalize(worldRotation);
-
-        return Quaternion.Normalize(Quaternion.CreateFromRotationMatrix(
-            Matrix4x4.CreateFromQuaternion(worldRotation) * inverseParent));
-    }
-
-    private static Vector3 WorldPosition(in Transform transform, World world)
-    {
-        var matrix = transform.GetWorldMatrix(world);
-        return new Vector3(matrix.M41, matrix.M42, matrix.M43);
+        ref var transform = ref world.GetComponent<Transform>(entity);
+        transform.TrySetWorldPosition(world, worldPosition);
     }
 
     /// <summary>Gizmo size in world units, chosen so it stays roughly constant on screen.</summary>
@@ -420,8 +407,7 @@ internal sealed class TransformGizmo
         switch (Mode)
         {
             case GizmoMode.Rotate:
-                _dragStartWorldRotation = RotationOf(transform.GetWorldMatrix(world));
-                _dragParentRotation = ParentRotation(transform, world);
+                _dragStartWorldRotation = transform.GetWorldRotation(world);
 
                 if (!TryPlaneVector(AxisVector(ActiveAxis), origin, out var ringVector))
                     ringVector = Vector3.UnitX;
@@ -490,16 +476,11 @@ internal sealed class TransformGizmo
         if (Snap)
             angle = MathF.Round(angle / RotationSnap) * RotationSnap;
 
-        var worldRotation = Matrix4x4.CreateFromQuaternion(_dragStartWorldRotation) *
-                            Matrix4x4.CreateFromAxisAngle(axis, angle);
-
-        var local = worldRotation;
-
-        if (Matrix4x4.Invert(Matrix4x4.CreateFromQuaternion(_dragParentRotation), out var inverseParent))
-            local = worldRotation * inverseParent;
+        var worldRotation = Quaternion.Normalize(Quaternion.CreateFromRotationMatrix(
+            Matrix4x4.CreateFromQuaternion(_dragStartWorldRotation) * Matrix4x4.CreateFromAxisAngle(axis, angle)));
 
         ref var transform = ref world.GetComponent<Transform>(entity);
-        transform.Rotation = Quaternion.Normalize(Quaternion.CreateFromRotationMatrix(local));
+        transform.TrySetWorldRotation(world, worldRotation);
     }
 
     private void ApplyScale(World world, Entity entity)
@@ -536,34 +517,6 @@ internal sealed class TransformGizmo
 
         ref var transform = ref world.GetComponent<Transform>(entity);
         transform.Scale = scale;
-    }
-
-    /// <summary>Moves an entity to a world position, converting into its parent's space if needed.</summary>
-    private static void SetWorldPosition(World world, Entity entity, Vector3 worldPosition)
-    {
-        ref var transform = ref world.GetComponent<Transform>(entity);
-        var parent = transform.Parent;
-
-        if (parent.IsValid &&
-            world.TryGetComponent<Transform>(parent, out var parentTransform) &&
-            Matrix4x4.Invert(parentTransform.GetWorldMatrix(world), out var inverseParent))
-        {
-            transform.Position = Vector3.Transform(worldPosition, inverseParent);
-            return;
-        }
-
-        transform.Position = worldPosition;
-    }
-
-    private static Quaternion RotationOf(in Matrix4x4 matrix) =>
-        Matrix4x4.Decompose(matrix, out _, out var rotation, out _) ? rotation : Quaternion.Identity;
-
-    private static Quaternion ParentRotation(in Transform transform, World world)
-    {
-        if (!transform.Parent.IsValid || !world.TryGetComponent<Transform>(transform.Parent, out var parent))
-            return Quaternion.Identity;
-
-        return RotationOf(parent.GetWorldMatrix(world));
     }
 
     private GizmoAxis FindHandleUnderCursor(Vector3 origin, float scale, Vector2 mouse)

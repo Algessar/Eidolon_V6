@@ -1,13 +1,17 @@
 using System.Numerics;
 using EidolonCore.ECS;
-using EidolonCore.Rendering;
 
-namespace Eidolon.Vulkan;
+namespace EidolonCore.Rendering;
 
 /// <summary>
-/// Creates scene entities. Shared by the default scene and the editor's Browser so both build
-/// drawable objects the same way.
+/// Creates scene entities. Shared by the game's scene, the editor's asset browser and the drop target,
+/// so everything builds drawable objects the same way.
 /// </summary>
+/// <remarks>
+/// Scene authoring belongs to the engine, not to the renderer: it only touches component data, so game
+/// code can build a scene while depending on <c>EidolonCore</c> alone. The renderer consumes these
+/// components; it does not own them.
+/// </remarks>
 public static class SceneSpawner
 {
     public static Entity SpawnMesh(World world, Mesh mesh, Material material, Vector3 position, Vector3 scale,
@@ -44,19 +48,27 @@ public static class SceneSpawner
     /// Spawns a camera entity. Game cameras drive the game view; editor cameras drive the
     /// viewport (the default scene ships with one).
     /// </summary>
+    /// <remarks>
+    /// The transform is given the rotation that looks at <paramref name="target"/>, and the camera is
+    /// told that same rotation. Otherwise the first sync would see a transform and a view that
+    /// disagree and re-aim the camera somewhere the caller did not ask for.
+    /// </remarks>
     public static Entity SpawnCamera(World world, Vector3 position, Vector3 target,
         CameraKind kind = CameraKind.Game)
     {
+        var rotation = CameraOrientation.RotationFrom(target - position);
+
         var camera = new Camera
         {
             Kind = kind,
             Position = position,
+            TransformRotation = rotation,
         };
 
         camera.SetTarget(target);
 
         var entity = world.CreateEntity();
-        world.SetComponent(entity, new Transform(position));
+        world.SetComponent(entity, new Transform(position, rotation, Vector3.One));
         world.SetComponent(entity, camera);
         return entity;
     }

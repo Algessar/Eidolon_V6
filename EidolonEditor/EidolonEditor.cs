@@ -1,9 +1,9 @@
-﻿using Eidolon.Vulkan;
+using Eidolon.Vulkan;
 using EidolonEngine;
 using EidolonCore.Assets;
 using EidolonCore.ECS;
-using EidolonCore.Nexus;
 using EidolonCore.Simulation;
+using EidolonGame;
 
 
 namespace Eidolon.Editor;
@@ -21,12 +21,13 @@ public static class EidolonEditor
         var discovered = assets.Discover(assetRoot);
         Debug.Log($"Asset library: {discovered} mesh asset(s) under '{assetRoot}'", VALIDATION_LAYERS.INFO);
 
-        DefaultScene.Populate(world, assets);
-
         // The session owns the authored world and, later, the runtime copy used by play mode.
         var session = new SceneSession(world);
-        session.AddSystem(new SpinSystem());
-        session.AddSystem(new XpbdWorldSystem());
+
+        // The editor hosts a game rather than containing one: content and systems arrive through
+        // IGameModule, which is the only contract between this executable and the game code.
+        IGameModule game = new GameModule();
+        game.Load(new GameContext(world, assets, session));
 
         var initialGraph = BuildInitialGraph(1920, 1080);
         VulkanHost.Run(session, assets, initialGraph);
