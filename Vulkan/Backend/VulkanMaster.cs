@@ -1,7 +1,7 @@
-﻿using Eidolon.Vulkan.Rendering;
-using EidolonEngine;
+using Eidolon.Vulkan.Rendering;
 using EidolonCore.Assets;
 using EidolonCore.ECS;
+using EidolonCore.Rendering;
 using EidolonCore.Simulation;
 using Silk.NET.Maths;
 using Silk.NET.Vulkan;
@@ -59,9 +59,19 @@ internal class VulkanMaster : IDisposable
     /// <summary>Owns the authored world and, while play mode runs, the runtime copy.</summary>
     public SceneSession Session => _session;
 
-    public VulkanMaster(SceneSession session, AssetLibrary assets, CompiledRenderGraph? initialGraph = null)
+    /// <summary>The editor UI the host supplied. The backend never constructs it.</summary>
+    public IEditorOverlay Editor { get; }
+
+    /// <summary>Editor viewport settings, owned by the host and shared by the overlay and the grid.</summary>
+    public ViewportSettings Viewport { get; }
+
+    public VulkanMaster(IWindow window, SceneSession session, AssetLibrary assets, ViewportSettings viewport,
+        IEditorOverlay editor, CompiledRenderGraph? initialGraph = null)
     {
         _session = session;
+        _window = window;
+        Viewport = viewport;
+        Editor = editor;
         _assets = assets;
 
         // Compile in place in the deployed shader folder so this run picks up the result.
@@ -70,10 +80,6 @@ internal class VulkanMaster : IDisposable
         Debug.Log("::: Initializing Vulkan resources :::", VALIDATION_LAYERS.WARNING);
 
         Vk = Vk.GetApi();
-        
-        //TODO: Consider moving window handling out of Vulkan and into Editor.
-        
-        _window = CreateOSWindow();
 
         _mainRenderer = new MainRenderer(this);
         _window.Load += () =>
@@ -107,21 +113,6 @@ internal class VulkanMaster : IDisposable
         
     }
 
-    private IWindow CreateOSWindow()
-    {
-        var opts = WindowOptions.DefaultVulkan with
-        {
-            Title = "Eidolon Editor",
-            Size = new Vector2D<int>(900, 720),
-            ShouldSwapAutomatically = true,
-            VSync = true,
-            WindowBorder = WindowBorder.Resizable,
-            WindowState = WindowState.Maximized
-        };
-        
-        return Window.Create(opts);
-    }
-    
     /// <summary>
     /// Tears the backend down in dependency order. Everything that belongs to the device has
     /// to go before the device itself, and the swapchain before the surface it presents to.

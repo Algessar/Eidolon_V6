@@ -2,6 +2,7 @@ using System.Numerics;
 using EidolonCore.Assets;
 using EidolonCore.ECS;
 using EidolonCore.Nexus;
+using EidolonCore.Nexus.Animation;
 using EidolonCore.Rendering;
 using EidolonCore.Simulation;
 
@@ -65,9 +66,82 @@ public static class DefaultScene
 
         world.SetComponent(capsule, new XpbdBody { Shape = XpbdShape.Capsule, Radius = 0.5f, SegmentLength = 1f });
 
+        AddAnimatedWindmill(world);
         AddImportedModel(world, assets);
 
         return player;
+    }
+
+    /// <summary>
+    /// A windmill whose rotor is driven by a clip: the first thing in the sandbox that moves because of
+    /// authored animation rather than a system turning a transform.
+    /// </summary>
+    /// <remarks>
+    /// The parts are ordinary entities in the transform hierarchy with names on them, and the clip
+    /// addresses the rotor by path. Nothing here knows about clips except the player on the root.
+    /// </remarks>
+    private static void AddAnimatedWindmill(World world)
+    {
+        var hub = new Vector3(-3.4f, 1.0f, 2.4f);
+
+        var wood = new Material("Windmill Wood", new Vector4(0.72f, 0.60f, 0.46f, 1f));
+        var sail = new Material("Windmill Sail", new Vector4(0.88f, 0.86f, 0.78f, 1f));
+
+        var root = world.CreateEntity();
+        world.SetComponent(root, new Transform(hub));
+        world.SetComponent(root, new Name("Windmill"));
+
+        var post = SceneSpawner.SpawnMesh(world, PrimitiveMeshes.Cube, wood,
+            hub + new Vector3(0f, -0.75f, 0f), new Vector3(0.12f, 1.5f, 0.12f));
+
+        world.SetComponent(post, new Name("Post"));
+        Hierarchy.TrySetParent(world, post, root);
+
+        var rotor = world.CreateEntity();
+        world.SetComponent(rotor, new Transform(hub + new Vector3(0f, 0.1f, 0f)));
+        world.SetComponent(rotor, new Name("Rotor"));
+        Hierarchy.TrySetParent(world, rotor, root);
+
+        for (var blade = 0; blade < 4; blade++)
+        {
+            var spin = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, blade * MathF.PI * 0.5f);
+            var pivot = hub + new Vector3(0f, 0.1f, 0f) + Vector3.Transform(new Vector3(0f, 0.55f, 0f), spin);
+
+            var mesh = SceneSpawner.SpawnMesh(world, PrimitiveMeshes.Cube, sail,
+                pivot, new Vector3(0.1f, 1f, 0.05f), spin);
+
+            world.SetComponent(mesh, new Name($"Blade{blade + 1}"));
+            Hierarchy.TrySetParent(world, mesh, rotor);
+        }
+
+        world.SetComponent(root, new AnimationPlayer { Clip = WindmillClip(), Loop = true });
+    }
+
+    /// <summary>
+    /// A four second spin keyed every quarter turn.
+    /// </summary>
+    /// <remarks>
+    /// The quarter turns matter: slerp takes the shortest arc, so a single key at 0 and one at 360
+    /// degrees would stand still. Keying at 90 degree steps keeps the blades turning, and the loop seam
+    /// is invisible because 360 degrees and 0 are the same orientation.
+    /// </remarks>
+    private static AnimationClip WindmillClip()
+    {
+        const float duration = 4f;
+        const int steps = 4;
+
+        var keys = new PoseKey[steps + 1];
+
+        for (var step = 0; step <= steps; step++)
+        {
+            var angle = MathF.Tau * step / steps;
+
+            keys[step] = new PoseKey(
+                duration * step / steps,
+                new LocalPose(Vector3.Zero, Quaternion.CreateFromAxisAngle(Vector3.UnitZ, angle), Vector3.One));
+        }
+
+        return new AnimationClip("Windmill Spin", duration, [new AnimationTrack("Rotor", keys)]);
     }
 
     /// <summary>Imports the sample OBJ, skipping it when it was not deployed with the host.</summary>

@@ -1,6 +1,6 @@
 using System.Numerics;
 
-namespace EidolonCore.Math;
+namespace EidolonCore.Rendering;
 
 /// <summary>Conversion between quaternions and XYZ Euler angles.</summary>
 /// <remarks>
@@ -27,7 +27,7 @@ public static class QuaternionExtensions
         // pairs lose their independent meaning. Detect that and fall back to a single twist.
         var locked = MathF.Abs(matrix.M13) >= 0.99999f;
 
-        var y = MathF.Asin(Mathf.Clamp(-matrix.M13, -1f, 1f));
+        var y = MathF.Asin(System.Math.Clamp(-matrix.M13, -1f, 1f));
         var x = locked ? 0f : MathF.Atan2(matrix.M23, matrix.M33);
         var z = locked ? MathF.Atan2(-matrix.M21, matrix.M22) : MathF.Atan2(matrix.M12, matrix.M11);
 

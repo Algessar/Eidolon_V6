@@ -1,8 +1,7 @@
 using System.Numerics;
 using EidolonCore.ECS;
-using EidolonCore.Rendering;
 
-namespace Eidolon.Vulkan;
+namespace EidolonCore.Rendering;
 
 /// <summary>Finds the entity under a world-space ray.</summary>
 public static class ScenePicker

@@ -7,7 +7,7 @@ using EidolonCore.Rendering;
 using EidolonCore.Simulation;
 using Silk.NET.Vulkan;
 
-namespace EidolonEngine;
+namespace Eidolon.Vulkan;
 
 /// <summary>
 /// Draws every entity in the world that has a <see cref="Transform"/> and a

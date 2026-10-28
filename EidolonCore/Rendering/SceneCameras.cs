@@ -1,8 +1,7 @@
 using System.Numerics;
 using EidolonCore.ECS;
-using EidolonCore.Rendering;
 
-namespace Eidolon.Vulkan;
+namespace EidolonCore.Rendering;
 
 /// <summary>
 /// Keeps camera components in step with the entity transform that owns them.

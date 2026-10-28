@@ -3,16 +3,22 @@ using Eidolon.Vulkan;
 using EidolonCore.Assets;
 using EidolonCore.ECS;
 using EidolonCore.Nexus;
-using EidolonCore.Math;
+using EidolonCore.Nexus.Animation;
 using EidolonCore.Rendering;
+using EidolonCore.Scene;
 using EidolonCore.Simulation;
 using ImGuiNET;
 using Silk.NET.Windowing;
 
 namespace Eidolon.Editor;
 
-internal unsafe class EditorUI
+internal unsafe class EditorUI : IEditorOverlay
 {
+    /// <summary>Inspector rotation fields are in degrees; the engine keeps radians.</summary>
+    private const float DegreesToRadians = MathF.PI / 180f;
+
+    private const float RadiansToDegrees = 180f / MathF.PI;
+
     private static readonly Vector4[] SpawnPalette =
     [
         new(0.85f, 0.30f, 0.32f, 1f),
@@ -34,7 +40,11 @@ internal unsafe class EditorUI
     private readonly AssetLibrary _assets;
     private readonly AssetBrowserPanel _browser;
     private readonly ViewportSettings _viewport;
+
+    /// <summary>ImGui cannot be touched before the backend has created its context.</summary>
+    private bool _initialized;
     private readonly TransformGizmo _transformGizmo = new();
+    private readonly TimelinePanel _timeline = new();
 
     /// <summary>The world being edited: the runtime copy during play, else the authored world.</summary>
     private World _world => _session.Active;
@@ -61,11 +71,17 @@ internal unsafe class EditorUI
         _assets = assets;
         _viewport = viewport;
         _browser = new AssetBrowserPanel(assets, SpawnAsset, SpawnImportedMesh);
-        InitialSetup();
     }
-    
-    void InitialSetup()
+
+    /// <summary>
+    /// Configures ImGui for the editor. Must run after the ImGui context exists, which is the
+    /// renderer's job, so the host can build the overlay before the backend starts.
+    /// </summary>
+    public void Initialize()
     {
+        if (_initialized)
+            return;
+
         var io = ImGui.GetIO();
         
         io.ConfigFlags |= ImGuiConfigFlags.DockingEnable;
@@ -93,17 +109,27 @@ internal unsafe class EditorUI
         }
 
         style.ScaleAllSizes(dpiScale);
+        _initialized = true;
     }
     
     public void Update()
     {
+        if (!_initialized)
+        {
+            // Fail with a readable message instead of an ImGui assertion in native code.
+            throw new InvalidOperationException(
+                "EditorUI.Update ran before Initialize. The backend creates the ImGui context and then " +
+                "calls Initialize; drawing earlier would use ImGui without a context.");
+        }
+
         DrawDockSpace();
         DrawMainMenuBar();
         DrawGameWindow();
-        DrawGameViewWindow();
+        DrawSceneViewport();
         DrawSceneWindow();
         DrawInspectorWindow();
         _browser.Draw();
+        _timeline.Draw(_world, _session, _selected);
     }
 
     /// <summary>
@@ -255,6 +281,10 @@ internal unsafe class EditorUI
 
     private string DescribeEntity(Entity entity)
     {
+        // A name is what a clip binds to, so it is also the most useful label here.
+        if (_world.TryGetComponent<Name>(entity, out var name))
+            return $"#{entity.Id}  {name.Value}";
+
         if (_world.TryGetComponent<MeshRenderer>(entity, out var renderer) && renderer.Mesh is not null)
             return $"#{entity.Id}  {renderer.Material.Name}";
 
@@ -279,6 +309,9 @@ internal unsafe class EditorUI
         }
 
         ImGui.Text($"Entity #{entity.Id}");
+
+        if (_world.TryGetComponent<Name>(entity, out var entityName))
+            ImGui.TextDisabled($"Name: {entityName.Value}");
 
         if (_world.HasComponent<Transform>(entity))
             DrawTransformInspector(entity);
@@ -404,6 +437,12 @@ internal unsafe class EditorUI
             }
         }
 
+        if (_world.TryGetComponent<AnimationPlayer>(entity, out var player))
+        {
+            if (ImGui.CollapsingHeader("Animation", ImGuiTreeNodeFlags.DefaultOpen))
+                DrawAnimationInspector(player);
+        }
+
         if (ImGui.Button("Add Component"))
             ImGui.OpenPopup("##addComponent");
 
@@ -417,6 +456,42 @@ internal unsafe class EditorUI
 
             ImGui.EndPopup();
         }
+    }
+
+    /// <summary>Playback controls for a clip. The timeline proper is the next slice.</summary>
+    /// <remarks>
+    /// Scrubbing shows the sampled time but does not preview the pose: clips are evaluated by the
+    /// simulation, which only runs in play mode.
+    /// </remarks>
+    private static void DrawAnimationInspector(AnimationPlayer player)
+    {
+        if (player.Clip is not { } clip)
+        {
+            ImGui.TextDisabled("No clip assigned.");
+            return;
+        }
+
+        ImGui.Text($"{clip.Name}: {clip.Duration:0.00}s, {clip.Tracks.Count} track(s)");
+
+        var time = player.Time;
+
+        if (ImGui.SliderFloat("Time", ref time, 0f, clip.Duration))
+            player.Time = time;
+
+        var playing = player.Playing;
+
+        if (ImGui.Checkbox("Playing", ref playing))
+            player.Playing = playing;
+
+        var loop = player.Loop;
+
+        if (ImGui.Checkbox("Loop", ref loop))
+            player.Loop = loop;
+
+        var speed = player.Speed;
+
+        if (ImGui.DragFloat("Speed", ref speed, 0.01f, -4f, 4f))
+            player.Speed = speed;
     }
 
     /// <summary>
@@ -479,9 +554,9 @@ internal unsafe class EditorUI
         // Rotation is a quaternion in the engine but three numbers in the inspector. The axes are
         // named for what they are: camera terms would be wrong on an entity that is not a camera.
         var (x, y, z) = transform.Rotation.ToEulerAngles();
-        var xDegrees = x * Mathf.Rad2Deg;
-        var yDegrees = y * Mathf.Rad2Deg;
-        var zDegrees = z * Mathf.Rad2Deg;
+        var xDegrees = x * RadiansToDegrees;
+        var yDegrees = y * RadiansToDegrees;
+        var zDegrees = z * RadiansToDegrees;
 
         var rotated = ImGui.DragFloat("Rotation X", ref xDegrees, 0.5f);
         rotated |= ImGui.DragFloat("Rotation Y", ref yDegrees, 0.5f);
@@ -490,9 +565,9 @@ internal unsafe class EditorUI
         if (rotated)
         {
             transform.Rotation = QuaternionExtensions.FromEulerAngles(
-                xDegrees * Mathf.Deg2Rad,
-                yDegrees * Mathf.Deg2Rad,
-                zDegrees * Mathf.Deg2Rad);
+                xDegrees * DegreesToRadians,
+                yDegrees * DegreesToRadians,
+                zDegrees * DegreesToRadians);
         }
 
         ImGui.DragFloat3("Scale", ref transform.Scale, 0.05f);
@@ -528,14 +603,14 @@ internal unsafe class EditorUI
     }
 
     /// <summary>Size of the editor viewport panel (drives the editor camera aspect).</summary>
-    public Vector2 EditorViewSize = new Vector2();
+    public Vector2 EditorViewSize { get; private set; }
 
     /// <summary>Size of the game view panel.</summary>
-    public Vector2 GameViewSize = new Vector2();
+    public Vector2 GameViewSize { get; private set; }
 
-    private void DrawGameViewWindow()
+    private void DrawSceneViewport()
     {
-        // Give the game view a usable size the first time the editor runs.
+        // Give the scene viewport a usable size the first time the editor runs.
         ImGui.SetNextWindowSize(new Vector2(1280f, 720f), ImGuiCond.FirstUseEver);
         ImGui.Begin("Scene");
 
@@ -569,14 +644,14 @@ internal unsafe class EditorUI
             // Camera navigation yields to a running transform.
             UpdateViewportCamera(available, hovering);
 
-            HandleGameViewPicking(imageMin, available, allowPicking: !modalBefore && !_transformGizmo.IsModal);
-            HandleGameViewDropTarget();
+            HandleViewportPicking(imageMin, available, allowPicking: !modalBefore && !_transformGizmo.IsModal);
+            HandleViewportDropTarget();
             UpdateDragPreview(imageMin, available);
             DrawViewOrientationWidget(imageMin, available);
         }
         else
         {
-            ImGui.Text("GameView texture unavailable");
+            ImGui.Text("Scene texture unavailable");
         }
         
         ImGui.End();
@@ -789,8 +864,8 @@ internal unsafe class EditorUI
         return pressed;
     }
 
-    /// <summary>Selects the entity under the cursor when the game view is clicked.</summary>
-    private void HandleGameViewPicking(Vector2 imageMin, Vector2 imageSize, bool allowPicking)
+    /// <summary>Selects the entity under the cursor when the scene viewport is clicked.</summary>
+    private void HandleViewportPicking(Vector2 imageMin, Vector2 imageSize, bool allowPicking)
     {
         if (!allowPicking || !ImGui.IsItemHovered() || !ImGui.IsMouseClicked(ImGuiMouseButton.Left))
             return;
@@ -802,7 +877,7 @@ internal unsafe class EditorUI
         if (IsMouseOverViewWidget(imageMin, imageSize))
             return;
 
-        if (TryRayFromGameView(imageMin, imageSize, out var ray) && FindGameCamera() is not null)
+        if (TryRayFromViewport(imageMin, imageSize, out var ray))
             _selected = ScenePicker.Pick(_world, ray);
     }
 
@@ -987,12 +1062,17 @@ internal unsafe class EditorUI
         camera.Position = camera.Target + Vector3.Normalize(direction) * distance;
     }
 
-    /// <summary>Turns a point in the game view image into a world-space ray.</summary>
-    private bool TryRayFromGameView(Vector2 imageMin, Vector2 imageSize, out Ray ray)
+    /// <summary>Turns a point in the scene viewport image into a world-space ray.</summary>
+    /// <remarks>
+    /// The ray must come from the camera the viewport is rendered through. The game camera is a
+    /// different view of the same scene, and casting from it selects whatever happens to sit under the
+    /// cursor in <em>that</em> view rather than in the one being clicked.
+    /// </remarks>
+    private bool TryRayFromViewport(Vector2 imageMin, Vector2 imageSize, out Ray ray)
     {
         ray = default;
 
-        if (imageSize.X <= 0f || imageSize.Y <= 0f || FindGameCamera() is not { } camera)
+        if (imageSize.X <= 0f || imageSize.Y <= 0f || FindCamera() is not { } camera)
             return false;
 
         var mouse = ImGui.GetMousePos();
@@ -1022,7 +1102,7 @@ internal unsafe class EditorUI
         var inside = mouse.X >= imageMin.X && mouse.X <= imageMin.X + imageSize.X &&
                      mouse.Y >= imageMin.Y && mouse.Y <= imageMin.Y + imageSize.Y;
 
-        if (!inside || !TryRayFromGameView(imageMin, imageSize, out var ray))
+        if (!inside || !TryRayFromViewport(imageMin, imageSize, out var ray))
         {
             DestroyDragPreview();
             return;
@@ -1071,7 +1151,7 @@ internal unsafe class EditorUI
     }
 
     /// <summary>Accepts an asset dropped on the game view and keeps the ghost as a real entity.</summary>
-    private void HandleGameViewDropTarget()
+    private void HandleViewportDropTarget()
     {
         if (!ImGui.BeginDragDropTarget())
             return;
@@ -1129,9 +1209,6 @@ internal unsafe class EditorUI
     /// A scene may also carry a game camera, and that one must not win just because it was found first.
     /// </remarks>
     private Camera? FindCamera() => FindCamera(CameraKind.Editor) ?? FindAnyCamera();
-
-    /// <summary>The camera the game view renders through, falling back to the viewport's.</summary>
-    private Camera? FindGameCamera() => FindCamera(CameraKind.Game) ?? FindCamera();
 
     private Camera? FindCamera(CameraKind kind)
     {

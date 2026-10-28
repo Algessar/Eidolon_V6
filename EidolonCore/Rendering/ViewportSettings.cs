@@ -1,6 +1,6 @@
 using System.Numerics;
 
-namespace Eidolon.Editor;
+namespace EidolonCore.Rendering;
 
 /// <summary>Viewport overlay settings shared by the editor and the grid renderer.</summary>
 public sealed class ViewportSettings

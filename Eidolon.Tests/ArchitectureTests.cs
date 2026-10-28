@@ -54,4 +54,12 @@ public class ArchitectureTests
     {
         Assert.DoesNotContain("EidolonGame", References(Renderer));
     }
+
+    [Fact]
+    public void TheRendererDoesNotDependOnTheEditor()
+    {
+        // The editor supplies the window and the overlay; the backend must not know it exists,
+        // which is what keeps the panels and the renderer in separate assemblies.
+        Assert.DoesNotContain("EidolonEditor", References(Renderer));
+    }
 }

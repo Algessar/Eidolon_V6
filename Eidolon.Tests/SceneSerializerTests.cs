@@ -1,10 +1,11 @@
 using System.Numerics;
-using Eidolon.Editor;
 using Eidolon.Vulkan;
 using EidolonCore.Assets;
 using EidolonCore.ECS;
 using EidolonCore.Nexus;
+using EidolonCore.Nexus.Animation;
 using EidolonCore.Rendering;
+using EidolonCore.Scene;
 using EidolonCore.Simulation;
 
 namespace Eidolon.Tests;
@@ -165,9 +166,64 @@ public sealed class SceneSerializerTests : IDisposable
     }
 
     [Fact]
+    public void NamesAndAnimationRoundTrip()
+    {
+        var world = new World();
+
+        var root = world.CreateEntity();
+        world.SetComponent(root, new Transform(new Vector3(1f, 2f, 3f)));
+        world.SetComponent(root, new Name("Windmill"));
+
+        var clip = new AnimationClip("Spin", 2f,
+        [
+            new AnimationTrack("Rotor",
+            [
+                new PoseKey(0f, LocalPose.Identity),
+                new PoseKey(2f, new LocalPose(new Vector3(0f, 1f, 0f),
+                    Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 1f), new Vector3(2f))),
+            ]),
+        ]);
+
+        world.SetComponent(root, new AnimationPlayer
+        {
+            Clip = clip,
+            Time = 0.75f,
+            Speed = 0.5f,
+            Loop = false,
+            Playing = true,
+        });
+
+        SceneSerializer.Save(world, _path);
+
+        var loaded = new World();
+        SceneSerializer.Load(_path, loaded, _assets);
+
+        Assert.Equal("Windmill", loaded.GetComponent<Name>(root).Value);
+
+        var player = loaded.GetComponent<AnimationPlayer>(root);
+
+        Assert.Equal(0.75f, player.Time, 4);
+        Assert.Equal(0.5f, player.Speed, 4);
+        Assert.False(player.Loop);
+        Assert.True(player.Playing);
+
+        var restored = player.Clip;
+        Assert.NotNull(restored);
+        Assert.Equal("Spin", restored!.Name);
+        Assert.Equal(2f, restored.Duration, 4);
+        Assert.Single(restored.Tracks);
+
+        var track = restored.Tracks[0];
+        Assert.Equal("Rotor", track.Path);
+        Assert.Equal(2, track.Keys.Count);
+        VectorAssert.Near(new Vector3(0f, 1f, 0f), track.Keys[1].Pose.Position);
+        VectorAssert.Near(new Vector3(2f), track.Keys[1].Pose.Scale);
+    }
+
+    [Fact]
     public void ViewportMetadataRoundTrips()
     {
-        var viewport = new Eidolon.Editor.ViewportSettings
+        var viewport = new ViewportSettings
         {
             ShowGrid = false,
             GridHeight = 1.25f,
@@ -177,7 +233,7 @@ public sealed class SceneSerializerTests : IDisposable
 
         SceneSerializer.Save(SampleWorld(), _path, viewport);
 
-        var loaded = new Eidolon.Editor.ViewportSettings();
+        var loaded = new ViewportSettings();
         SceneSerializer.Load(_path, new World(), _assets, loaded);
 
         Assert.False(loaded.ShowGrid);

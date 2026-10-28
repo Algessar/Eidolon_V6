@@ -84,4 +84,55 @@ public static class Hierarchy
                 yield return entity;
         }
     }
+
+    /// <summary>
+    /// Finds a descendant by slash-separated <see cref="Name"/> path, e.g. <c>"Rotor/Blade1"</c>.
+    /// </summary>
+    /// <remarks>
+    /// An empty path means <paramref name="root"/> itself, which is how a clip animates the entity its
+    /// player sits on. Segments are matched in order, so a name only has to be unique among its
+    /// siblings; the first match wins when it is not.
+    /// </remarks>
+    /// <returns>False when any segment has no child with that name.</returns>
+    public static bool TryFindByPath(World world, Entity root, string path, out Entity entity)
+    {
+        entity = root;
+
+        if (string.IsNullOrWhiteSpace(path))
+            return true;
+
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var current = root;
+
+        foreach (var segment in segments)
+        {
+            if (!TryFindChildByName(world, current, segment, out var child))
+            {
+                entity = default;
+                return false;
+            }
+
+            current = child;
+        }
+
+        entity = current;
+        return true;
+    }
+
+    /// <summary>The first child of <paramref name="parent"/> whose name matches, compared ordinally.</summary>
+    public static bool TryFindChildByName(World world, Entity parent, string name, out Entity child)
+    {
+        foreach (var candidate in GetChildren(world, parent))
+        {
+            if (world.TryGetComponent<Name>(candidate, out var candidateName) &&
+                string.Equals(candidateName.Value, name, StringComparison.Ordinal))
+            {
+                child = candidate;
+                return true;
+            }
+        }
+
+        child = default;
+        return false;
+    }
 }

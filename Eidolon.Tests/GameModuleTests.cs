@@ -3,6 +3,7 @@ using Eidolon.Vulkan;
 using EidolonCore.Assets;
 using EidolonCore.ECS;
 using EidolonCore.Nexus;
+using EidolonCore.Nexus.Animation;
 using EidolonCore.Rendering;
 using EidolonCore.Simulation;
 using EidolonGame;
@@ -43,12 +44,49 @@ public class GameModuleTests
     [Fact]
     public void LoadRegistersTheGamesSystems()
     {
-        var (_, session) = Load();
+        var (world, session) = Load();
 
-        Assert.Equal(3, session.Systems.Count);
+        Assert.Equal(5, session.Systems.Count);
         Assert.Contains(session.Systems, system => system is XpbdWorldSystem);
         Assert.Contains(session.Systems, system => system is SpinSystem);
+        Assert.Contains(session.Systems, system => system is AnimationSystem);
+        Assert.Contains(session.Systems, system => system is PoseResolutionSystem);
         Assert.Contains(session.Systems, system => system is ScriptHost host && host.ScriptCount == 1);
+
+        // The sandbox ships one animated hierarchy: a named windmill whose rotor is keyed by a clip.
+        var animated = world.GetEntitiesWith<AnimationPlayer>().Single();
+        Assert.Equal("Windmill", world.GetComponent<Name>(animated).Value);
+        Assert.Single(world.GetComponent<AnimationPlayer>(animated).Clip!.Tracks);
+    }
+
+    [Fact]
+    public void PlayModeSpinsTheWindmillRotor()
+    {
+        var (world, session) = Load();
+
+        var root = world.GetEntitiesWith<AnimationPlayer>().Single();
+        var rotor = Hierarchy.GetChildren(world, root)
+            .Single(child => world.GetComponent<Name>(child).Value == "Rotor");
+
+        var authoredRotation = world.GetComponent<Transform>(rotor).Rotation;
+
+        session.EnterPlay(SceneCloner.Clone(world));
+
+        for (var step = 0; step < 30; step++)
+            session.Tick(1f / 60f);
+
+        var runtime = session.Runtime!;
+        var runtimeRotor = Hierarchy.GetChildren(runtime, root)
+            .Single(child => runtime.GetComponent<Name>(child).Value == "Rotor");
+
+        var turned = runtime.GetComponent<Transform>(runtimeRotor).Rotation;
+
+        // Half a second into a four second turn: the runtime rotor has moved, the authored one has not.
+        Assert.True(MathF.Abs(Quaternion.Dot(authoredRotation, turned)) < 0.999f,
+            "the rotor did not turn in play mode");
+
+        Assert.Equal(authoredRotation, world.GetComponent<Transform>(rotor).Rotation);
+        Assert.Equal(0f, world.GetComponent<AnimationPlayer>(root).Time);
     }
 
     [Fact]

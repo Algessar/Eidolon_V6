@@ -1,5 +1,5 @@
 using System.Numerics;
-using EidolonCore.Math;
+using EidolonCore.Rendering;
 
 namespace Eidolon.Tests;
 

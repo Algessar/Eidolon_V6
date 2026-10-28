@@ -1,14 +1,14 @@
 using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Eidolon.Vulkan;
 using EidolonCore.Assets;
 using EidolonCore.ECS;
 using EidolonCore.Nexus;
+using EidolonCore.Nexus.Animation;
 using EidolonCore.Rendering;
 using EidolonCore.Simulation;
 
-namespace Eidolon.Editor;
+namespace EidolonCore.Scene;
 
 /// <summary>
 /// Saves and loads a scene as JSON. Entity ids are preserved, so parent links and any editor
@@ -21,9 +21,9 @@ namespace Eidolon.Editor;
 /// </remarks>
 public static class SceneSerializer
 {
-    // 2 adds rigid bodies. Bumped rather than extended silently: an older build must refuse a newer
-    // file instead of loading it with the physics stripped out.
-    private const int CurrentVersion = 2;
+    // 2 adds rigid bodies, 3 adds names and animation. Bumped rather than extended silently: an older
+    // build must refuse a newer file instead of loading it with parts of the scene stripped out.
+    private const int CurrentVersion = 3;
 
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -115,6 +115,16 @@ public static class SceneSerializer
             {
                 world.SetComponent(entity, CaptureBody(body));
             }
+
+            if (saved.Name is { } name && !string.IsNullOrEmpty(name.Value))
+            {
+                world.SetComponent(entity, new Name(name.Value));
+            }
+
+            if (saved.Animation is { } animation)
+            {
+                world.SetComponent(entity, CaptureAnimation(animation));
+            }
         }
     }
 
@@ -185,7 +195,79 @@ public static class SceneSerializer
             };
         }
 
+        if (world.TryGetComponent<Name>(entity, out var name))
+        {
+            saved.Name = new NameData { Value = name.Value };
+        }
+
+        if (world.TryGetComponent<AnimationPlayer>(entity, out var animation))
+        {
+            saved.Animation = CaptureAnimation(animation);
+        }
+
         return saved;
+    }
+
+    private static AnimationPlayerData CaptureAnimation(AnimationPlayer player) => new()
+    {
+        Time = player.Time,
+        Speed = player.Speed,
+        Loop = player.Loop,
+        Playing = player.Playing,
+        Clip = player.Clip is { } clip
+            ? new AnimationClipData
+            {
+                Name = clip.Name,
+                Duration = clip.Duration,
+                Tracks = clip.Tracks.Select(track => new AnimationTrackData
+                {
+                    Path = track.Path,
+                    Keys = track.Keys.Select(key => new AnimationKeyData
+                    {
+                        Time = key.Time,
+                        Position = ToArray(key.Pose.Position),
+                        Rotation = ToArray(key.Pose.Rotation),
+                        Scale = ToArray(key.Pose.Scale),
+                    }).ToList(),
+                }).ToList(),
+            }
+            : null,
+    };
+
+    private static AnimationPlayer CaptureAnimation(AnimationPlayerData data) => new()
+    {
+        Time = data.Time,
+        Speed = data.Speed,
+        Loop = data.Loop,
+        Playing = data.Playing,
+        Clip = data.Clip is { } clip ? RebuildClip(clip) : null,
+    };
+
+    private static AnimationClip? RebuildClip(AnimationClipData data)
+    {
+        if (data.Duration <= 0f)
+            return null;
+
+        var tracks = new List<AnimationTrack>(data.Tracks.Count);
+
+        foreach (var track in data.Tracks)
+        {
+            if (string.IsNullOrWhiteSpace(track.Path) || track.Keys.Count == 0)
+                continue;
+
+            var keys = track.Keys
+                .Select(key => new PoseKey(key.Time, new LocalPose(
+                    ToVector(key.Position),
+                    ToQuaternion(key.Rotation),
+                    key.Scale is { Length: >= 3 } ? ToVector(key.Scale) : Vector3.One)))
+                .ToList();
+
+            tracks.Add(new AnimationTrack(track.Path, keys));
+        }
+
+        return tracks.Count == 0
+            ? null
+            : new AnimationClip(string.IsNullOrEmpty(data.Name) ? "Clip" : data.Name, data.Duration, tracks);
     }
 
     private static Mesh? ResolveMesh(MeshData mesh, AssetLibrary assets)
@@ -299,6 +381,55 @@ public static class SceneSerializer
         public SpinData? Spin { get; set; }
 
         public XpbdBodyData? XpbdBody { get; set; }
+
+        public NameData? Name { get; set; }
+
+        public AnimationPlayerData? Animation { get; set; }
+    }
+
+    private sealed class NameData
+    {
+        public string Value { get; set; } = string.Empty;
+    }
+
+    private sealed class AnimationPlayerData
+    {
+        public float Time { get; set; }
+
+        public float Speed { get; set; } = 1f;
+
+        public bool Loop { get; set; } = true;
+
+        public bool Playing { get; set; } = true;
+
+        public AnimationClipData? Clip { get; set; }
+    }
+
+    private sealed class AnimationClipData
+    {
+        public string Name { get; set; } = string.Empty;
+
+        public float Duration { get; set; }
+
+        public List<AnimationTrackData> Tracks { get; set; } = [];
+    }
+
+    private sealed class AnimationTrackData
+    {
+        public string Path { get; set; } = string.Empty;
+
+        public List<AnimationKeyData> Keys { get; set; } = [];
+    }
+
+    private sealed class AnimationKeyData
+    {
+        public float Time { get; set; }
+
+        public float[]? Position { get; set; }
+
+        public float[]? Rotation { get; set; }
+
+        public float[]? Scale { get; set; }
     }
 
     private sealed class TransformData

@@ -1,4 +1,5 @@
 using EidolonCore.Nexus;
+using EidolonCore.Nexus.Animation;
 using EidolonCore.Simulation;
 
 namespace EidolonGame;
@@ -21,8 +22,11 @@ public sealed class GameModule : IGameModule
         var scripts = new ScriptHost(context.Session);
         scripts.Add(player, new PlayerCameraController());
 
-        // Scripts run before the physics step, so what a script writes is what gets simulated.
+        // Order is layering: gameplay scripts write intent, animation turns clips into desired poses,
+        // the resolver commits them, and physics gets the last word on everything it simulates.
         context.Session.AddSystem(scripts);
+        context.Session.AddSystem(new AnimationSystem());
+        context.Session.AddSystem(new PoseResolutionSystem());
         context.Session.AddSystem(new SpinSystem());
         context.Session.AddSystem(new XpbdWorldSystem());
     }

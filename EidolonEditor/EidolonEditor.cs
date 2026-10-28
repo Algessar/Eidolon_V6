@@ -1,9 +1,12 @@
+using System.Numerics;
 using Eidolon.Vulkan;
-using EidolonEngine;
 using EidolonCore.Assets;
 using EidolonCore.ECS;
+using EidolonCore.Rendering;
 using EidolonCore.Simulation;
 using EidolonGame;
+using Silk.NET.Maths;
+using Silk.NET.Windowing;
 
 
 namespace Eidolon.Editor;
@@ -29,9 +32,29 @@ public static class EidolonEditor
         IGameModule game = new GameModule();
         game.Load(new GameContext(world, assets, session));
 
+        // The host owns the window and the editor UI; the backend only renders and drives the loop.
+        using var window = CreateWindow();
+        var viewportSettings = new ViewportSettings();
+        var editor = new EditorUI(window, session, assets, viewportSettings);
+
         var initialGraph = BuildInitialGraph(1920, 1080);
-        VulkanHost.Run(session, assets, initialGraph);
+        VulkanHost.Run(window, session, assets, viewportSettings, editor, initialGraph);
         Debug.Log("EidolonEditor shutting down!", VALIDATION_LAYERS.SUCCESS);
+    }
+
+    private static IWindow CreateWindow()
+    {
+        var opts = WindowOptions.DefaultVulkan with
+        {
+            Title = "Eidolon Editor",
+            Size = new Vector2D<int>(900, 720),
+            ShouldSwapAutomatically = true,
+            VSync = true,
+            WindowBorder = WindowBorder.Resizable,
+            WindowState = WindowState.Maximized,
+        };
+
+        return Window.Create(opts);
     }
 
     private static CompiledRenderGraph BuildInitialGraph(uint width, uint height)

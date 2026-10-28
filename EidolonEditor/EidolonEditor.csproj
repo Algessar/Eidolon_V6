@@ -6,14 +6,21 @@
         <LangVersion>14</LangVersion>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <!-- The editor panels poke at ImGui and native dialogs directly. -->
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
 
     <ItemGroup>
       <ProjectReference Include="..\EidolonCore\EidolonCore.csproj" />
-      <ProjectReference Include="..\EidolonEngine\EidolonEngine.csproj" />
       <ProjectReference Include="..\Vulkan\Vulkan.csproj" />
       <!-- The host references a game; the engine and this editor never learn what it contains. -->
       <ProjectReference Include="..\EidolonGame\EidolonGame.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <!-- Editor panels: ImGui for the widgets, Silk for the window the overlay draws into. -->
+      <PackageReference Include="ImGui.NET" Version="1.91.6.1" />
+      <PackageReference Include="Silk.NET.Windowing" Version="2.23.0" />
     </ItemGroup>
 
     <ItemGroup>

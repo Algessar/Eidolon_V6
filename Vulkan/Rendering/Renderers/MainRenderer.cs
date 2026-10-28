@@ -1,16 +1,17 @@
-﻿using System.Numerics;
+using System.Numerics;
 using Eidolon.Editor;
 using Eidolon.Engine;
 using Eidolon.Vulkan;
 using EidolonCore.Assets;
 using EidolonCore.ECS;
+using EidolonCore.Rendering;
 using EidolonCore.Simulation;
 using ImGuiNET;
 using Silk.NET.Input;
 using Silk.NET.Vulkan;
 using Silk.NET.Windowing;
 
-namespace EidolonEngine;
+namespace Eidolon.Vulkan;
 
 internal class MainRenderer : IDisposable
 {
@@ -48,9 +49,9 @@ internal class MainRenderer : IDisposable
 	    
 	    _inputManager = new InputManager(_master.GetWindow);
 	    _meshFactory = new MeshFactory(_master);
-	    _viewportSettings = new ViewportSettings();
-	    _gridRenderer = new GridRenderer(_master, _viewportSettings);
-	    _imguiRenderer = new ImGuiRenderer(_master, _inputManager, session, assets, _viewportSettings);
+	    _viewportSettings = _master.Viewport;
+        _gridRenderer = new GridRenderer(_master, _viewportSettings);
+        _imguiRenderer = new ImGuiRenderer(_master, _inputManager, _master.Editor);
 	    _sceneRenderer = new SceneRenderer(_master, _meshFactory, session);
 	    
 	    _imguiRenderer.Initialize(_bootstrapPipelineData.RenderPass);

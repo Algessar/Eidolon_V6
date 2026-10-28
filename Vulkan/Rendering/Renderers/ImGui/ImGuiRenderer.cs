@@ -1,9 +1,9 @@
-﻿using System.Numerics;
+using System.Numerics;
 using Eidolon.Editor;
 using EidolonCore.Assets;
 using EidolonCore.ECS;
+using EidolonCore.Rendering;
 using EidolonCore.Simulation;
-using EidolonCore.Math;
 using ImGuiNET;
 using Silk.NET.Input;
 using Silk.NET.Vulkan;
@@ -18,11 +18,8 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
     VulkanMaster _master;
     
     [Header("UI and Input")]
-    private EditorUI _editorUI;
+    private readonly IEditorOverlay _editorUI;
     readonly InputManager _inputManager;
-    private readonly SceneSession _session;
-    private readonly AssetLibrary _assets;
-    private readonly ViewportSettings _gizmo;
 
     
     
@@ -59,16 +56,13 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
 
     public Vector2 EditorViewSize => _editorUI.EditorViewSize;
     
-    public ImGuiRenderer(VulkanMaster master, InputManager input, SceneSession session, AssetLibrary assets,
-        ViewportSettings gizmo)
+    public ImGuiRenderer(VulkanMaster master, InputManager input, IEditorOverlay editorUI)
     {
         _master = master;
         _uiGeometryUploader = new UiGeometryUploader(master);
         _master.FrameHandler?.OnSwapchainRecreated += OnSwapchainRecreated;
         _inputManager = input;
-        _session = session;
-        _assets = assets;
-        _gizmo = gizmo;
+        _editorUI = editorUI;
     }
     public void Initialize( RenderPass renderPass)
     {
@@ -92,8 +86,9 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
         io.Fonts.ClearTexData();
         CreatePipeline(renderPass);
 
-        _editorUI = new EditorUI(_master.GetWindow, _session, _assets, _gizmo);
-        
+        // The overlay was built by the host before the context existed, so it configures ImGui here.
+        _editorUI.Initialize();
+
         Debug.Log("ImGuiRenderer initialized", VALIDATION_LAYERS.INFO);
     }
     
@@ -110,7 +105,7 @@ internal sealed unsafe class ImGuiRenderer : IDisposable
             framebufferSize.X / safeWindowWidth,
             framebufferSize.Y / safeWindowHeight);
         // A modal OS dialog blocks the loop, so cap the frame time the UI sees afterwards.
-        io.DeltaTime = Mathf.Clamp(delta, 1f / 1000f, 1f / 10f);
+        io.DeltaTime = System.Math.Clamp(delta, 1f / 1000f, 1f / 10f);
         
         _inputManager.UpdateInput(ImGui.GetIO());
         ImGui.NewFrame();
