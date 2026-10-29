@@ -103,7 +103,7 @@ public static unsafe class AssimpModelImporter
             modelNode.Scale = scale;
         }
 
-        modelNode.Mesh = BuildMesh(scene, node, modelNode.Name);
+        (modelNode.Mesh, modelNode.Skin) = BuildGeometry(scene, node, modelNode.Name);
 
         for (var child = 0; child < node->MNumChildren; child++)
             modelNode.Children.Add(ReadNode(model, scene, node->MChildren[child], isRoot: false, path, paths));
@@ -111,13 +111,23 @@ public static unsafe class AssimpModelImporter
         return index;
     }
 
-    private static CoreMesh? BuildMesh(Scene* scene, Node* node, string name)
+    /// <summary>
+    /// Merges the node's meshes into one buffer and reads the bone influences that deform them.
+    /// </summary>
+    /// <remarks>
+    /// Bone indices are remapped into a single bone list for the merged mesh, and each vertex's weights
+    /// are normalised, because exporters are not obliged to emit weights that sum to one.
+    /// </remarks>
+    private static (CoreMesh? Mesh, ModelSkin? Skin) BuildGeometry(Scene* scene, Node* node, string name)
     {
         if (node->MNumMeshes == 0 || scene->MMeshes is null)
-            return null;
+            return (null, null);
 
         var vertices = new List<Vertex>();
         var indices = new List<uint>();
+        var influences = new List<SkinInfluence>();
+        var boneNames = new List<string>();
+        var boneLookup = new Dictionary<string, int>(StringComparer.Ordinal);
 
         for (var slot = 0; slot < node->MNumMeshes; slot++)
         {
@@ -126,7 +136,7 @@ public static unsafe class AssimpModelImporter
             if (mesh is null)
                 continue;
 
-            var baseIndex = (uint)vertices.Count;
+            var baseVertex = vertices.Count;
 
             for (var vertex = 0; vertex < mesh->MNumVertices; vertex++)
             {
@@ -135,6 +145,7 @@ public static unsafe class AssimpModelImporter
                 var uv = ReadUv(mesh, vertex);
 
                 vertices.Add(new Vertex(ToVector3(position), normal, uv));
+                influences.Add(SkinInfluence.None);
             }
 
             for (var faceIndex = 0; faceIndex < mesh->MNumFaces; faceIndex++)
@@ -144,18 +155,65 @@ public static unsafe class AssimpModelImporter
                 // Triangulate runs first, so faces are triangles; a fan keeps stray polygons usable.
                 for (var corner = 0; corner + 2 < face.MNumIndices; corner++)
                 {
-                    indices.Add(baseIndex + face.MIndices[0]);
-                    indices.Add(baseIndex + face.MIndices[corner + 1]);
-                    indices.Add(baseIndex + face.MIndices[corner + 2]);
+                    indices.Add((uint)baseVertex + face.MIndices[0]);
+                    indices.Add((uint)baseVertex + face.MIndices[corner + 1]);
+                    indices.Add((uint)baseVertex + face.MIndices[corner + 2]);
                 }
+            }
+
+            for (var boneIndex = 0; boneIndex < mesh->MNumBones; boneIndex++)
+            {
+                var bone = mesh->MBones[boneIndex];
+
+                if (bone is null)
+                    continue;
+
+                var boneName = NameOf(bone->MName);
+
+                if (string.IsNullOrEmpty(boneName))
+                    continue;
+
+                if (!boneLookup.TryGetValue(boneName, out var skinIndex))
+                {
+                    skinIndex = boneNames.Count;
+                    boneNames.Add(boneName);
+                    boneLookup[boneName] = skinIndex;
+                }
+
+                for (var weightIndex = 0; weightIndex < bone->MNumWeights; weightIndex++)
+                {
+                    var weight = bone->MWeights[weightIndex];
+                    var vertex = baseVertex + (int)weight.MVertexId;
+
+                    if (vertex < 0 || vertex >= influences.Count)
+                        continue;
+
+                    var influence = influences[vertex];
+                    influence.Add(skinIndex, weight.MWeight);
+                    influences[vertex] = influence;
+                }
+            }
+
+            // Normalise this mesh's vertices now that all of its bones have been read.
+            for (var vertex = baseVertex; vertex < vertices.Count; vertex++)
+            {
+                var influence = influences[vertex];
+                influence.Normalize();
+                influences[vertex] = influence;
             }
         }
 
-        return vertices.Count == 0 || indices.Count == 0
-            ? null
-            : new CoreMesh(name, vertices.ToArray(), indices.ToArray());
-    }
+        if (vertices.Count == 0 || indices.Count == 0)
+            return (null, null);
 
+        var coreMesh = new CoreMesh(name, vertices.ToArray(), indices.ToArray());
+
+        var skin = boneNames.Count > 0 && influences.Count == vertices.Count
+            ? new ModelSkin { BoneNames = boneNames, Influences = influences }
+            : null;
+
+        return (coreMesh, skin);
+    }
     private static Vector2 ReadUv(Silk.NET.Assimp.Mesh* mesh, int vertex)
     {
         if (mesh->MTextureCoords[0] is null)

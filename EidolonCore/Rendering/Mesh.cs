@@ -14,8 +14,13 @@ public sealed class Mesh
     public Vertex[] Vertices { get; }
     public uint[] Indices { get; }
 
-    /// <summary>Axis-aligned bounds in local space, computed once at construction.</summary>
-    public Bounds LocalBounds { get; }
+    /// <summary>Axis-aligned bounds in local space, recomputed when the vertices are updated.</summary>
+    public Bounds LocalBounds { get; private set; }
+
+    /// <summary>
+    /// Bumped whenever the CPU-side vertices change, so the renderer knows to re-upload them.
+    /// </summary>
+    public int Version { get; private set; }
 
     public bool IsValid => Vertices.Length > 0 && Indices.Length > 0;
 
@@ -32,6 +37,27 @@ public sealed class Mesh
     public Mesh(Vertex[] vertices, uint[] indices)
         : this("Mesh", vertices, indices)
     {
+    }
+
+    /// <summary>
+    /// Replaces the vertices in place, keeping the index buffer and the vertex count.
+    /// </summary>
+    /// <remarks>
+    /// This is how a deforming mesh stays cheap to draw: the buffers keep their size, so the renderer can
+    /// copy the new vertices into the same GPU memory instead of reallocating every frame.
+    /// </remarks>
+    /// <exception cref="ArgumentException">The new vertex count does not match.</exception>
+    public void UpdateVertices(ReadOnlySpan<Vertex> vertices)
+    {
+        if (vertices.Length != Vertices.Length)
+        {
+            throw new ArgumentException(
+                $"A mesh keeps its vertex count: expected {Vertices.Length}, got {vertices.Length}.", nameof(vertices));
+        }
+
+        vertices.CopyTo(Vertices);
+        LocalBounds = Bounds.FromVertices(Vertices);
+        Version++;
     }
 
     /// <summary>

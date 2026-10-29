@@ -18,6 +18,9 @@ public sealed class ModelNode
     /// <summary>Geometry attached to this node, or null for a pure bone/transform node.</summary>
     public Mesh? Mesh;
 
+    /// <summary>Bone blend per vertex, when the geometry is skinned. Null for rigid geometry.</summary>
+    public ModelSkin? Skin;
+
     /// <summary>Indices into <see cref="ModelAsset.Nodes"/>.</summary>
     public List<int> Children = [];
 }
@@ -30,6 +33,16 @@ public sealed class ModelNode
 /// knows whether the file was FBX, DAE, glTF or OBJ. Node names become entity names, which is what lets
 /// an imported clip bind by path exactly like an authored one.
 /// </remarks>
+/// <summary>Skin binding for one node's geometry: which bones influence which vertices.</summary>
+public sealed class ModelSkin
+{
+    /// <summary>Bone names in influence order. Names are node names, so they resolve to entities.</summary>
+    public List<string> BoneNames = [];
+
+    /// <summary>One entry per bind-pose vertex.</summary>
+    public List<SkinInfluence> Influences = [];
+}
+
 public sealed class ModelAsset
 {
     public string Name = "Model";

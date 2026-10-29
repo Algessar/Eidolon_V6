@@ -1,4 +1,4 @@
-﻿using Eidolon.Vulkan;
+using Eidolon.Vulkan;
 using EidolonCore.Rendering;
 using Silk.NET.Vulkan;
 
@@ -30,6 +30,7 @@ internal unsafe class MeshFactory : IDisposable
     private readonly VulkanMaster _master;
     private readonly Dictionary<Mesh, MeshHandle> _handles = new();
     private readonly Dictionary<MeshHandle, MeshGpuData> _meshes = new();
+    private readonly Dictionary<Mesh, int> _versions = new();
 
     private int _nextId = 1;
 
@@ -90,6 +91,11 @@ internal unsafe class MeshFactory : IDisposable
         _handles[mesh] = handle;
 
         return handle;
+    }
+
+    private void Refresh(Mesh mesh, MeshGpuData data)
+    {
+        Upload(data.VertexBuffer, mesh.Vertices);
     }
 
     private void Upload<T>(GpuBuffer buffer, T[] source) where T : unmanaged

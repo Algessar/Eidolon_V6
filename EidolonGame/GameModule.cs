@@ -27,6 +27,7 @@ public sealed class GameModule : IGameModule
         context.Session.AddSystem(scripts);
         context.Session.AddSystem(new AnimationSystem());
         context.Session.AddSystem(new PoseResolutionSystem());
+        context.Session.AddSystem(new SkinningSystem());
         context.Session.AddSystem(new SpinSystem());
         context.Session.AddSystem(new XpbdWorldSystem());
     }

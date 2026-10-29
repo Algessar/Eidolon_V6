@@ -62,6 +62,81 @@ public static class ModelSpawner
             });
         }
 
+        // Skins are bound last, so the bones' bind-pose world matrices already include the placement
+        // above: wherever the model is put, the bind pose is where its geometry is.
+        for (var index = 0; index < model.Nodes.Count; index++)
+        {
+            var node = model.Nodes[index];
+
+            if (node.Skin is not { } skin || node.Mesh is not { } bindPose)
+                continue;
+
+            AttachSkin(world, entities[index], entities[0], bindPose, skin);
+        }
+
         return entities[0];
+    }
+
+    private static void AttachSkin(World world, Entity entity, Entity root, Mesh bindPose, ModelSkin skin)
+    {
+        var bones = new SkeletonBone[skin.BoneNames.Count];
+        var boneEntities = new Entity[skin.BoneNames.Count];
+
+        for (var index = 0; index < skin.BoneNames.Count; index++)
+        {
+            var bone = TryFindByName(world, root, skin.BoneNames[index]);
+            boneEntities[index] = bone;
+
+            var inverseBind = Matrix4x4.Identity;
+
+            if (bone.IsValid &&
+                Matrix4x4.Invert(world.GetComponent<Transform>(bone).GetWorldMatrix(world), out var inverse))
+            {
+                inverseBind = inverse;
+            }
+
+            bones[index] = new SkeletonBone(skin.BoneNames[index], inverseBind);
+        }
+
+        // The renderer draws a mutable copy: it starts as the bind pose and is rewritten as bones move.
+        var deformed = new Mesh($"{bindPose.Name} (skinned)", bindPose.Vertices.ToArray(), bindPose.Indices.ToArray());
+
+        if (world.TryGetComponent<MeshRenderer>(entity, out var renderer))
+        {
+            renderer.Mesh = deformed;
+            world.SetComponent(entity, renderer);
+        }
+
+        world.SetComponent(entity, new SkinnedMesh
+        {
+            BindPose = bindPose,
+            Deformed = deformed,
+            MeshEntity = entity,
+            BindWorld = world.GetComponent<Transform>(entity).GetWorldMatrix(world),
+            Bones = bones,
+            BoneEntities = boneEntities,
+            Influences = skin.Influences.ToArray(),
+            Vertices = new Vertex[bindPose.Vertices.Length],
+        });
+    }
+
+    /// <summary>First entity in the model subtree with that name, or an invalid entity.</summary>
+    private static Entity TryFindByName(World world, Entity root, string name)
+    {
+        if (world.TryGetComponent<Name>(root, out var rootName) &&
+            string.Equals(rootName.Value, name, StringComparison.Ordinal))
+        {
+            return root;
+        }
+
+        foreach (var child in Hierarchy.GetChildren(world, root))
+        {
+            var found = TryFindByName(world, child, name);
+
+            if (found.IsValid)
+                return found;
+        }
+
+        return default;
     }
 }
