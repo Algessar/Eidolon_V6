@@ -22,7 +22,7 @@ public static class EidolonEditor
 
         var assetRoot = Path.Combine(AppContext.BaseDirectory, "Assets");
         var discovered = assets.Discover(assetRoot);
-        Debug.Log($"Asset library: {discovered} mesh asset(s) under '{assetRoot}'", VALIDATION_LAYERS.INFO);
+        Debug.Log($"Asset library: {discovered} asset(s) under '{assetRoot}'", VALIDATION_LAYERS.INFO);
 
         // The session owns the authored world and, later, the runtime copy used by play mode.
         var session = new SceneSession(world);

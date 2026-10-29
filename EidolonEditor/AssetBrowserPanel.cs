@@ -30,6 +30,7 @@ internal sealed class AssetBrowserPanel
 
     private readonly AssetLibrary _assets;
     private readonly Action<MeshAsset> _spawnAsset;
+    private readonly Action<MeshAsset> _importModel;
     private readonly Action<Mesh> _spawnMesh;
 
     private AssetFolder? _currentFolder;
@@ -37,11 +38,13 @@ internal sealed class AssetBrowserPanel
     private string? _status;
     private bool _statusIsError;
 
-    public AssetBrowserPanel(AssetLibrary assets, Action<MeshAsset> spawnAsset, Action<Mesh> spawnMesh)
+    public AssetBrowserPanel(AssetLibrary assets, Action<MeshAsset> spawnAsset, Action<Mesh> spawnMesh,
+        Action<MeshAsset> importModel)
     {
         _assets = assets;
         _spawnAsset = spawnAsset;
         _spawnMesh = spawnMesh;
+        _importModel = importModel;
     }
 
     /// <summary>Asset picked in the grid; the panel is the source of truth for the selection.</summary>
@@ -258,14 +261,16 @@ internal sealed class AssetBrowserPanel
 
         if (hovered)
         {
-            var detail = asset.IsLoaded && asset.Mesh is { } loaded
-                ? $"{asset.RelativePath}\n{FormatSize(asset.SizeInBytes)}  {loaded.TriangleCount} tris"
-                : $"{asset.RelativePath}\n{FormatSize(asset.SizeInBytes)}";
+            var detail = asset.IsModel
+                ? $"{asset.RelativePath}\n{FormatSize(asset.SizeInBytes)}  model - double-click to import"
+                : asset.IsLoaded && asset.Mesh is { } loaded
+                    ? $"{asset.RelativePath}\n{FormatSize(asset.SizeInBytes)}  {loaded.TriangleCount} tris"
+                    : $"{asset.RelativePath}\n{FormatSize(asset.SizeInBytes)}";
 
             ImGui.SetTooltip(detail);
 
             if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
-                _spawnAsset(asset);
+                Activate(asset);
         }
 
         if (EditorDragDrop.BeginAssetDrag(asset.Path, asset.Name, asset.RelativePath))
@@ -273,6 +278,18 @@ internal sealed class AssetBrowserPanel
 
         DrawTileVisual(asset, origin, cell, hovered);
         ImGui.PopID();
+    }
+
+    /// <summary>What activating an asset means: mesh files spawn, model files import a whole hierarchy.</summary>
+    private void Activate(MeshAsset asset)
+    {
+        if (asset.IsModel)
+        {
+            _importModel(asset);
+            return;
+        }
+
+        _spawnAsset(asset);
     }
 
     private void DrawTileVisual(MeshAsset asset, Vector2 origin, Vector2 cell, bool hovered)
@@ -299,6 +316,19 @@ internal sealed class AssetBrowserPanel
             origin.Y + IconSize + 8f);
 
         drawList.AddText(labelPosition, ImGui.GetColorU32(ImGuiCol.Text), label);
+
+        if (!asset.IsModel)
+            return;
+
+        // A model file is a whole hierarchy, not one mesh, so it gets the format as a badge.
+        var badge = System.IO.Path.GetExtension(asset.Path).TrimStart('.').ToUpperInvariant();
+        var badgeSize = ImGui.CalcTextSize(badge);
+        var badgePosition = new Vector2(rectMax.X - badgeSize.X - 5f, origin.Y + 3f);
+
+        drawList.AddRectFilled(badgePosition - new Vector2(3f, 1f), badgePosition + badgeSize + new Vector2(3f, 1f),
+            ImGui.ColorConvertFloat4ToU32(new Vector4(0.24f, 0.42f, 0.62f, 0.95f)), 3f);
+
+        drawList.AddText(badgePosition, ImGui.GetColorU32(ImGuiCol.Text), badge);
     }
 
     /// <summary>A small isometric wireframe cube, so mesh assets read as "3D thing" at a glance.</summary>
@@ -345,7 +375,7 @@ internal sealed class AssetBrowserPanel
         ImGui.SameLine();
 
         if (ImGui.Button("Add to scene") && SelectedAsset is { } selected)
-            _spawnAsset(selected);
+            Activate(selected);
 
         if (SelectedAsset is { } asset)
         {

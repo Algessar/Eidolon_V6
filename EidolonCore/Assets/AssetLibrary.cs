@@ -13,6 +13,9 @@ public sealed class AssetLibrary
 {
     private static readonly string[] MeshExtensions = [".obj"];
 
+    /// <summary>Model formats the host can import. The engine only lists them so the browser shows them.</summary>
+    private static readonly string[] ModelExtensions = [".fbx", ".gltf", ".glb", ".dae", ".3ds", ".blend"];
+
     private readonly Dictionary<string, Mesh> _loadedMeshes = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, MeshAsset> _assetsByPath = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<MeshAsset> _catalog = [];
@@ -52,7 +55,10 @@ public sealed class AssetLibrary
 
         foreach (var path in Directory.EnumerateFiles(RootDirectory, "*", SearchOption.AllDirectories))
         {
-            if (!HasMeshExtension(path))
+            var isMesh = HasMeshExtension(path);
+            var isModel = HasModelExtension(path);
+
+            if (!isMesh && !isModel)
                 continue;
 
             var fullPath = Path.GetFullPath(path);
@@ -66,10 +72,11 @@ public sealed class AssetLibrary
                 fullPath,
                 Path.GetFileNameWithoutExtension(fullPath),
                 relativePath,
-                new FileInfo(fullPath).Length)
+                new FileInfo(fullPath).Length,
+                isModel)
             {
                 // Keep assets that were imported before a rescan marked as loaded.
-                Mesh = TryGetMesh(fullPath),
+                Mesh = isMesh ? TryGetMesh(fullPath) : null,
             };
 
             folder.AddFile(asset);
@@ -136,7 +143,13 @@ public sealed class AssetLibrary
     }
 
     /// <summary>Imports a catalog entry, loading it on first use.</summary>
-    public Mesh Load(MeshAsset asset) => asset.Mesh ??= LoadObj(asset.Path);
+    public Mesh Load(MeshAsset asset)
+    {
+        if (asset.IsModel)
+            throw new InvalidOperationException($"'{asset.Name}' is a model file; the host imports it instead.");
+
+        return asset.Mesh ??= LoadObj(asset.Path);
+    }
 
     /// <summary>
     /// Same as <see cref="Load(MeshAsset)"/> but reports failure as a message instead of throwing,
@@ -195,6 +208,19 @@ public sealed class AssetLibrary
         foreach (var extension in MeshExtensions)
         {
             if (path.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool HasModelExtension(string path)
+    {
+        var extension = Path.GetExtension(path);
+
+        foreach (var candidate in ModelExtensions)
+        {
+            if (string.Equals(extension, candidate, StringComparison.OrdinalIgnoreCase))
                 return true;
         }
 

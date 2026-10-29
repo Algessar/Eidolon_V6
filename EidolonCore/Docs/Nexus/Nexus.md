@@ -9,11 +9,11 @@ Its primary systems are:
 - **XPBD** — physically based constraint solving and simulation
 - **SDF** — signed distance field generation and spatial queries
 - **Animation** — animation evaluation, procedural animation, pose generation and modification
-- **ML** — machine-learning-driven behavior, control and decision-making
+- **ML** — machine-learning-driven behaviour, control, and decision-making
 
 The goal is not simply to provide four independent systems in one engine.
 
-The goal is for these systems to **work together as parts of a shared simulation model**, allowing animation, physics, spatial information and machine learning to influence one another without requiring direct coupling between their implementations.
+The goal is for these systems to **work together as parts of a shared simulation model**, allowing animation, physics, spatial information, and machine learning to influence one another without requiring direct coupling between their implementations.
 
 Nexus should make complex behaviours possible without requiring the user to manually bridge unrelated systems.
 
@@ -72,13 +72,13 @@ Conceptually:
 
 This diagram is conceptual rather than a fixed execution order.
 
-In particular, **SDF is primarily a provider of spatial information**, not necessarily a sequential stage in the simulation pipeline. XPBD, Animation, ML and other systems may query SDF data as required.
+In particular, **SDF is primarily a provider of spatial information**, not necessarily a sequential stage in the simulation pipeline. XPBD, Animation, ML, and other systems may query SDF data as required.
 
-Similarly, ML and Animation should not necessarily form a strict linear chain. Both may contribute intent, targets or desired state.
+Similarly, ML and Animation should not necessarily form a strict linear chain. Both may contribute intent, targets, or desired state.
 
 ---
 
-# Desired State, Constraints and Resolved State
+# Desired State, Constraints, and Resolved State
 
 A useful preliminary model is to distinguish three concepts.
 
@@ -280,7 +280,7 @@ For example:
 
 The SDF system should not need to know which subsystem is consuming its information.
 
-This allows the same spatial representation to support physics, animation, procedural behavior and machine learning.
+This allows the same spatial representation to support physics, animation, procedural behavior, and machine learning.
 
 ---
 
@@ -288,7 +288,7 @@ This allows the same spatial representation to support physics, animation, proce
 
 ML should be treated as another participant in the simulation rather than as an external system that directly manipulates game objects.
 
-ML should primarily produce **intent, decisions, actions or targets**.
+ML should primarily produce **intent, decisions, actions, or targets**.
 
 Examples:
 
@@ -362,7 +362,7 @@ XPBD uses that information to create or resolve physical constraints.
 
 ### SDF + Animation
 
-Animation can query surfaces for foot placement, body adaptation or other procedural adjustments.
+Animation can query surfaces for foot placement, body adaptation, or other procedural adjustments.
 
 ### ML + Physics
 
@@ -547,7 +547,7 @@ Examples:
 
 And more broadly:
 
-> **Nexus is not four systems glued together. It is a shared simulation framework in which XPBD, SDF, Animation and ML can participate in the same state.**
+> **Nexus is not four systems glued together. It is a shared simulation framework in which XPBD, SDF, Animation, and ML can participate in the same state.**
 
 ---
 

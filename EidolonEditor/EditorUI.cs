@@ -71,7 +71,7 @@ internal unsafe class EditorUI : IEditorOverlay
         _session = session;
         _assets = assets;
         _viewport = viewport;
-        _browser = new AssetBrowserPanel(assets, SpawnAsset, SpawnImportedMesh);
+        _browser = new AssetBrowserPanel(assets, SpawnAsset, SpawnImportedMesh, ImportModel);
     }
 
     /// <summary>
@@ -1357,6 +1357,11 @@ internal unsafe class EditorUI : IEditorOverlay
             if (ImGui.MenuItem("Capsule"))
                 SpawnPrimitive(PrimitiveMeshes.Capsule, "Capsule");
 
+            ImGui.Separator();
+
+            if (ImGui.MenuItem("Import model..."))
+                ImportModel();
+
             ImGui.EndDisabled();
             ImGui.EndMenu();
         }
@@ -1515,15 +1520,26 @@ internal unsafe class EditorUI : IEditorOverlay
             return;
 
         var models = Path.Combine(AppContext.BaseDirectory, "Assets", "Models");
-        var chosen = FileDialog.TryPickFile("Import model", ModelFilter, Directory.Exists(models) ? models : null);
+        var modelsFolder = Directory.Exists(models) ? models : null;
+        var chosen = FileDialog.TryPickFile("Import model", ModelFilter, modelsFolder);
 
-        if (chosen is null)
+        if (chosen is not null)
+            ImportModel(chosen);
+    }
+
+    /// <summary>Imports a model picked in the browser, which hands over the asset rather than a path.</summary>
+    private void ImportModel(MeshAsset asset) => ImportModel(asset.Path);
+
+    /// <summary>Imports one path: shared by the file dialog and the browser.</summary>
+    private void ImportModel(string path)
+    {
+        if (_session.InPlayMode)
             return;
 
         try
         {
-            var model = AssimpModelImporter.Import(chosen);
-            var material = new Material(Path.GetFileNameWithoutExtension(chosen), NextSpawnColor());
+            var model = AssimpModelImporter.Import(path);
+            var material = new Material(Path.GetFileNameWithoutExtension(path), NextSpawnColor());
             var position = FindCamera()?.Target ?? Vector3.Zero;
 
             _selected = ModelSpawner.Spawn(_world, model, material, position);
