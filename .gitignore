@@ -6,3 +6,6 @@ riderModule.iml
 
 # ImGui persists the editor dock layout next to the executable / working directory.
 imgui.ini
+
+# Blender's rolling backup of an open file.
+*.blend1
