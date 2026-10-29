@@ -5,6 +5,7 @@ using EidolonCore.ECS;
 using EidolonCore.Nexus;
 using EidolonCore.Nexus.Animation;
 using EidolonCore.Rendering;
+using Eidolon.Assimp;
 using EidolonCore.Scene;
 using EidolonCore.Simulation;
 using ImGuiNET;
@@ -1453,6 +1454,9 @@ internal unsafe class EditorUI : IEditorOverlay
 
     private const string SceneFilter = "Eidolon scene (*.json)\0*.json\0All files (*.*)\0*.*\0\0";
 
+    private const string ModelFilter =
+        "Models (*.fbx;*.obj;*.gltf;*.glb;*.dae;*.3ds;*.blend)\0*.fbx;*.obj;*.gltf;*.glb;*.dae;*.3ds;*.blend\0All files (*.*)\0*.*\0\0";
+
     private void SaveScene()
     {
         try
@@ -1494,6 +1498,41 @@ internal unsafe class EditorUI : IEditorOverlay
         catch (Exception exception)
         {
             SetStatus($"Load failed: {exception.Message}", isError: true);
+        }
+    }
+
+    /// <summary>
+    /// Imports a model through Assimp and instantiates it as named, parented entities.
+    /// </summary>
+    /// <remarks>
+    /// The import lands at the viewport's target so it appears where you are looking. Clips the file
+    /// carries become the root's <see cref="AnimationPlayer"/>, and their paths already match the node
+    /// names, so the timeline can key them immediately.
+    /// </remarks>
+    private void ImportModel()
+    {
+        if (_session.InPlayMode)
+            return;
+
+        var models = Path.Combine(AppContext.BaseDirectory, "Assets", "Models");
+        var chosen = FileDialog.TryPickFile("Import model", ModelFilter, Directory.Exists(models) ? models : null);
+
+        if (chosen is null)
+            return;
+
+        try
+        {
+            var model = AssimpModelImporter.Import(chosen);
+            var material = new Material(Path.GetFileNameWithoutExtension(chosen), NextSpawnColor());
+            var position = FindCamera()?.Target ?? Vector3.Zero;
+
+            _selected = ModelSpawner.Spawn(_world, model, material, position);
+            SetStatus($"Imported {model.Name}: {model.Nodes.Count} node(s), {model.Clips.Count} clip(s).",
+                isError: false);
+        }
+        catch (Exception exception)
+        {
+            SetStatus($"Import failed: {exception.Message}", isError: true);
         }
     }
 

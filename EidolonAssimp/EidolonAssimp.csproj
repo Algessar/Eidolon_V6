@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <LangVersion>14</LangVersion>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <!-- Assimp's bindings are a direct C API: scene graphs are read through pointers. -->
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\EidolonCore\EidolonCore.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- Bindings (MIT) plus the assimp binaries (BSD-3). Isolated here so the engine and the
+             renderer never take a native dependency; only the host chooses to import. -->
+        <PackageReference Include="Silk.NET.Assimp" Version="2.22.0" />
+        <PackageReference Include="Ultz.Native.Assimp" Version="5.4.1" />
+    </ItemGroup>
+
+</Project>

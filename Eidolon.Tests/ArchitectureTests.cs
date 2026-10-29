@@ -62,4 +62,13 @@ public class ArchitectureTests
         // which is what keeps the panels and the renderer in separate assemblies.
         Assert.DoesNotContain("EidolonEditor", References(Renderer));
     }
+
+    [Fact]
+    public void ImportingIsAHostChoice()
+    {
+        // Assimp is a native dependency, so only the host links it: the engine and the renderer stay
+        // free of it and can be built and tested without the importer present.
+        Assert.DoesNotContain("EidolonAssimp", References(Engine));
+        Assert.DoesNotContain("EidolonAssimp", References(Renderer));
+    }
 }

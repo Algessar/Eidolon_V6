@@ -28,5 +28,15 @@ this section is about *clip playback*, not about the skeletal wishlist above.
 - Scene files carry names and clips (format version 3), and play-mode clones get their own playhead while
   sharing the clip.
 
-Still open: the timeline UI, blending and layers, root motion, skinning, import (glTF first), and the
-priority rules for when physics and animation both claim the same bone.
+- **Timeline panel** in the editor: create a clip, scrub, play in edit mode, key every track from the
+  current poses, and add tracks by picking a bone. Clips are immutable, so an edit produces a new clip and
+  a player already using the old one is unaffected.
+- **Import** through Assimp (`EidolonAssimp`, host-only): FBX, DAE, glTF, OBJ and the rest become a
+  format-neutral `ModelAsset` - a named node tree with meshes and clips - instantiated as named, parented
+  entities. Assimp's tick-based animation channels are converted to seconds and to one key per sampled
+  time. A channel on the root node maps to the empty path, which is how an imported clip carries root
+  motion.
+
+Still open: blending and layers, skinning (imported skinned meshes are static geometry today), a proper
+timeline key editor (move/delete/curve editing), and the priority rules for when physics and animation
+both claim the same bone.

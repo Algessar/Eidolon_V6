@@ -15,6 +15,8 @@
       <ProjectReference Include="..\Vulkan\Vulkan.csproj" />
       <!-- The host references a game; the engine and this editor never learn what it contains. -->
       <ProjectReference Include="..\EidolonGame\EidolonGame.csproj" />
+      <!-- Importing is a host choice; the engine never takes the native dependency. -->
+      <ProjectReference Include="..\EidolonAssimp\EidolonAssimp.csproj" />
     </ItemGroup>
 
     <ItemGroup>
