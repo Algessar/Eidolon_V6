@@ -65,6 +65,12 @@ internal unsafe class EditorUI : IEditorOverlay
     private int _spawnCounter;
     private int _materialCounter;
 
+    /// <summary>Where Ctrl+S writes without asking again; set by the first save or by loading.</summary>
+    private string? _lastScenePath;
+
+    /// <summary>The importer the scene loader calls to rebuild imported models from their files.</summary>
+    private readonly AssimpModelSource _modelSource = new();
+
     public EditorUI(IWindow window, SceneSession session, AssetLibrary assets, ViewportSettings viewport)
     {
         _window = window;
@@ -125,12 +131,33 @@ internal unsafe class EditorUI : IEditorOverlay
 
         DrawDockSpace();
         DrawMainMenuBar();
+        HandleEditorShortcuts();
         DrawGameWindow();
         DrawSceneViewport();
         DrawSceneWindow();
         DrawInspectorWindow();
         _browser.Draw();
         _timeline.Draw(_world, _session, _selected);
+        SyncSelectionHighlight();
+    }
+
+    /// <summary>
+    /// Keeps the renderer's selection rim on exactly what is selected. Written as a reconciliation rather
+    /// than add/remove on change, so a world swap (play mode, loading a scene) cannot leave a stale outline
+    /// behind: the highlighted set is compared against the selection every frame and corrected.
+    /// </summary>
+    private void SyncSelectionHighlight()
+    {
+        var wanted = _selected is { } selected && _world.IsAlive(selected) ? selected : (Entity?)null;
+
+        foreach (var highlighted in _world.GetEntitiesWith<Highlight>().ToArray())
+        {
+            if (highlighted != wanted)
+                _world.RemoveComponent<Highlight>(highlighted);
+        }
+
+        if (wanted is { } current && !_world.HasComponent<Highlight>(current))
+            _world.SetComponent(current, default(Highlight));
     }
 
     /// <summary>
@@ -326,10 +353,7 @@ internal unsafe class EditorUI : IEditorOverlay
 
         ImGui.BeginDisabled(_session.InPlayMode);
         if (ImGui.Button("Delete entity"))
-        {
-            _world.DestroyEntity(entity);
-            _selected = null;
-        }
+            DeleteSelection();
 
         ImGui.EndDisabled();
 
@@ -659,12 +683,57 @@ internal unsafe class EditorUI : IEditorOverlay
     }
 
     /// <summary>
+    /// Editor-wide keys: Ctrl+S saves, Ctrl+Shift+S asks where, Delete removes the selection. They stand
+    /// down while a text field has the keyboard, so typing a name never deletes anything, and deletion
+    /// stays out of play mode because the simulation owns the entities there.
+    /// </summary>
+    private void HandleEditorShortcuts()
+    {
+        var io = ImGui.GetIO();
+
+        if (io.WantTextInput)
+            return;
+
+        if (io.KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.S))
+        {
+            if (io.KeyShift)
+                SaveSceneAs();
+            else
+                SaveScene();
+
+            return;
+        }
+
+        if (!_session.InPlayMode && ImGui.IsKeyPressed(ImGuiKey.Delete))
+            DeleteSelection();
+    }
+
+    /// <summary>Deletes the selection and everything parented under it.</summary>
+    private void DeleteSelection()
+    {
+        if (_session.InPlayMode || _selected is not { } entity || !_world.IsAlive(entity))
+            return;
+
+        var destroyed = Hierarchy.DestroySubtree(_world, entity);
+        _selected = null;
+
+        SetStatus(destroyed == 1
+            ? $"Deleted #{entity.Id}."
+            : $"Deleted #{entity.Id} and {destroyed - 1} entit{(destroyed == 2 ? "y" : "ies")} under it.",
+            isError: false);
+    }
+
+    /// <summary>
     /// Blender-style transform keys: G, R and S start a mouse-driven transform of the selection.
     /// They only work while the viewport has the cursor, so they cannot collide with a text field.
     /// </summary>
     private void HandleTransformShortcuts(bool hoveringViewport, bool modalActive)
     {
         if (modalActive || !hoveringViewport || ImGui.GetIO().WantTextInput)
+            return;
+
+        // Ctrl chords are editor commands (Ctrl+S saves), not transform modes.
+        if (ImGui.GetIO().KeyCtrl)
             return;
 
         if (_selected is not { } selected || !_world.IsAlive(selected))
@@ -1326,8 +1395,11 @@ internal unsafe class EditorUI : IEditorOverlay
 
         if (ImGui.BeginMenu("File"))
         {
-            if (ImGui.MenuItem("Save Scene"))
+            if (ImGui.MenuItem("Save Scene", "Ctrl+S"))
                 SaveScene();
+
+            if (ImGui.MenuItem("Save Scene As...", "Ctrl+Shift+S"))
+                SaveSceneAs();
 
             if (ImGui.MenuItem("Load Scene"))
                 LoadScene();
@@ -1464,15 +1536,30 @@ internal unsafe class EditorUI : IEditorOverlay
 
     private void SaveScene()
     {
+        if (_lastScenePath is null)
+        {
+            SaveSceneAs();
+            return;
+        }
+
+        WriteScene(_lastScenePath);
+    }
+
+    private void SaveSceneAs()
+    {
+        var chosen = FileDialog.TrySaveFile("Save scene", SceneFilter, "json", ScenesDirectory);
+
+        if (chosen is not null)
+            WriteScene(chosen);
+    }
+
+    private void WriteScene(string path)
+    {
         try
         {
-            var chosen = FileDialog.TrySaveFile("Save scene", SceneFilter, "json", ScenesDirectory);
-
-            if (chosen is null)
-                return;
-
-            SceneSerializer.Save(_session.Authored, chosen, _viewport);
-            SetStatus($"Saved {_session.Authored.EntityCount} entities to {chosen}", isError: false);
+            SceneSerializer.Save(_session.Authored, path, _viewport);
+            _lastScenePath = path;
+            SetStatus($"Saved {_session.Authored.EntityCount} entities to {path}", isError: false);
         }
         catch (Exception exception)
         {
@@ -1495,9 +1582,10 @@ internal unsafe class EditorUI : IEditorOverlay
 
         try
         {
-            SceneSerializer.Load(chosen, _session.Authored, _assets, _viewport);
+            SceneSerializer.Load(chosen, _session.Authored, _assets, _viewport, _modelSource);
             _selected = null;
             _dragSource = null;
+            _lastScenePath = chosen;
             SetStatus($"Loaded {_session.Authored.EntityCount} entities from {chosen}", isError: false);
         }
         catch (Exception exception)
@@ -1538,7 +1626,7 @@ internal unsafe class EditorUI : IEditorOverlay
 
         try
         {
-            var model = AssimpModelImporter.Import(path);
+            var model = _modelSource.Import(path);
             var material = new Material(Path.GetFileNameWithoutExtension(path), NextSpawnColor());
             var position = FindCamera()?.Target ?? Vector3.Zero;
 

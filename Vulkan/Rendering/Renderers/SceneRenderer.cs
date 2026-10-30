@@ -31,6 +31,8 @@ internal unsafe class SceneRenderer : IDisposable
     private DescriptorSet _descriptorSet;
     private PipelineData _geometryPipeline;
     private PipelineData _skinnedPipeline;
+    private PipelineData _outlinePipeline;
+    private PipelineData _skinnedOutlinePipeline;
 
     /// <summary>Every skin's bone matrices for this frame, packed into one buffer upload.</summary>
     private readonly Matrix4x4[] _bonePalette = new Matrix4x4[DescriptorFactory.BoneMatrixCapacity];
@@ -116,7 +118,6 @@ internal unsafe class SceneRenderer : IDisposable
 
         if (!ReferenceEquals(GameCamera, EditorCamera))
             AddView(frameIndex, viewIndex: 1, RenderPassType.GameView, GameCamera, _gameViewSize);
-
         CurrentSubmissions = _submissions.ToArray();
     }
 
@@ -177,6 +178,116 @@ internal unsafe class SceneRenderer : IDisposable
                 ModelMatrix = model,
             });
         }
+
+        AddOutlines(passType, frameIndex, viewIndex);
+    }
+
+    /// <summary>
+    /// Draws the selection rim for every highlighted entity. Outlines go after the geometry of the same
+    /// view, because the hull is hidden by the object's own depth everywhere except around its silhouette.
+    /// </summary>
+    private void AddOutlines(RenderPassType passType, uint frameIndex, uint viewIndex)
+    {
+        if (!_outlinePipeline.IsValid)
+            return;
+
+        foreach (var entity in _world.GetEntitiesWith<Highlight>())
+        {
+            if (!_world.TryGetComponent<Transform>(entity, out _) ||
+                !_world.TryGetComponent<MeshRenderer>(entity, out var meshRenderer))
+            {
+                continue;
+            }
+
+            var model = _world.GetComponent<Transform>(entity).GetWorldMatrix(_world);
+
+            if (TryAddSkinnedOutline(entity, model, passType, frameIndex, viewIndex))
+                continue;
+
+            if (!_meshFactory.TryGet(meshRenderer.Mesh, out var mesh))
+                continue;
+
+            // Only the model matrix is pushed: expansion and colour live in the outline shaders.
+            var payload = new byte[OutlinePushConstants.SizeInBytes];
+            MemoryMarshal.Write(payload.AsSpan(), in model);
+
+            _submissions.Add(new DrawSubmission
+            {
+                PassType = passType,
+                PipelineData = _outlinePipeline,
+                DescriptorSet = _master.DescriptorFactory.GetDescriptorSet(frameIndex, viewIndex),
+                VertexBuffer = mesh.VertexBuffer,
+                VertexOffset = 0,
+                IndexBuffer = mesh.IndexBuffer,
+                IndexOffset = 0,
+                IndexType = mesh.IndexType,
+                VertexCount = mesh.VertexCount,
+                IndexCount = mesh.IndexCount,
+                InstanceCount = 1,
+                FirstVertex = 0,
+                FirstIndex = 0,
+                VertexBase = 0,
+                ScissorPolicy = SubmissionScissorPolicy.PassDefault,
+                Scissor = default,
+                ViewportPolicy = SubmissionViewportPolicy.PassDefault,
+                Viewport = default,
+                PushConstants = new PushConstantPayload
+                {
+                    StageFlags = ShaderStageFlags.VertexBit,
+                    Offset = 0,
+                    Data = payload,
+                },
+                ModelMatrix = model,
+            });
+        }
+    }
+
+    /// <summary>Outlines a skinned entity in its current pose, using its slice of the bone palette.</summary>
+    private bool TryAddSkinnedOutline(Entity entity, Matrix4x4 model, RenderPassType passType,
+        uint frameIndex, uint viewIndex)
+    {
+        if (!_skinnedOutlinePipeline.IsValid ||
+            !_world.TryGetComponent<SkinnedMesh>(entity, out var skin) ||
+            !_skinOffsets.TryGetValue(skin, out var boneOffset) ||
+            !_meshFactory.TryGetSkinned(skin, out var mesh))
+        {
+            return false;
+        }
+
+        var constants = new SkinnedPushConstants { Model = model, BoneOffset = (uint)boneOffset };
+        var payload = new byte[SkinnedPushConstants.SizeInBytes];
+        MemoryMarshal.Write(payload.AsSpan(), in constants);
+
+        _submissions.Add(new DrawSubmission
+        {
+            PassType = passType,
+            PipelineData = _skinnedOutlinePipeline,
+            DescriptorSet = _master.DescriptorFactory.GetSkinnedDescriptorSet(frameIndex, viewIndex),
+            VertexBuffer = mesh.VertexBuffer,
+            VertexOffset = 0,
+            IndexBuffer = mesh.IndexBuffer,
+            IndexOffset = 0,
+            IndexType = mesh.IndexType,
+            VertexCount = mesh.VertexCount,
+            IndexCount = mesh.IndexCount,
+            InstanceCount = 1,
+            FirstVertex = 0,
+            FirstIndex = 0,
+            VertexBase = 0,
+            ScissorPolicy = SubmissionScissorPolicy.PassDefault,
+            Scissor = default,
+            ViewportPolicy = SubmissionViewportPolicy.PassDefault,
+            Viewport = default,
+            PushConstants = new PushConstantPayload
+            {
+                StageFlags = ShaderStageFlags.VertexBit,
+                Offset = 0,
+                Data = payload,
+            },
+            ModelMatrix = model,
+        });
+
+        return true;
     }
 
     /// <summary>
@@ -409,6 +520,46 @@ internal unsafe class SceneRenderer : IDisposable
         };
 
         _skinnedPipeline = _master.PipelineFactory.GetOrCreate(skinnedKey);
+
+        // Selection outlines: the same geometry, pushed out along its normals and drawn with the front
+        // faces culled so only the rim shows. Depth write is off, so a hull never blocks what is behind it.
+        _outlinePipeline = _master.PipelineFactory.GetOrCreate(new PipelineKey
+        {
+            VertexShaderPath = "outline.vert.spv",
+            FragmentShaderPath = "outline.frag.spv",
+            RenderPass = renderPass,
+            Layout = _master.DescriptorFactory.Layout,
+            VertexFormat = vertexFormat,
+            Topology = PrimitiveTopology.TriangleList,
+            CullMode = CullModeBits.Front,
+            FrontFace = FrontFace.CounterClockwise,
+            HasDepth = true,
+            DepthTestEnable = true,
+            DepthWriteEnable = false,
+            EnableBlending = false,
+            BlendState = BlendState.NoBlending,
+            PushConstantSize = (uint)OutlinePushConstants.SizeInBytes,
+            PushConstantStages = ShaderStageFlags.VertexBit,
+        });
+
+        _skinnedOutlinePipeline = _master.PipelineFactory.GetOrCreate(new PipelineKey
+        {
+            VertexShaderPath = "outline_skinned.vert.spv",
+            FragmentShaderPath = "outline.frag.spv",
+            RenderPass = renderPass,
+            Layout = _master.DescriptorFactory.SkinnedLayout,
+            VertexFormat = skinnedFormat,
+            Topology = PrimitiveTopology.TriangleList,
+            CullMode = CullModeBits.Front,
+            FrontFace = FrontFace.CounterClockwise,
+            HasDepth = true,
+            DepthTestEnable = true,
+            DepthWriteEnable = false,
+            EnableBlending = false,
+            BlendState = BlendState.NoBlending,
+            PushConstantSize = (uint)SkinnedPushConstants.SizeInBytes,
+            PushConstantStages = ShaderStageFlags.VertexBit,
+        });
     }
 
     public void Dispose()

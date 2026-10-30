@@ -184,6 +184,48 @@ public class HierarchyTests
     }
 
     [Fact]
+    public void DestroySubtreeTakesTheWholeBranchWithIt()
+    {
+        var world = new World();
+
+        var root = world.CreateEntity();
+        world.SetComponent(root, new Transform(Vector3.Zero));
+
+        var branch = world.CreateEntity();
+        world.SetComponent(branch, new Transform(new Vector3(1f, 0f, 0f)));
+
+        var leaf = world.CreateEntity();
+        world.SetComponent(leaf, new Transform(new Vector3(0f, 1f, 0f)));
+
+        var grandchild = world.CreateEntity();
+        world.SetComponent(grandchild, new Transform(new Vector3(0f, 2f, 0f)));
+
+        var bystander = world.CreateEntity();
+        world.SetComponent(bystander, new Transform(new Vector3(9f, 0f, 0f)));
+
+        Assert.True(Hierarchy.TrySetParent(world, branch, root));
+        Assert.True(Hierarchy.TrySetParent(world, leaf, branch));
+        Assert.True(Hierarchy.TrySetParent(world, grandchild, branch));
+
+        // Editor deletion is a branch operation: a model or a prop is one thing.
+        Assert.Equal(3, Hierarchy.DestroySubtree(world, branch));
+
+        Assert.False(world.IsAlive(branch));
+        Assert.False(world.IsAlive(leaf));
+        Assert.False(world.IsAlive(grandchild));
+        Assert.True(world.IsAlive(root));
+        Assert.True(world.IsAlive(bystander));
+    }
+
+    [Fact]
+    public void DestroySubtreeOnAMissingEntityDoesNothing()
+    {
+        var world = new World();
+
+        Assert.Equal(0, Hierarchy.DestroySubtree(world, new Entity(404)));
+    }
+
+    [Fact]
     public void DestroyingAGrandparentKeepsTheWholeChainInPlace()
     {
         var world = new World();

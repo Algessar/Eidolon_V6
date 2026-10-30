@@ -16,7 +16,19 @@ public static class ModelSpawner
     /// <summary>Spawns the model and returns its root entity.</summary>
     /// <param name="scale">Uniform scale applied to the root, useful for models authored in centimetres.</param>
     public static Entity Spawn(World world, ModelAsset model, Material material, Vector3 position,
-        Quaternion? rotation = null, float scale = 1f)
+        Quaternion? rotation = null, float scale = 1f) =>
+        Spawn(world, model, material, position, rotation, scale, idForNode: null);
+
+    /// <summary>
+    /// Spawns onto entity ids the caller chooses, which is how loading a saved scene puts an imported
+    /// model's entities back instead of creating a second set beside the ones the scene records.
+    /// </summary>
+    /// <param name="idForNode">
+    /// Returns the id for a node, or null to let the world allocate one. A file that grew since the scene
+    /// was saved keeps working: the nodes it added get new entities.
+    /// </param>
+    internal static Entity Spawn(World world, ModelAsset model, Material material, Vector3 position,
+        Quaternion? rotation, float scale, Func<int, uint?>? idForNode)
     {
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(model);
@@ -30,10 +42,18 @@ public static class ModelSpawner
         {
             var node = model.Nodes[index];
 
-            entities[index] = world.CreateEntity();
+            entities[index] = idForNode?.Invoke(index) is { } id ? world.CreateEntity(id) : world.CreateEntity();
             world.SetComponent(entities[index],
                 new Transform(node.Position, node.Rotation, node.Scale));
             world.SetComponent(entities[index], new Name(node.Name));
+
+            // Recorded on every node: a saved scene keeps the file and the node order, not the geometry.
+            world.SetComponent(entities[index], new ModelOrigin
+            {
+                Root = entities[0],
+                SourcePath = index == 0 ? model.SourcePath : null,
+                NodeIndex = index,
+            });
 
             if (node.Mesh is { } mesh)
                 world.SetComponent(entities[index], new MeshRenderer(mesh, material));

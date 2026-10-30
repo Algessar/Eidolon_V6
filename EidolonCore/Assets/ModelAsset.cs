@@ -47,6 +47,13 @@ public sealed class ModelAsset
 {
     public string Name = "Model";
 
+    /// <summary>The file this came from, or null for a model built in code.</summary>
+    /// <remarks>
+    /// A scene stores this instead of the geometry, so loading imports the file again. A model with no
+    /// source cannot come back as a model instance; it saves as plain entities.
+    /// </remarks>
+    public string? SourcePath;
+
     /// <summary>The node tree, root first.</summary>
     public List<ModelNode> Nodes = [];
 

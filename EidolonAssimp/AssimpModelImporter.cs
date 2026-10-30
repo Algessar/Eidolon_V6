@@ -56,7 +56,11 @@ public static unsafe class AssimpModelImporter
 
         try
         {
-            return Read(scene, Path.GetFileNameWithoutExtension(path));
+            // The path travels with the asset: a saved scene stores it and imports the file again.
+            var model = Read(scene, Path.GetFileNameWithoutExtension(path));
+            model.SourcePath = Path.GetFullPath(path);
+
+            return model;
         }
         finally
         {

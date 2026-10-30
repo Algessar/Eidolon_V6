@@ -221,6 +221,148 @@ public sealed class SceneSerializerTests : IDisposable
     }
 
     [Fact]
+    public void ImportedModelsComeBackFromTheirFile()
+    {
+        var source = ModelFile();
+        var model = SampleModel(source);
+        var importer = new FakeModelImporter();
+        importer.Models[source] = model;
+
+        var authored = new World();
+        var root = ModelSpawner.Spawn(authored, model, new Material("Dancer", new Vector4(0.4f, 0.7f, 0.9f, 1f)),
+            new Vector3(4f, 0f, 1f));
+
+        var player = authored.GetComponent<AnimationPlayer>(root);
+        player.Time = 0.25f;
+        player.Loop = false;
+        authored.SetComponent(root, player);
+
+        var nodeIds = authored.Entities.OrderBy(entity => entity.Id).ToArray();
+
+        SceneSerializer.Save(authored, _path);
+
+        // The scene points at the file; it does not carry the geometry or the clip.
+        var json = File.ReadAllText(_path);
+        Assert.Contains(source.Replace("\\", "\\\\"), json);
+        Assert.DoesNotContain("\"Tracks\"", json);
+        Assert.DoesNotContain("\"Vertices\"", json);
+
+        var loaded = new World();
+        SceneSerializer.Load(_path, loaded, _assets, models: importer);
+
+        Assert.Equal(authored.EntityCount, loaded.EntityCount);
+
+        foreach (var id in nodeIds)
+            Assert.True(loaded.IsAlive(id), $"entity {id} was not restored");
+
+        // Parent links were rebuilt by the spawn, not by re-reading ids out of the file.
+        var sword = loaded.GetEntitiesWith<MeshRenderer>()
+            .Single(entity => loaded.GetComponent<Name>(entity).Value == "Sword");
+        Assert.Equal(root, loaded.GetComponent<Transform>(sword).Parent);
+
+        // The geometry is the one the importer produced, and the material came out of the scene.
+        Assert.Same(model.Nodes[2].Mesh, loaded.GetComponent<MeshRenderer>(sword).Mesh);
+        Assert.Equal("Dancer", loaded.GetComponent<MeshRenderer>(sword).Material.Name);
+        Assert.Equal(0.4f, loaded.GetComponent<MeshRenderer>(sword).Material.BaseColor.X, 4);
+
+        // The clip is picked again by name from the file, with the playhead where it was left.
+        var restored = loaded.GetComponent<AnimationPlayer>(root);
+        Assert.Same(model.Clips[0], restored.Clip);
+        Assert.Equal(0.25f, restored.Time, 4);
+        Assert.False(restored.Loop);
+    }
+
+    [Fact]
+    public void WithoutAnImporterTheImportedEntitiesStillLoad()
+    {
+        var source = ModelFile();
+        var model = SampleModel(source);
+
+        var authored = new World();
+        var root = ModelSpawner.Spawn(authored, model, new Material("Dancer"), Vector3.Zero);
+
+        SceneSerializer.Save(authored, _path);
+
+        var loaded = new World();
+        SceneSerializer.Load(_path, loaded, _assets);
+
+        // A headless load has no importer: the hierarchy and its names come back, the geometry does not.
+        Assert.Equal(authored.EntityCount, loaded.EntityCount);
+
+        var sword = loaded.GetEntitiesWith<MeshRenderer>()
+            .Single(entity => loaded.GetComponent<Name>(entity).Value == "Sword");
+        Assert.Null(loaded.GetComponent<MeshRenderer>(sword).Mesh);
+
+        Assert.True(loaded.IsAlive(root));
+    }
+
+    /// <summary>A dummy model file: the test's importer answers by path, so only existence matters.</summary>
+    private string ModelFile()
+    {
+        var directory = Path.GetDirectoryName(_path)!;
+        Directory.CreateDirectory(directory);
+
+        var source = Path.Combine(directory, "model.fbx");
+        File.WriteAllText(source, "not really an fbx");
+
+        return Path.GetFullPath(source);
+    }
+
+    [Fact]
+    public void SpawnedModelsRecordWhereTheyCameFrom()
+    {
+        var source = Path.Combine(Path.GetTempPath(), $"eidolon-model-{Guid.NewGuid():N}.fbx");
+        var world = new World();
+
+        var root = ModelSpawner.Spawn(world, SampleModel(source), new Material("Dancer"), Vector3.Zero);
+
+        var origins = world.GetEntitiesWith<ModelOrigin>()
+            .OrderBy(entity => world.GetComponent<ModelOrigin>(entity).NodeIndex)
+            .ToArray();
+
+        Assert.Equal(3, origins.Length);
+        Assert.All(origins, entity => Assert.Equal(root, world.GetComponent<ModelOrigin>(entity).Root));
+        Assert.Equal([0, 1, 2], origins.Select(entity => world.GetComponent<ModelOrigin>(entity).NodeIndex));
+
+        Assert.Equal(source, world.GetComponent<ModelOrigin>(root).SourcePath);
+        Assert.Null(world.GetComponent<ModelOrigin>(origins[1]).SourcePath);
+    }
+
+    /// <summary>An importer that answers with models built in the test, so no file has to exist.</summary>
+    private sealed class FakeModelImporter : IModelImporter
+    {
+        public Dictionary<string, ModelAsset> Models { get; } = new(StringComparer.Ordinal);
+
+        public ModelAsset? Import(string path) => Models.GetValueOrDefault(path);
+    }
+
+    private static ModelAsset SampleModel(string source) => new()
+    {
+        Name = "Dancer",
+        SourcePath = source,
+        Nodes =
+        [
+            new ModelNode { Name = "Root", Children = [1, 2] },
+            new ModelNode { Name = "Spine", Position = new Vector3(0f, 1f, 0f) },
+            new ModelNode { Name = "Sword", Mesh = new Mesh("Sword", [new Vertex(new Vector3(0f, 0f, 0f), Vector3.UnitY, Vector2.Zero)], [0, 0, 0]) },
+        ],
+        Clips =
+        [
+            new AnimationClip("Idle", 1f,
+            [
+                new AnimationTrack("Spine",
+                [
+                    new PoseKey(0f, LocalPose.Identity),
+                    new PoseKey(1f, LocalPose.Identity with
+                    {
+                        Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, 0.5f),
+                    }),
+                ]),
+            ]),
+        ],
+    };
+
+    [Fact]
     public void ViewportMetadataRoundTrips()
     {
         var viewport = new ViewportSettings

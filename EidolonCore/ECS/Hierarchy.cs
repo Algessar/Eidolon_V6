@@ -46,6 +46,38 @@ public static class Hierarchy
         return true;
     }
 
+    /// <summary>
+    /// Destroys <paramref name="entity"/> together with everything under it, children first.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="World.DestroyEntity"/> deliberately orphans children, so engine code can drop a parent
+    /// without taking its content with it. Deleting in the editor wants the opposite: a model or a prop is
+    /// one thing, and leaving its pieces behind is never what the user meant. Deepest first, so no orphan
+    /// transform has to be re-placed on the way out.
+    /// </remarks>
+    /// <returns>How many entities were destroyed.</returns>
+    public static int DestroySubtree(World world, Entity entity)
+    {
+        if (!world.IsAlive(entity))
+            return 0;
+
+        var doomed = new List<Entity>();
+        Collect(world, entity, doomed);
+
+        foreach (var target in doomed)
+            world.DestroyEntity(target);
+
+        return doomed.Count;
+    }
+
+    private static void Collect(World world, Entity entity, List<Entity> doomed)
+    {
+        foreach (var child in GetChildren(world, entity))
+            Collect(world, child, doomed);
+
+        doomed.Add(entity);
+    }
+
     /// <summary>True when <paramref name="ancestor"/> is <paramref name="entity"/> or one of its ancestors.</summary>
     public static bool IsAncestorOf(World world, Entity ancestor, Entity entity)
     {
