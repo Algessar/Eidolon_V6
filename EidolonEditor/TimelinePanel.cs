@@ -20,6 +20,9 @@ internal sealed class TimelinePanel
     private const float RowHeight = 20f;
     private const float RulerHeight = 24f;
     private const float KeyRadius = 4f;
+
+    /// <summary>Minimum pixel gap between drawn keys; dense rows would overlap into a smear anyway.</summary>
+    private const float KeySpacing = 4f;
     private const float PremadeClipSeconds = 2f;
 
     private readonly PoseResolutionSystem _resolver = new();
@@ -219,20 +222,54 @@ internal sealed class TimelinePanel
 
         DrawRuler(drawList, start, width, clip.Duration);
 
+        // ImDrawList geometry is emitted whether or not it lands inside the window, and ImGui indexes
+        // vertices with 16 bits, so a rig with hundreds of tracks of keys would overflow one draw list.
+        // Only what is actually on screen gets drawn.
+        var windowMin = ImGui.GetWindowPos();
+        var windowSize = ImGui.GetWindowSize();
+        var visibleMinY = windowMin.Y;
+        var visibleMaxY = windowMin.Y + windowSize.Y;
+        var visibleMinX = windowMin.X;
+        var visibleMaxX = windowMin.X + windowSize.X;
+
         for (var row = 0; row < clip.Tracks.Count; row++)
         {
-            var track = clip.Tracks[row];
             var y = origin.Y + row * RowHeight;
+
+            if (y + RowHeight < visibleMinY || y > visibleMaxY)
+                continue;
+
+            var track = clip.Tracks[row];
 
             ImGui.SetCursorScreenPos(new Vector2(start.X + 6f, y + 2f));
             ImGui.TextUnformatted(track.Path.Length == 0 ? "(this entity)" : track.Path);
 
+            // Imported rigs key every bone every frame: hundreds of keys per row, far more than a pixel
+            // apart. Draw at most one diamond per few pixels, and always the one under the mouse.
+            var lastDrawnX = float.NegativeInfinity;
+            var mouse = ImGui.GetMousePos();
+
             foreach (var key in track.Keys)
             {
                 var centre = new Vector2(origin.X + key.Time * scale, y + RowHeight * 0.5f);
-                var hovered = Vector2.Distance(ImGui.GetMousePos(), centre) <= KeyRadius + 3f;
 
-                drawList.AddCircleFilled(centre, KeyRadius,
+                if (centre.X < visibleMinX || centre.X > visibleMaxX)
+                    continue;
+
+                var hovered = MathF.Abs(mouse.Y - centre.Y) <= RowHeight * 0.5f &&
+                              MathF.Abs(mouse.X - centre.X) <= KeyRadius + 3f;
+
+                if (!hovered && centre.X - lastDrawnX < KeySpacing)
+                    continue;
+
+                lastDrawnX = centre.X;
+
+                // A diamond is four vertices; a filled circle is dozens, which is what overflowed.
+                drawList.AddQuadFilled(
+                    centre + new Vector2(0f, -KeyRadius),
+                    centre + new Vector2(KeyRadius, 0f),
+                    centre + new Vector2(0f, KeyRadius),
+                    centre + new Vector2(-KeyRadius, 0f),
                     ImGui.GetColorU32(hovered ? ImGuiCol.ButtonHovered : ImGuiCol.Text));
 
                 if (!hovered || !ImGui.IsMouseClicked(ImGuiMouseButton.Left))
@@ -245,8 +282,12 @@ internal sealed class TimelinePanel
 
         var playheadX = origin.X + player.Time * scale;
 
-        drawList.AddLine(new Vector2(playheadX, origin.Y - RulerHeight + 6f),
-            new Vector2(playheadX, origin.Y + RowHeight * rows), ImGui.GetColorU32(ImGuiCol.PlotLinesHovered));
+        if (playheadX >= visibleMinX && playheadX <= visibleMaxX)
+        {
+            drawList.AddLine(new Vector2(playheadX, origin.Y - RulerHeight + 6f),
+                new Vector2(playheadX, MathF.Min(origin.Y + RowHeight * rows, visibleMaxY)),
+                ImGui.GetColorU32(ImGuiCol.PlotLinesHovered));
+        }
     }
 
     private static void DrawRuler(ImDrawListPtr drawList, Vector2 origin, float width, float duration)
