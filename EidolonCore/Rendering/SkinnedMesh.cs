@@ -85,6 +85,29 @@ public struct SkinInfluence
 public readonly record struct SkeletonBone(string Path, Matrix4x4 InverseBind);
 
 /// <summary>
+/// GPU skinning vertex: bind-pose geometry with its bone blend attached.
+/// </summary>
+/// <remarks>
+/// Bone indices are stored as floats so both the C# layout and the shader can treat the block as four
+/// 32-bit values without packing rules; the shader converts them with <c>int()</c>.
+/// </remarks>
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
+public struct SkinnedVertex
+{
+    public Vector3 Position;
+
+    public Vector3 Normal;
+
+    public Vector2 TexCoord;
+
+    /// <summary>How much each of the four bones moves this vertex; sums to one.</summary>
+    public Vector4 BoneWeights;
+
+    /// <summary>Indices into the skin's bone matrix array.</summary>
+    public Vector4 BoneIndices;
+}
+
+/// <summary>
 /// Bind-pose geometry plus the bones and weights that deform it.
 /// </summary>
 /// <remarks>
@@ -130,6 +153,55 @@ public sealed class SkinnedMesh : IComponent
     /// <summary>How many vertices the last deformation wrote.</summary>
     public int DeformedCount { get; private set; }
 
+    /// <summary>
+    /// Fills <paramref name="matrices"/> with one skinning matrix per bone, in influence order.
+    /// </summary>
+    /// <remarks>
+    /// This is what a GPU skinning path uploads: the shader applies the same matrices per vertex that
+    /// <see cref="Deform"/> applies on the CPU, so both produce identical geometry.
+    /// </remarks>
+    /// <returns>The number of matrices written, or 0 when the span is too small.</returns>
+    public int ComputeBoneMatrices(World world, Span<Matrix4x4> matrices)
+    {
+        ArgumentNullException.ThrowIfNull(world);
+
+        return TryBuildMatrices(world, matrices) ? Bones.Length : 0;
+    }
+
+    /// <summary>
+    /// Builds the GPU vertex buffer: bind-pose geometry with each vertex's bone blend attached.
+    /// </summary>
+    /// <remarks>
+    /// Built once per skin, not per frame: on the GPU the bones move, the vertices do not.
+    /// </remarks>
+    public SkinnedVertex[] BuildSkinnedVertices()
+    {
+        var bind = BindPose.Vertices;
+        var count = System.Math.Min(bind.Length, Influences.Length);
+        var vertices = new SkinnedVertex[count];
+
+        for (var vertex = 0; vertex < count; vertex++)
+        {
+            var source = bind[vertex];
+            var influence = Influences[vertex];
+
+            vertices[vertex] = new SkinnedVertex
+            {
+                Position = source.Position,
+                Normal = source.Normal,
+                TexCoord = source.TexCoord,
+                BoneWeights = new Vector4(influence.Weight0, influence.Weight1, influence.Weight2, influence.Weight3),
+                BoneIndices = new Vector4(
+                    System.Math.Max(influence.Bone0, 0),
+                    System.Math.Max(influence.Bone1, 0),
+                    System.Math.Max(influence.Bone2, 0),
+                    System.Math.Max(influence.Bone3, 0)),
+            };
+        }
+
+        return vertices;
+    }
+
     /// <summary>Recomputes the deformed vertices from the bones' current transforms.</summary>
     /// <returns>The number of vertices written.</returns>
     public int Deform(World world)
@@ -142,28 +214,10 @@ public sealed class SkinnedMesh : IComponent
         if (Vertices.Length < count)
             return 0;
 
-        // Deformation is expressed in the mesh node's own space, so the renderer can keep drawing it with
-        // that node's world matrix: vertex -> bind world -> bone space -> current bone -> back to local.
-        var meshWorld = MeshEntity.IsValid && world.HasComponent<Transform>(MeshEntity)
-            ? world.GetComponent<Transform>(MeshEntity).GetWorldMatrix(world)
-            : Matrix4x4.Identity;
-
-        var toLocal = Matrix4x4.Invert(meshWorld, out var inverseMeshWorld)
-            ? inverseMeshWorld
-            : Matrix4x4.Identity;
-
         Span<Matrix4x4> matrices = Bones.Length <= 64 ? stackalloc Matrix4x4[Bones.Length] : new Matrix4x4[Bones.Length];
 
-        for (var bone = 0; bone < Bones.Length; bone++)
-        {
-            var entity = BoneEntities[bone];
-
-            var current = entity.IsValid && world.HasComponent<Transform>(entity)
-                ? world.GetComponent<Transform>(entity).GetWorldMatrix(world)
-                : Matrix4x4.Identity;
-
-            matrices[bone] = BindWorld * Bones[bone].InverseBind * current * toLocal;
-        }
+        if (!TryBuildMatrices(world, matrices))
+            return 0;
 
         for (var vertex = 0; vertex < count; vertex++)
         {
@@ -198,6 +252,37 @@ public sealed class SkinnedMesh : IComponent
 
         renderable.UpdateVertices(Vertices.AsSpan(0, count));
         return count;
+    }
+
+    /// <summary>
+    /// One matrix per bone: bind space, then the bone's current world transform, then back into the mesh
+    /// node's local space so the renderer can keep using that node's world matrix.
+    /// </summary>
+    private bool TryBuildMatrices(World world, Span<Matrix4x4> matrices)
+    {
+        if (matrices.Length < Bones.Length)
+            return false;
+
+        var meshWorld = MeshEntity.IsValid && world.HasComponent<Transform>(MeshEntity)
+            ? world.GetComponent<Transform>(MeshEntity).GetWorldMatrix(world)
+            : Matrix4x4.Identity;
+
+        var toLocal = Matrix4x4.Invert(meshWorld, out var inverseMeshWorld)
+            ? inverseMeshWorld
+            : Matrix4x4.Identity;
+
+        for (var bone = 0; bone < Bones.Length; bone++)
+        {
+            var entity = BoneEntities[bone];
+
+            var current = entity.IsValid && world.HasComponent<Transform>(entity)
+                ? world.GetComponent<Transform>(entity).GetWorldMatrix(world)
+                : Matrix4x4.Identity;
+
+            matrices[bone] = BindWorld * Bones[bone].InverseBind * current * toLocal;
+        }
+
+        return true;
     }
 
     private static void Accumulate(ReadOnlySpan<Matrix4x4> matrices, int bone, float weight,

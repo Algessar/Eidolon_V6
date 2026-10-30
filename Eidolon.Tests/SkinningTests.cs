@@ -262,4 +262,48 @@ public class SkinningTests
         skin.Deform(world);
         VectorAssert.Near(new Vector3(0f, 1f, 0f), skin.Vertices[0].Position, 1e-3f);
     }
+
+    [Fact]
+    public void GpuVerticesCarryTheBindPoseAndItsInfluences()
+    {
+        var (world, _, _, skin) = BindSingleBone(new Vector3(2f, 3f, 4f));
+
+        var vertices = skin.BuildSkinnedVertices();
+
+        Assert.Single(vertices);
+        Assert.Equal(new Vector3(2f, 3f, 4f), vertices[0].Position);
+        Assert.Equal(new Vector4(1f, 0f, 0f, 0f), vertices[0].BoneWeights);
+        Assert.Equal(0f, vertices[0].BoneWeights.Y);
+        Assert.Equal(0f, vertices[0].BoneIndices.X);
+        Assert.Equal(new Vector3(2f, 3f, 4f), skin.BindPose.Vertices[0].Position);
+    }
+
+    [Fact]
+    public void GpuBoneMatricesReproduceTheCpuDeformation()
+    {
+        // The two paths must agree exactly, or the same character would look different on GPU and CPU.
+        var (world, bone, _, skin) = BindSingleBone(new Vector3(1f, 0f, 0f));
+
+        var transform = world.GetComponent<Transform>(bone);
+        transform.Position = new Vector3(0f, 1f, 0f);
+        world.SetComponent(bone, transform);
+
+        var matrices = new Matrix4x4[skin.Bones.Length];
+        Assert.Equal(skin.Bones.Length, skin.ComputeBoneMatrices(world, matrices));
+
+        skin.Deform(world);
+
+        var influence = skin.Influences[0];
+        var fromMatrices = Vector3.Transform(skin.BindPose.Vertices[0].Position, matrices[influence.Bone0]);
+
+        VectorAssert.Near(fromMatrices, skin.Vertices[0].Position, 1e-4f);
+    }
+
+    [Fact]
+    public void ComputingBoneMatricesNeedsRoomForEveryBone()
+    {
+        var (world, _, _, skin) = BindSingleBone(new Vector3(1f, 0f, 0f));
+
+        Assert.Equal(0, skin.ComputeBoneMatrices(world, Span<Matrix4x4>.Empty));
+    }
 }
