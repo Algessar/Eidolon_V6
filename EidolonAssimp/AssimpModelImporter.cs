@@ -339,7 +339,12 @@ public static unsafe class AssimpModelImporter
 
     private static Vector3 ToVector3(Vector3 value) => value;
 
-    private static Matrix4x4 ToMatrix(Matrix4x4 value) => value;
+    /// <summary>
+    /// Assimp keeps transform matrices in column-major storage (translation in the fourth column), while
+    /// <see cref="Matrix4x4"/> here is row-major with row-vector multiplication, so the matrix has to be
+    /// transposed on the way in. Skipping that drops every node's translation and inverts its rotation.
+    /// </summary>
+    private static Matrix4x4 ToMatrix(Matrix4x4 value) => Matrix4x4.Transpose(value);
 
     private static string NameOf(AssimpString value) =>
         value.Length == 0 ? string.Empty : Marshal.PtrToStringUTF8((nint)value.Data, (int)value.Length) ?? string.Empty;

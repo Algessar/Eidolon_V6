@@ -71,6 +71,49 @@ public class SkinningTests
     }
 
     [Fact]
+    public void ARotatedBoneTurnsItsVerticesAroundTheBoneInWorldSpace()
+    {
+        // The skinning matrix takes a vertex through the mesh node's bind world, back into the bone, and
+        // out into the world again. Only a bind world that is not the identity proves the order of that
+        // sandwich: with the wrong one the vertex still lands correctly at bind and flies off as soon as
+        // the bone turns.
+        var world = new World();
+
+        var bone = world.CreateEntity();
+        world.SetComponent(bone, new Transform(new Vector3(2f, 0f, 0f)));
+
+        var meshEntity = world.CreateEntity();
+        world.SetComponent(meshEntity, new Transform(new Vector3(2f, 0f, 0f)));
+
+        var skin = new SkinnedMesh
+        {
+            BindPose = SingleVertexMesh(new Vector3(1f, 0f, 0f)),
+            MeshEntity = meshEntity,
+            BindWorld = Matrix4x4.CreateTranslation(2f, 0f, 0f),
+            Bones = [new SkeletonBone("Bone", Matrix4x4.CreateTranslation(-2f, 0f, 0f))],
+            BoneEntities = [bone],
+            Influences = [OneBone()],
+            Vertices = new Vertex[1],
+        };
+
+        var posed = new Transform(new Vector3(2f, 0f, 0f))
+        {
+            Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 2f),
+        };
+
+        world.SetComponent(bone, posed);
+
+        var matrices = new Matrix4x4[1];
+        Assert.Equal(1, skin.ComputeBoneMatrices(world, matrices));
+
+        // The vertex sits one unit to the right of the bone, so a quarter turn lifts it straight up.
+        var deformed = Vector3.Transform(new Vector3(1f, 0f, 0f), matrices[0]);
+        var worldPosition = Vector3.Transform(deformed, world.GetComponent<Transform>(meshEntity).GetWorldMatrix(world));
+
+        VectorAssert.Near(new Vector3(2f, 1f, 0f), worldPosition, 1e-4f);
+    }
+
+    [Fact]
     public void WeightsBlendBetweenTwoBones()
     {
         var world = new World();

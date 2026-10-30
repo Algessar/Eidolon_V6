@@ -112,6 +112,28 @@ public class AssimpImportTests : IDisposable
     }
 
     [Fact]
+    public void ImportedNodesKeepTheirTranslation()
+    {
+        // Assimp stores transform matrices column-major. Reading one straight into a row-vector matrix
+        // moves the translation into the wrong row: every node then imports at the origin with an
+        // inverted rotation, which still looks fine at bind pose and explodes on the first animated frame.
+        var path = Path.Combine(Path.GetTempPath(), $"eidolon-{Guid.NewGuid():N}.bvh");
+        File.WriteAllText(path, BvhText);
+
+        try
+        {
+            var model = AssimpModelImporter.Import(path);
+            var spine = model.Nodes.Single(node => node.Name == "Spine");
+
+            VectorAssert.Near(new Vector3(0f, 10f, 0f), spine.Position, 1e-4f);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void ADanglingPathFailsWithAMessage()
     {
         var missing = Path.Combine(Path.GetTempPath(), $"eidolon-missing-{Guid.NewGuid():N}.fbx");
