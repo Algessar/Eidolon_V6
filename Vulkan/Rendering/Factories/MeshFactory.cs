@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Eidolon.Vulkan;
 using EidolonCore.Rendering;
 using Silk.NET.Vulkan;
@@ -31,6 +32,7 @@ internal unsafe class MeshFactory : IDisposable
     private readonly Dictionary<Mesh, MeshHandle> _handles = new();
     private readonly Dictionary<MeshHandle, MeshGpuData> _meshes = new();
     private readonly Dictionary<Mesh, int> _versions = new();
+    private readonly Dictionary<Mesh, MeshHandle> _skinnedHandles = new();
 
     private int _nextId = 1;
 
@@ -53,10 +55,35 @@ internal unsafe class MeshFactory : IDisposable
         return _meshes.TryGetValue(handle, out data);
     }
 
-    private MeshHandle Upload(Mesh mesh)
+    private MeshHandle Upload(Mesh mesh) => UploadRaw(mesh.Vertices, mesh.Indices, mesh);
+
+    /// <summary>Resolves a skinned mesh's bind-pose geometry, uploading it on first use.</summary>
+    /// <remarks>
+    /// Only the bind pose is uploaded: the bones move, the vertices never change, so this is a one-off
+    /// cost per skin and the per-frame work is a bone palette instead of a vertex buffer. Uploads are
+    /// keyed by the bind-pose mesh, which play mode shares, so entering play does not re-upload skins.
+    /// </remarks>
+    public bool TryGetSkinned(SkinnedMesh? skin, out MeshGpuData data)
     {
-        var vertexBytes = checked((ulong)(mesh.Vertices.Length * sizeof(Vertex)));
-        var indexBytes = checked((ulong)(mesh.Indices.Length * sizeof(uint)));
+        data = default;
+
+        if (skin is null || !skin.BindPose.IsValid)
+            return false;
+
+        if (!_skinnedHandles.TryGetValue(skin.BindPose, out var handle))
+        {
+            handle = UploadRaw(skin.BuildSkinnedVertices(), skin.BindPose.Indices);
+            _skinnedHandles[skin.BindPose] = handle;
+        }
+
+        return _meshes.TryGetValue(handle, out data);
+    }
+
+    private MeshHandle UploadRaw<VertexType>(VertexType[] vertices, uint[] indices, Mesh? source = null)
+        where VertexType : unmanaged
+    {
+        var vertexBytes = checked((ulong)(vertices.Length * Unsafe.SizeOf<VertexType>()));
+        var indexBytes = checked((ulong)(indices.Length * sizeof(uint)));
 
         var vertexKey = new GpuBufferKey
         {
@@ -81,14 +108,17 @@ internal unsafe class MeshFactory : IDisposable
         var vertexBuffer = _master.GpuBufferFactory.Create(vertexKey)[0];
         var indexBuffer = _master.GpuBufferFactory.Create(indexKey)[0];
 
-        Upload(vertexBuffer, mesh.Vertices);
-        Upload(indexBuffer, mesh.Indices);
+        Upload(vertexBuffer, vertices);
+        Upload(indexBuffer, indices);
 
         var handle = new MeshHandle(_nextId++);
+
         _meshes[handle] = new MeshGpuData(vertexBuffer,
-            indexBuffer, (uint)mesh.Vertices.Length, (uint)mesh.Indices.Length,
+            indexBuffer, (uint)vertices.Length, (uint)indices.Length,
             IndexType.Uint32);
-        _handles[mesh] = handle;
+
+        if (source is not null)
+            _handles[source] = handle;
 
         return handle;
     }
@@ -132,5 +162,6 @@ internal unsafe class MeshFactory : IDisposable
 
         _meshes.Clear();
         _handles.Clear();
+        _skinnedHandles.Clear();
     }
 }

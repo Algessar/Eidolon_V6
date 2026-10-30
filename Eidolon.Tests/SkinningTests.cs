@@ -258,9 +258,13 @@ public class SkinningTests
         Assert.True(skin.BoneEntities[0].IsValid);
         Assert.Equal("Spine", world.GetComponent<Name>(skin.BoneEntities[0]).Value);
 
-        // Placement and scale do not leak into the deformed geometry.
-        skin.Deform(world);
-        VectorAssert.Near(new Vector3(0f, 1f, 0f), skin.Vertices[0].Position, 1e-3f);
+        // Placement and scale do not leak into the deformed geometry: the bind pose is skinned in the mesh
+        // node's own space, so the matrix returns the vertex where the model put it locally.
+        var matrices = new Matrix4x4[skin.Bones.Length];
+        Assert.Equal(1, skin.ComputeBoneMatrices(world, matrices));
+
+        VectorAssert.Near(new Vector3(0f, 1f, 0f),
+            Vector3.Transform(skin.BindPose.Vertices[0].Position, matrices[0]), 1e-3f);
     }
 
     [Fact]

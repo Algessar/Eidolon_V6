@@ -30,6 +30,15 @@ internal unsafe class SceneRenderer : IDisposable
 
     private DescriptorSet _descriptorSet;
     private PipelineData _geometryPipeline;
+    private PipelineData _skinnedPipeline;
+
+    /// <summary>Every skin's bone matrices for this frame, packed into one buffer upload.</summary>
+    private readonly Matrix4x4[] _bonePalette = new Matrix4x4[DescriptorFactory.BoneMatrixCapacity];
+
+    /// <summary>Where each skin's slice starts in <see cref="_bonePalette"/>; rebuilt every frame.</summary>
+    private readonly Dictionary<SkinnedMesh, int> _skinOffsets = new();
+
+    private int _paletteCount;
 
     public DrawSubmission[] CurrentSubmissions { get; private set; } = Array.Empty<DrawSubmission>();
 
@@ -100,6 +109,8 @@ internal unsafe class SceneRenderer : IDisposable
         _submissions.Clear();
         var frameIndex = _master.FrameHandler?.CurrentFrame ?? 0;
 
+        UploadBonePalettes(frameIndex);
+
         // View 0 is the editor viewport, view 1 the game view; both share the scene geometry.
         AddView(frameIndex, viewIndex: 0, RenderPassType.EditorView, EditorCamera, _editorViewSize);
 
@@ -120,10 +131,13 @@ internal unsafe class SceneRenderer : IDisposable
         foreach (var entity in _world.GetEntitiesWith<Transform, MeshRenderer>())
         {
             var meshRenderer = _world.GetComponent<MeshRenderer>(entity);
-            if (!_meshFactory.TryGet(meshRenderer.Mesh, out var mesh))
+            var model = _world.GetComponent<Transform>(entity).GetWorldMatrix(_world);
+
+            if (TryAddSkinnedView(entity, model, passType, frameIndex, viewIndex))
                 continue;
 
-            var model = _world.GetComponent<Transform>(entity).GetWorldMatrix(_world);
+            if (!_meshFactory.TryGet(meshRenderer.Mesh, out var mesh))
+                continue;
 
             var objectConstants = new ObjectPushConstants
             {
@@ -163,6 +177,119 @@ internal unsafe class SceneRenderer : IDisposable
                 ModelMatrix = model,
             });
         }
+    }
+
+    /// <summary>
+    /// Draws a skinned entity from its bind pose and lets the vertex shader apply the bones.
+    /// </summary>
+    /// <returns>
+    /// <c>false</c> when the entity is not skinned or its skin did not fit in this frame's palette, so the
+    /// caller falls back to drawing the mesh as it stands.
+    /// </returns>
+    private bool TryAddSkinnedView(Entity entity, Matrix4x4 model, RenderPassType passType,
+        uint frameIndex, uint viewIndex)
+    {
+        if (!_world.TryGetComponent<SkinnedMesh>(entity, out var skin))
+            return false;
+
+        if (!_skinOffsets.TryGetValue(skin, out var boneOffset))
+            return false;
+
+        if (!_meshFactory.TryGetSkinned(skin, out var mesh))
+            return false;
+
+        var constants = new SkinnedPushConstants
+        {
+            Model = model,
+            BaseColor = _world.GetComponent<MeshRenderer>(entity).Material.BaseColor,
+            BoneOffset = (uint)boneOffset,
+        };
+
+        var payload = new byte[SkinnedPushConstants.SizeInBytes];
+        MemoryMarshal.Write(payload.AsSpan(), in constants);
+
+        _submissions.Add(new DrawSubmission
+        {
+            PassType = passType,
+            PipelineData = _skinnedPipeline,
+            DescriptorSet = _master.DescriptorFactory.GetSkinnedDescriptorSet(frameIndex, viewIndex),
+            VertexBuffer = mesh.VertexBuffer,
+            VertexOffset = 0,
+            IndexBuffer = mesh.IndexBuffer,
+            IndexOffset = 0,
+            IndexType = mesh.IndexType,
+            VertexCount = mesh.VertexCount,
+            IndexCount = mesh.IndexCount,
+            InstanceCount = 1,
+            FirstVertex = 0,
+            FirstIndex = 0,
+            VertexBase = 0,
+            ScissorPolicy = SubmissionScissorPolicy.PassDefault,
+            Scissor = default,
+            ViewportPolicy = SubmissionViewportPolicy.PassDefault,
+            Viewport = default,
+            PushConstants = new PushConstantPayload
+            {
+                StageFlags = ShaderStageFlags.VertexBit | ShaderStageFlags.FragmentBit,
+                Offset = 0,
+                Data = payload,
+            },
+            ModelMatrix = model,
+        });
+
+        return true;
+    }
+
+    /// <summary>Packs every skinned mesh's bone matrices into this frame's palette.</summary>
+    /// <remarks>
+    /// One upload serves every skin: the shader indexes the palette at an offset carried by the object's
+    /// push constants, so a scene full of skinned meshes costs one buffer write per frame rather than one
+    /// per mesh. A skin that does not fit keeps drawing its bind pose.
+    /// </remarks>
+    private void UploadBonePalettes(uint frameIndex)
+    {
+        _skinOffsets.Clear();
+        _paletteCount = 0;
+
+        if (!_skinnedPipeline.IsValid)
+            return;
+
+        foreach (var entity in _world.GetEntitiesWith<SkinnedMesh>())
+        {
+            var skin = _world.GetComponent<SkinnedMesh>(entity);
+            var remaining = _bonePalette.Length - _paletteCount;
+
+            if (skin.Bones.Length == 0 || skin.Bones.Length > remaining)
+                continue;
+
+            var written = skin.ComputeBoneMatrices(_world, _bonePalette.AsSpan(_paletteCount));
+            if (written == 0)
+                continue;
+
+            _skinOffsets[skin] = _paletteCount;
+            _paletteCount += written;
+        }
+
+        if (_paletteCount == 0)
+            return;
+
+        var buffer = _master.DescriptorFactory.GetBoneBuffer(frameIndex);
+        if (!buffer.IsValid || !buffer.HostVisible)
+            return;
+
+        var uploadSize = (ulong)_paletteCount * (ulong)Marshal.SizeOf<Matrix4x4>();
+
+        void* mapped = null;
+        var mapResult = _master.Vk.MapMemory(_master.VulkanDevice.Device, buffer.Memory, 0, uploadSize, 0, &mapped);
+        if (mapResult != Result.Success || mapped is null)
+            throw new InvalidOperationException($"Failed to map the bone palette for frame {frameIndex}. Result: {mapResult}");
+
+        fixed (Matrix4x4* source = _bonePalette)
+        {
+            global::System.Buffer.MemoryCopy(source, mapped, uploadSize, uploadSize);
+        }
+
+        _master.Vk.UnmapMemory(_master.VulkanDevice.Device, buffer.Memory);
     }
 
     private void UpdateCameraUniformBuffer(Camera camera, uint frameIndex, uint viewIndex, Vector2 viewSize)
@@ -244,6 +371,44 @@ internal unsafe class SceneRenderer : IDisposable
         };
 
         _geometryPipeline = _master.PipelineFactory.GetOrCreate(pipelineKey);
+
+        // Same pass and shader output as the geometry pipeline, but vertices arrive with their bone
+        // blend and the bones are applied in the vertex shader.
+        var skinnedFormat = new VertexFormat
+        {
+            Stride = (uint)Marshal.SizeOf<SkinnedVertex>(),
+            Attributes =
+            [
+                VertexAttribute.Create<SkinnedVertex>(0, Format.R32G32B32Sfloat, nameof(SkinnedVertex.Position)),
+                VertexAttribute.Create<SkinnedVertex>(1, Format.R32G32B32Sfloat, nameof(SkinnedVertex.Normal)),
+                VertexAttribute.Create<SkinnedVertex>(2, Format.R32G32B32A32Sfloat, nameof(SkinnedVertex.BoneWeights)),
+                VertexAttribute.Create<SkinnedVertex>(3, Format.R32G32B32A32Sfloat, nameof(SkinnedVertex.BoneIndices)),
+            ]
+        };
+
+        var skinnedKey = new PipelineKey
+        {
+            VertexShaderPath = "skinned.vert.spv",
+            FragmentShaderPath = "default_shader.frag.spv",
+            RenderPass = renderPass,
+            Layout = _master.DescriptorFactory.SkinnedLayout,
+            VertexFormat = skinnedFormat,
+            Topology = PrimitiveTopology.TriangleList,
+            CullMode = CullModeBits.None,
+            FrontFace = FrontFace.CounterClockwise,
+            HasDepth = true,
+            DepthTestEnable = true,
+            DepthWriteEnable = true,
+            EnableBlending = false,
+            BlendState = BlendState.NoBlending,
+
+            // The colour sits at the same offset the unskinned block puts it at, so one fragment shader
+            // reads both; the skin's palette offset rides along in the few bytes after it.
+            PushConstantSize = (uint)SkinnedPushConstants.SizeInBytes,
+            PushConstantStages = ShaderStageFlags.VertexBit | ShaderStageFlags.FragmentBit,
+        };
+
+        _skinnedPipeline = _master.PipelineFactory.GetOrCreate(skinnedKey);
     }
 
     public void Dispose()

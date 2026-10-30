@@ -19,6 +19,7 @@ public static class SceneCloner
             [typeof(MeshRenderer)] = component => new MeshRenderer((MeshRenderer)component),
             [typeof(Camera)] = component => new Camera((Camera)component),
             [typeof(AnimationPlayer)] = component => new AnimationPlayer((AnimationPlayer)component),
+            [typeof(SkinnedMesh)] = component => new SkinnedMesh((SkinnedMesh)component),
         };
 
     public static World Clone(World authored) => authored.Clone(Copiers);

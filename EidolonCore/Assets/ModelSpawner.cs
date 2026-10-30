@@ -98,25 +98,16 @@ public static class ModelSpawner
             bones[index] = new SkeletonBone(skin.BoneNames[index], inverseBind);
         }
 
-        // The renderer draws a mutable copy: it starts as the bind pose and is rewritten as bones move.
-        var deformed = new Mesh($"{bindPose.Name} (skinned)", bindPose.Vertices.ToArray(), bindPose.Indices.ToArray());
-
-        if (world.TryGetComponent<MeshRenderer>(entity, out var renderer))
-        {
-            renderer.Mesh = deformed;
-            world.SetComponent(entity, renderer);
-        }
-
+        // The mesh keeps its bind pose: the renderer deforms it in the vertex shader, so the CPU never
+        // writes a second copy of the vertices.
         world.SetComponent(entity, new SkinnedMesh
         {
             BindPose = bindPose,
-            Deformed = deformed,
             MeshEntity = entity,
             BindWorld = world.GetComponent<Transform>(entity).GetWorldMatrix(world),
             Bones = bones,
             BoneEntities = boneEntities,
             Influences = skin.Influences.ToArray(),
-            Vertices = new Vertex[bindPose.Vertices.Length],
         });
     }
 

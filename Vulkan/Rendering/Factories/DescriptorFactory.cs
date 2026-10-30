@@ -1,4 +1,4 @@
-﻿using Silk.NET.Vulkan;
+using Silk.NET.Vulkan;
 
 namespace Eidolon.Vulkan;
 
@@ -33,9 +33,20 @@ internal unsafe class DescriptorFactory: IDisposable
     
     private readonly DescriptorKey _defaultKey;
     private readonly DescriptorKey _imguiKey;
+    private readonly DescriptorKey _skinnedKey;
 
     private GpuBuffer[] _defaultUniformBuffers = Array.Empty<GpuBuffer>();
+    private GpuBuffer[] _boneBuffers = Array.Empty<GpuBuffer>();
+
     public DescriptorSetLayout Layout => GetOrCreate(_defaultKey).Layout;
+
+    /// <summary>Layout for skinned draws: the camera block plus the bone palette storage buffer.</summary>
+    public DescriptorSetLayout SkinnedLayout => GetOrCreate(_skinnedKey).Layout;
+
+    /// <summary>How many bone matrices one frame's palette can hold.</summary>
+    public const int BoneMatrixCapacity = 4096;
+
+    private const ulong BoneMatrixBytes = 64;
     
     public DescriptorFactory(VulkanMaster master)
     {
@@ -76,7 +87,33 @@ internal unsafe class DescriptorFactory: IDisposable
             }
         ];
 
+        // Skinned draws need the same camera block plus one storage buffer holding every skin's bones.
+        _skinnedKey = DescriptorKey.Create(
+            "b0:UniformBuffer:1:Vertex|b1:StorageBuffer:1:Vertex",
+            Constants.MAX_FRAMES_IN_FLIGHT * ViewCount,
+            DescriptorAllocationStrategy.PerFrame,
+            [DescriptorType.UniformBuffer, DescriptorType.StorageBuffer]);
+
+        _bindingsByKey[_skinnedKey] =
+        [
+            new DescriptorSetLayoutBinding
+            {
+                Binding = 0,
+                DescriptorType = DescriptorType.UniformBuffer,
+                DescriptorCount = 1,
+                StageFlags = ShaderStageFlags.VertexBit,
+            },
+            new DescriptorSetLayoutBinding
+            {
+                Binding = 1,
+                DescriptorType = DescriptorType.StorageBuffer,
+                DescriptorCount = 1,
+                StageFlags = ShaderStageFlags.VertexBit,
+            }
+        ];
+
         _ = GetOrCreate(_defaultKey);
+        _ = GetOrCreate(_skinnedKey);
         
         Debug.Log("DescriptorFactory created!", VALIDATION_LAYERS.SUCCESS);
     }
@@ -128,11 +165,91 @@ internal unsafe class DescriptorFactory: IDisposable
         _cache[key] = bundle;
 
         if (key.Equals(_defaultKey))
-        {
             CreateAndWriteDefaultUniformDescriptors(bundle);
-        }
+        else if (key.Equals(_skinnedKey))
+            CreateAndWriteSkinnedDescriptors(bundle);
 
         return bundle;
+    }
+
+    public DescriptorSet GetSkinnedDescriptorSet(uint frameIndex, uint viewIndex = 0) =>
+        GetOrCreate(_skinnedKey).GetSet(SlotIndex(frameIndex, viewIndex));
+
+    /// <summary>The frame's bone palette. Two views share it, because they draw the same world.</summary>
+    public GpuBuffer GetBoneBuffer(uint frameIndex)
+    {
+        if (_boneBuffers.Length == 0)
+            throw new InvalidOperationException("Bone palette buffers are not initialized.");
+
+        if (frameIndex >= _boneBuffers.Length)
+            throw new ArgumentOutOfRangeException(nameof(frameIndex));
+
+        return _boneBuffers[frameIndex];
+    }
+
+    /// <summary>
+    /// Binds the camera block and the frame's bone palette for every skinned slot. Slot order is
+    /// frame-major, so both views of a frame share that frame's palette.
+    /// </summary>
+    private void CreateAndWriteSkinnedDescriptors(DescriptorData data)
+    {
+        if (_defaultUniformBuffers.Length == 0)
+            throw new InvalidOperationException("The default uniform buffers must exist before skinned descriptors.");
+
+        var key = new GpuBufferKey
+        {
+            UsageClass = GpuBufferUsageClass.HostVisible,
+            Size = BoneMatrixCapacity * BoneMatrixBytes,
+            Usage = BufferUsageFlags.StorageBufferBit,
+            MemoryProperties = MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit,
+            Count = Constants.MAX_FRAMES_IN_FLIGHT,
+            AllocationStrategy = GpuBufferAllocationStrategy.PerFrame,
+        };
+
+        _boneBuffers = _master.GpuBufferFactory.Create(key);
+
+        for (var slot = 0; slot < data.Sets.Length; slot++)
+        {
+            var cameraInfo = new DescriptorBufferInfo
+            {
+                Buffer = _defaultUniformBuffers[slot].Buffer,
+                Offset = 0,
+                Range = _defaultUniformBuffers[slot].Size,
+            };
+
+            var boneInfo = new DescriptorBufferInfo
+            {
+                Buffer = _boneBuffers[slot / ViewCount].Buffer,
+                Offset = 0,
+                Range = _boneBuffers[slot / ViewCount].Size,
+            };
+
+            var writes = stackalloc WriteDescriptorSet[2];
+
+            writes[0] = new WriteDescriptorSet
+            {
+                SType = StructureType.WriteDescriptorSet,
+                DstSet = data.Sets[slot],
+                DstBinding = 0,
+                DstArrayElement = 0,
+                DescriptorType = DescriptorType.UniformBuffer,
+                DescriptorCount = 1,
+                PBufferInfo = &cameraInfo,
+            };
+
+            writes[1] = new WriteDescriptorSet
+            {
+                SType = StructureType.WriteDescriptorSet,
+                DstSet = data.Sets[slot],
+                DstBinding = 1,
+                DstArrayElement = 0,
+                DescriptorType = DescriptorType.StorageBuffer,
+                DescriptorCount = 1,
+                PBufferInfo = &boneInfo,
+            };
+
+            _master.Vk.UpdateDescriptorSets(_master.VulkanDevice.Device, 2, writes, 0, null);
+        }
     }
     
     private DescriptorSetLayout CreateDescriptorSetLayout(DescriptorSetLayoutBinding[] bindings)
@@ -263,6 +380,10 @@ internal unsafe class DescriptorFactory: IDisposable
                 _master.Vk.DestroyDescriptorSetLayout(_master.VulkanDevice.Device, entry.Layout, null);
         }
 
+        foreach (var boneBuffer in _boneBuffers)
+            _master.GpuBufferFactory.Destroy(boneBuffer);
+
+        _boneBuffers = Array.Empty<GpuBuffer>();
         _cache.Clear();
         _bindingsByKey.Clear();
         _defaultUniformBuffers = Array.Empty<GpuBuffer>();

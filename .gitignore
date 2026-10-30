@@ -9,3 +9,5 @@ imgui.ini
 
 # Blender's rolling backup of an open file.
 *.blend1
+
+scratch/

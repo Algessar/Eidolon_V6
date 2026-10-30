@@ -46,13 +46,15 @@ public class GameModuleTests
     {
         var (world, session) = Load();
 
-        Assert.Equal(6, session.Systems.Count);
+        Assert.Equal(5, session.Systems.Count);
         Assert.Contains(session.Systems, system => system is XpbdWorldSystem);
         Assert.Contains(session.Systems, system => system is SpinSystem);
         Assert.Contains(session.Systems, system => system is AnimationSystem);
         Assert.Contains(session.Systems, system => system is PoseResolutionSystem);
-        Assert.Contains(session.Systems, system => system is SkinningSystem);
         Assert.Contains(session.Systems, system => system is ScriptHost host && host.ScriptCount == 1);
+
+        // Skinning is the vertex shader's job now, so nothing deforms vertices on the CPU each tick.
+        Assert.DoesNotContain(session.Systems, system => system is SkinningSystem);
 
         // The sandbox ships one animated hierarchy: a named windmill whose rotor is keyed by a clip.
         var animated = world.GetEntitiesWith<AnimationPlayer>().Single();

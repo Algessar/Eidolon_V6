@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using EidolonCore.ECS;
@@ -123,6 +124,28 @@ public struct SkinnedVertex
 /// </remarks>
 public sealed class SkinnedMesh : IComponent
 {
+    public SkinnedMesh()
+    {
+    }
+
+    /// <summary>Copy for play mode: the skin itself is shared, per-world scratch is not.</summary>
+    /// <remarks>
+    /// Bone entities keep their ids across the copy, so the same bones drive the cloned entities. Only the
+    /// deformation scratch is left empty, because it belongs to whichever world last deformed it.
+    /// </remarks>
+    [SetsRequiredMembers]
+    public SkinnedMesh(SkinnedMesh other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+
+        BindPose = other.BindPose;
+        MeshEntity = other.MeshEntity;
+        BindWorld = other.BindWorld;
+        Bones = other.Bones;
+        BoneEntities = other.BoneEntities;
+        Influences = other.Influences;
+    }
+
     /// <summary>Geometry in its bind pose.</summary>
     public required Mesh BindPose { get; init; }
 

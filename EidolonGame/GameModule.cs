@@ -24,10 +24,10 @@ public sealed class GameModule : IGameModule
 
         // Order is layering: gameplay scripts write intent, animation turns clips into desired poses,
         // the resolver commits them, and physics gets the last word on everything it simulates.
+        // Skinning is not a system here: the renderer applies the bones in the vertex shader.
         context.Session.AddSystem(scripts);
         context.Session.AddSystem(new AnimationSystem());
         context.Session.AddSystem(new PoseResolutionSystem());
-        context.Session.AddSystem(new SkinningSystem());
         context.Session.AddSystem(new SpinSystem());
         context.Session.AddSystem(new XpbdWorldSystem());
     }
